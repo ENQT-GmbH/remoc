@@ -1,0 +1,115 @@
+use std::sync::{Arc, Mutex};
+use futures::channel::{oneshot};
+
+use crate::sender::ChannelSendError;
+
+/// Sets the send lock state of a channel.
+pub struct ChannelSendLockAuthority {
+    state: Arc<Mutex<ChannelSendLockState>>,
+}
+
+/// Gets the send lock state of a channel.
+pub struct ChannelSendLockRequester {
+    state: Arc<Mutex<ChannelSendLockState>>,
+}
+
+/// Reason for closing a channel send lock.
+enum ChannelSendLockCloseReason {
+    /// Remote endpoint closed or dropped receiver.
+    Closed {gracefully: bool},
+    /// Multiplexer was terminated.
+    Dropped
+}
+
+/// Internal state of a channel send lock.
+struct ChannelSendLockState {
+    send_allowed: bool,
+    close_reason: Option<ChannelSendLockCloseReason>,
+    notify_tx: Option<oneshot::Sender<()>>,
+}
+
+impl ChannelSendLockAuthority {
+    /// Pause sending on that channel.
+    pub fn pause(&mut self) {
+        let mut state = self.state.lock().unwrap();
+        state.send_allowed = false;
+    }
+
+    /// Resume sending on the channel.
+    pub fn resume(&mut self) {
+        let mut state = self.state.lock().unwrap();
+        state.send_allowed = true;
+
+        if let Some(tx) = state.notify_tx.take() {
+            let _ = tx.send(());
+        }
+    }
+
+    /// Closes the channel.
+    pub fn close(self, gracefully: bool) {
+        let mut state = self.state.lock().unwrap();
+        state.send_allowed = false;
+        state.close_reason = Some(ChannelSendLockCloseReason::Closed {gracefully});
+
+        if let Some(tx) = state.notify_tx.take() {
+            let _ = tx.send(());
+        }        
+    }
+}
+
+impl Drop for ChannelSendLockAuthority {
+    fn drop(&mut self) {
+        let mut state = self.state.lock().unwrap();
+        if state.close_reason.is_none() {
+            state.send_allowed = false;            
+            state.close_reason = Some(ChannelSendLockCloseReason::Dropped);
+
+            if let Some(tx) = state.notify_tx.take() {
+                let _ = tx.send(());
+            }                    
+        }
+    }
+}
+
+impl ChannelSendLockRequester {
+    /// Blocks until sending on the channel is allowed.
+    pub async fn request(&self) -> Result<(), ChannelSendError> {
+        let mut rx_opt = None;
+        loop {
+            if let Some(rx) = rx_opt {
+                let _ = rx.await;
+            }
+
+            let mut state = self.state.lock().unwrap();
+            if state.send_allowed {
+                return Ok(());
+            } 
+            match &state.close_reason {
+                Some (ChannelSendLockCloseReason::Closed {gracefully}) => return Err(ChannelSendError::Closed {gracefully: gracefully.clone()}),
+                Some (ChannelSendLockCloseReason::Dropped) => return Err(ChannelSendError::MultiplexerError),
+                None => ()                
+            }
+
+            let (tx, rx) = oneshot::channel();
+            state.notify_tx = Some(tx);
+            rx_opt = Some(rx);
+        }
+    }
+}
+
+/// Creates a channel send lock.
+pub fn channel_send_lock() -> (ChannelSendLockAuthority, ChannelSendLockRequester) {
+    let state = Arc::new(Mutex::new(ChannelSendLockState {
+        send_allowed: true,
+        close_reason: None,
+        notify_tx: None,
+    }));
+    let authority = ChannelSendLockAuthority {
+        state: state.clone(),
+    };
+    let requester = ChannelSendLockRequester {
+        state: state.clone(),
+    };
+    (authority, requester)
+}
+
