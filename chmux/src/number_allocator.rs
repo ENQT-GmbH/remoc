@@ -5,7 +5,7 @@ use rand::prelude::*;
 /// Allocates numbers randomly and uniquely.
 pub struct NumberAllocator {
     used: HashSet<u32>,
-    rng: ThreadRng,
+    rng: Box<ThreadRng>,
 }
 
 /// Number allocated exhausted.
@@ -17,7 +17,7 @@ impl NumberAllocator {
     pub fn new() -> NumberAllocator {
         NumberAllocator {
             used: HashSet::new(),
-            rng: thread_rng(),
+            rng: Box::new(thread_rng()),
         }
     }
 
