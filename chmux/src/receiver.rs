@@ -1,99 +1,86 @@
-use futures::channel::{mpsc};
-use futures::future;
-use futures::executor::block_on;
-use futures::sink::{SinkExt};
-use futures::stream::{self, Stream, StreamExt};
-use futures::task::{Context, Poll};
-use pin_project::{pin_project, pinned_drop};
-use std::fmt;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::marker::PhantomData;
+use std::error::Error;
+use pin_project::{pin_project};
+use futures::task::{Context, Poll};
+use futures::ready;
+use futures::stream::Stream;
 
-use crate::receive_buffer::{ChannelReceiverBufferDequeuer};
-use crate::multiplexer::ChannelMsg;
+use crate::codec::Deserializer;
+use crate::raw_receiver::{RawReceiver, RawReceiveError};
 
-#[derive(Debug, Clone)]
-pub enum ChannelReceiveError {
-    /// The multiplexer encountered an error or was terminated.
-    MultiplexerError
+
+pub enum ReceiveError {
+    MultiplexerError,
+    DeserializationError (Box<dyn Error + 'static>)
 }
+
+impl From<RawReceiveError> for ReceiveError {
+    fn from(err: RawReceiveError) -> Self {
+        match err {
+            RawReceiveError::MultiplexerError => Self::MultiplexerError,
+        }
+    }
+}
+
 
 
 #[pin_project]
-pub struct ChannelReceiver<Content> {
-    local_port: u32,
-    remote_port: u32,
-    closed: bool,
+pub struct Receiver<Item> {
     #[pin]
-    stream: Pin<Box<dyn Stream<Item=Result<Content, ChannelReceiveError>>>>,
-    #[pin]
-    drop_tx: mpsc::Sender<ChannelMsg<Content>>,
+    inner: Pin<Box<dyn Stream<Item=Result<Item, ReceiveError>>>>
 }
 
-impl<Content> ChannelReceiver<Content> {
-    pub(crate) fn new(
-        local_port: u32,
-        remote_port: u32,        
-        tx: mpsc::Sender<ChannelMsg<Content>>,
-        rx_buffer: ChannelReceiverBufferDequeuer<Content>,
-    ) -> ChannelReceiver<Content> 
-    where Content: 'static {
-        let rx_buffer = Arc::new(Mutex::new(rx_buffer));
-        let stream =
-            stream::repeat(()).then(move |_| {
-                let rx_buffer = rx_buffer.clone();
-                async move {
-                    let mut rx_buffer = rx_buffer.lock().unwrap();
-                    rx_buffer.dequeue().await
-            }}).take_while(|opt_item| future::ready(opt_item.is_some()))
-            .map(|opt_item| opt_item.unwrap());
-
-        ChannelReceiver {
-            local_port,
-            remote_port,
-            closed: false,
-            drop_tx: tx,
-            stream: Box::pin(stream),
-        }       
-    }
-
-    /// Prevents the remote endpoint from sending new messages into this channel while
-    /// allowing in-flight messages to be received.
-    pub fn close(&mut self) {
-        if !self.closed {
-            block_on(async {
-                let _ = self.drop_tx.send(ChannelMsg::ReceiverClosed {local_port: self.local_port, gracefully: true}).await;
-            });        
-            self.closed = true;
+impl<Item> Receiver<Item> {
+    pub(crate) fn new<Content, Deser>(receiver: RawReceiver<Content>, deserialzer: Deser) -> Receiver<Item>
+    where Deser: Deserializer<Item, Content> + 'static,
+        Content: Send + 'static,
+        Item: 'static
+    {
+        let inner = ReceiverInner {
+            receiver,
+            deserialzer,
+            _phantom_item: PhantomData
+        };
+        Receiver {
+            inner: Box::pin(inner)
         }
     }
 }
 
-impl<Item> fmt::Debug for ChannelReceiver<Item> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "ChannelReceiver {{local_port={}, remote_port={}}}",
-               &self.local_port, &self.remote_port)
+
+
+impl<Item> Stream for Receiver<Item> {
+    type Item = Result<Item, ReceiveError>;
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
+        self.project().inner.poll_next(cx)
     }
 }
 
-impl<Item> Stream for ChannelReceiver<Item>
+#[pin_project]
+struct ReceiverInner<Item, Content, Deser> where Content: Send {
+    #[pin]
+    receiver: RawReceiver<Content>,
+    #[pin]
+    deserialzer: Deser,
+    _phantom_item: PhantomData<Item>,
+}
+
+impl<Item, Content, Deser> Stream for ReceiverInner<Item, Content, Deser> where
+    Deser: Deserializer<Item, Content>,
+    Content: Send,
 {
-    type Item = Result<Item, ChannelReceiveError>;
+    type Item = Result<Item, ReceiveError>;
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
         let this = self.project();
-        this.stream.poll_next(cx)        
-    }
-}
-
-#[pinned_drop]
-impl<Item> PinnedDrop for ChannelReceiver<Item> {
-    fn drop(self: Pin<&mut Self>) {
-        let mut this = self.project();
-        if !*this.closed {
-            block_on(async {
-                let _ = this.drop_tx.send(ChannelMsg::ReceiverClosed {local_port: *this.local_port, gracefully: false}).await;
-            });
-        }
+        let item =
+            match ready!(this.receiver.poll_next(cx)) {
+                Some(Ok(content)) => Some(this.deserialzer.deserialize(&content).map_err(|err|
+                    ReceiveError::DeserializationError(Box::new(err)))),
+                Some(Err(err)) => Some(Err(ReceiveError::from(err))),
+                None => None
+            };
+        Poll::Ready(item)
     }
 }
 

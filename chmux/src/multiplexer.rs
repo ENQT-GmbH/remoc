@@ -9,8 +9,9 @@ use std::marker::PhantomData;
 use crate::number_allocator::{NumberAllocator, NumberAllocatorExhaustedError};
 use crate::send_lock::{ChannelSendLockAuthority, ChannelSendLockRequester, channel_send_lock};
 use crate::receive_buffer::{ChannelReceiverBufferEnqueuer, ChannelReceiverBufferDequeuer, ChannelReceiverBufferCfg};
-use crate::sender::ChannelSender;
-use crate::receiver::ChannelReceiver;
+use crate::raw_sender::RawSender;
+use crate::raw_receiver::RawReceiver;
+use crate::raw_channel::RawChannel;
 use crate::server::{MultiplexerServer, RemoteConnectToServiceRequest};
 use crate::client::{MultiplexerClient, ConnectToRemoteServiceRequest, ConnectToRemoteServiceResponse};
 
@@ -72,7 +73,7 @@ pub enum MultiplexMsg<Content> {
 }
 
 
-pub struct ChannelData<Content> {
+pub struct ChannelData<Content> where Content: Send {
     pub local_port: u32,
     pub remote_port: u32,
     pub tx: mpsc::Sender<ChannelMsg<Content>>,
@@ -80,32 +81,32 @@ pub struct ChannelData<Content> {
     pub rx_buffer: ChannelReceiverBufferDequeuer<Content>,
 }
 
-impl<Content> ChannelData<Content> where Content: 'static {
-    pub fn instantiate(self) -> (ChannelSender<Content>, ChannelReceiver<Content>) {
+impl<Content> ChannelData<Content> where Content: 'static + Send {
+    pub fn instantiate(self) -> RawChannel<Content> {
         let ChannelData {
             local_port, remote_port, tx, tx_lock, rx_buffer
         } = self;
         
-        let sender = ChannelSender::new(
+        let sender = RawSender::new(
             local_port,
             remote_port,
             tx.clone(),
             tx_lock
         );
-        let receiver = ChannelReceiver::new(
+        let receiver = RawReceiver::new(
             local_port,
             remote_port,
             tx,
             rx_buffer
         );
-        (sender, receiver)
+        RawChannel {sender, receiver}
     }
 }
 
 
 
 /// Port state.
-enum PortState<Content> {
+enum PortState<Content> where Content: Send {
     /// Service request has been initiated locally and is waiting for reply
     /// from remote endpoint.
     LocalRequestingRemoteService {
@@ -162,7 +163,7 @@ pub enum ChannelMsg<Content> {
     Rejected {local_port: u32, reason: Option<Content>},
 }
 
-enum LoopEvent<Content, TransportStreamError> {
+enum LoopEvent<Content, TransportStreamError> where Content: Send {
     /// A message from a local channel.
     ChannelMsg (ChannelMsg<Content>),
     /// Received message from transport.
@@ -178,7 +179,7 @@ enum LoopEvent<Content, TransportStreamError> {
 }
 
 /// Channel multiplexer.
-pub struct Multiplexer<Content, TransportSink, TransportStream, TransportSinkError, TransportStreamError> {
+pub struct Multiplexer<Content, TransportSink, TransportStream, TransportSinkError, TransportStreamError> where Content: Send {
     cfg: Cfg,
     transport_tx: Pin<Box<TransportSink>>,
     serve_tx: mpsc::Sender<(Content, RemoteConnectToServiceRequest<Content>)>,
@@ -186,7 +187,7 @@ pub struct Multiplexer<Content, TransportSink, TransportStream, TransportSinkErr
     ports: HashMap<u32, PortState<Content>>,
     port_pool: NumberAllocator,
     channel_tx: mpsc::Sender<ChannelMsg<Content>>,
-    event_rx: Pin<Box<dyn Stream<Item=LoopEvent<Content, TransportStreamError>>>>,
+    event_rx: Pin<Box<dyn Stream<Item=LoopEvent<Content, TransportStreamError>> + Send>>,
 
     client_dropped: bool,
     server_dropped: bool,
@@ -195,7 +196,7 @@ pub struct Multiplexer<Content, TransportSink, TransportStream, TransportSinkErr
     _transport_sink_error_ghost: PhantomData<TransportSinkError>,
 }
 
-impl<Content, TransportSink, TransportStream, TransportSinkError, TransportStreamError> fmt::Debug for Multiplexer<Content, TransportSink, TransportStream, TransportSinkError, TransportStreamError> {
+impl<Content, TransportSink, TransportStream, TransportSinkError, TransportStreamError> fmt::Debug for Multiplexer<Content, TransportSink, TransportStream, TransportSinkError, TransportStreamError> where Content: Send {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Multiplexer {{cfg={:?}}}", &self.cfg)
     }
@@ -208,9 +209,9 @@ impl<Content, TransportSink, TransportStream, TransportSinkError, TransportStrea
 impl<Content, TransportSink, TransportStream, TransportSinkError, TransportStreamError>
     Multiplexer<Content, TransportSink, TransportStream, TransportSinkError, TransportStreamError>
 where     
-    Content: 'static,
-    TransportSink: Sink<MultiplexMsg<Content>, Error = TransportSinkError> + 'static,
-    TransportStream: Stream<Item = Result<MultiplexMsg<Content>, TransportStreamError>> + 'static,
+    Content: Send + 'static,
+    TransportSink: Sink<MultiplexMsg<Content>, Error = TransportSinkError> + Send + 'static,
+    TransportStream: Stream<Item = Result<MultiplexMsg<Content>, TransportStreamError>> + Send + 'static,
     TransportSinkError: 'static,
     TransportStreamError: 'static,
 {
@@ -333,7 +334,7 @@ where
                     if let Some(PortState::Connected {remote_port, rx_paused, rx_buffer, ..}) = self.ports.get_mut(&local_port) {
                         // Send resume message only, when no Finish message has been received.
                         if let Some(rx_buffer) = rx_buffer.as_ref() {
-                            if *rx_paused && rx_buffer.resumeable() {
+                            if *rx_paused && rx_buffer.resumeable().await {
                                 *rx_paused = false;
                                 let msg = MultiplexMsg::Resume {port: *remote_port};
                                 self.transport_send(msg).await?;                    
@@ -415,8 +416,8 @@ where
                             tx_lock: tx_lock_requester,
                             rx_buffer: rx_buffer_dequeuer,
                         };
-                        let (sender, receiver) = channel_data.instantiate();
-                        let _ = response_tx.send(ConnectToRemoteServiceResponse::Accepted {sender, receiver});
+                        let channel = channel_data.instantiate();
+                        let _ = response_tx.send(ConnectToRemoteServiceResponse::Accepted (channel));
                     } else {
                         return Err(MultiplexRunError::ProtocolError(format!("Received accepted message for port {} not in LocalRequestingRemoteService state.", client_port)));
                     }                
@@ -437,7 +438,7 @@ where
                     if let Some(PortState::Connected {tx_lock, ..}) = self.ports.get_mut(&port) {
                         // Ignore request after receiving hangup message, since no more data will be transmitted anyway.
                         if let Some(tx_lock) = tx_lock.as_mut() {
-                            tx_lock.pause();
+                            tx_lock.pause().await;
                         }
                     } else {
                         return Err(MultiplexRunError::ProtocolError(format!("Received pause message for port {} not in Connected state.", &port)));
@@ -449,7 +450,7 @@ where
                     if let Some(PortState::Connected {tx_lock, ..}) = self.ports.get_mut(&port) {
                         // Ignore request after receiving hangup message, since no more data will be transmitted anyway.
                         if let Some(tx_lock) = tx_lock.as_mut() {
-                            tx_lock.resume();
+                            tx_lock.resume().await;
                         }
                     } else {
                         return Err(MultiplexRunError::ProtocolError(format!("Received resume message for port {} not in Connected state.", &port)));
@@ -460,7 +461,7 @@ where
                 Some(LoopEvent::ReceiveMsg(Ok(MultiplexMsg::Finish {port}))) => {
                     if let Some(PortState::Connected {rx_buffer, remote_port, ..}) = self.ports.get_mut(&port) {
                         if let Some(rx_buffer) = rx_buffer.take() {
-                            rx_buffer.close();
+                            rx_buffer.close().await;
                             let msg = MultiplexMsg::FinishAck {port: *remote_port};
                             self.transport_send(msg).await?;        
                             if self.maybe_free_port(port) { break }
@@ -486,7 +487,7 @@ where
                 Some(LoopEvent::ReceiveMsg(Ok(MultiplexMsg::Hangup {port, gracefully}))) => {                    
                     if let Some(PortState::Connected {tx_lock, ..}) = self.ports.get_mut(&port) {
                         if let Some(tx_lock) = tx_lock.take() {
-                            tx_lock.close(gracefully);  
+                            tx_lock.close(gracefully).await;  
                             if self.maybe_free_port(port) { break }
                         } else {
                             return Err(MultiplexRunError::ProtocolError(format!("Received more than one Hangup message for port {}.", &port)));

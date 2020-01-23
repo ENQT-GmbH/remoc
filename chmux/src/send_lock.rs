@@ -1,7 +1,9 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
 use futures::channel::{oneshot};
+use futures::lock::Mutex;
+use async_thread::on_thread;
 
-use crate::sender::ChannelSendError;
+use crate::raw_sender::RawSendError;
 
 /// Sets the send lock state of a channel.
 pub struct ChannelSendLockAuthority {
@@ -30,14 +32,14 @@ struct ChannelSendLockState {
 
 impl ChannelSendLockAuthority {
     /// Pause sending on that channel.
-    pub fn pause(&mut self) {
-        let mut state = self.state.lock().unwrap();
+    pub async fn pause(&mut self) {
+        let mut state = self.state.lock().await;
         state.send_allowed = false;
     }
 
     /// Resume sending on the channel.
-    pub fn resume(&mut self) {
-        let mut state = self.state.lock().unwrap();
+    pub async fn resume(&mut self) {
+        let mut state = self.state.lock().await;
         state.send_allowed = true;
 
         if let Some(tx) = state.notify_tx.take() {
@@ -46,8 +48,8 @@ impl ChannelSendLockAuthority {
     }
 
     /// Closes the channel.
-    pub fn close(self, gracefully: bool) {
-        let mut state = self.state.lock().unwrap();
+    pub async fn close(self, gracefully: bool) {
+        let mut state = self.state.lock().await;
         state.send_allowed = false;
         state.close_reason = Some(ChannelSendLockCloseReason::Closed {gracefully});
 
@@ -59,34 +61,36 @@ impl ChannelSendLockAuthority {
 
 impl Drop for ChannelSendLockAuthority {
     fn drop(&mut self) {
-        let mut state = self.state.lock().unwrap();
-        if state.close_reason.is_none() {
-            state.send_allowed = false;            
-            state.close_reason = Some(ChannelSendLockCloseReason::Dropped);
+        on_thread(async{
+            let mut state = self.state.lock().await;
+            if state.close_reason.is_none() {
+                state.send_allowed = false;            
+                state.close_reason = Some(ChannelSendLockCloseReason::Dropped);
 
-            if let Some(tx) = state.notify_tx.take() {
-                let _ = tx.send(());
-            }                    
-        }
+                if let Some(tx) = state.notify_tx.take() {
+                    let _ = tx.send(());
+                }                    
+            }
+        });
     }
 }
 
 impl ChannelSendLockRequester {
     /// Blocks until sending on the channel is allowed.
-    pub async fn request(&self) -> Result<(), ChannelSendError> {
+    pub async fn request(&self) -> Result<(), RawSendError> {
         let mut rx_opt = None;
         loop {
             if let Some(rx) = rx_opt {
                 let _ = rx.await;
             }
 
-            let mut state = self.state.lock().unwrap();
+            let mut state = self.state.lock().await;
             if state.send_allowed {
                 return Ok(());
             } 
             match &state.close_reason {
-                Some (ChannelSendLockCloseReason::Closed {gracefully}) => return Err(ChannelSendError::Closed {gracefully: gracefully.clone()}),
-                Some (ChannelSendLockCloseReason::Dropped) => return Err(ChannelSendError::MultiplexerError),
+                Some (ChannelSendLockCloseReason::Closed {gracefully}) => return Err(RawSendError::Closed {gracefully: gracefully.clone()}),
+                Some (ChannelSendLockCloseReason::Dropped) => return Err(RawSendError::MultiplexerError),
                 None => ()                
             }
 

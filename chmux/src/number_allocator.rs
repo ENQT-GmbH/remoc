@@ -1,11 +1,8 @@
 use std::collections::HashSet;
 
-use rand::prelude::*;
-
 /// Allocates numbers randomly and uniquely.
 pub struct NumberAllocator {
     used: HashSet<u32>,
-    rng: Box<ThreadRng>,
 }
 
 /// Number allocated exhausted.
@@ -17,7 +14,6 @@ impl NumberAllocator {
     pub fn new() -> NumberAllocator {
         NumberAllocator {
             used: HashSet::new(),
-            rng: Box::new(thread_rng()),
         }
     }
 
@@ -27,7 +23,7 @@ impl NumberAllocator {
             return Err(NumberAllocatorExhaustedError);
         }
         loop {
-            let cand = self.rng.gen();
+            let cand = rand::random();
             if !self.used.contains(&cand) {
                 self.used.insert(cand);
                 return Ok(cand);

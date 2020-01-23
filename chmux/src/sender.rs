@@ -1,124 +1,102 @@
-use futures::channel::{mpsc};
-use futures::executor::block_on;
-use futures::sink::{Sink, SinkExt};
-use futures::task::{Context, Poll};
-use pin_project::{pin_project, pinned_drop};
-use std::fmt;
 use std::pin::Pin;
-use std::sync::{Arc};
+use std::marker::PhantomData;
+use std::error::Error;
+use pin_project::{pin_project};
+use futures::task::{Context, Poll};
+use futures::ready;
+use futures::sink::Sink;
 
-use crate::send_lock::{ChannelSendLockRequester};
-use crate::multiplexer::ChannelMsg;
+use crate::raw_sender::{RawSender, RawSendError};
+use crate::codec::Serializer;
 
-#[derive(Debug, Clone)]
-pub enum ChannelSendError {
-    /// Other side closed receiving end of channel.
-    Closed { 
-        /// True if other side still processes items send up until now.
-        gracefully: bool,
-    },
-    /// The multiplexer encountered an error or was terminated.
-    MultiplexerError
+pub enum SendError {
+    Closed { gracefully: bool},
+    MultiplexerError,
+    SerializationError (Box<dyn Error + 'static>)
 }
 
-impl From<mpsc::SendError> for ChannelSendError
-{
-    fn from(err: mpsc::SendError) -> Self {
-        if err.is_disconnected() {
-            return Self::MultiplexerError;
+impl From<RawSendError> for SendError {
+    fn from(err: RawSendError) -> Self {
+        match err {
+            RawSendError::Closed {gracefully} => Self::Closed {gracefully},
+            RawSendError::MultiplexerError => Self::MultiplexerError,
         }
-        panic!("Error sending data to multiplexer for unknown reasons.");
+    }
+}
+
+
+#[pin_project]
+pub struct Sender<Item> {
+    #[pin]
+    inner: Pin<Box<dyn Sink<Item, Error=SendError>>>
+}
+
+impl<Item> Sender<Item> {
+    pub(crate) fn new<Content, Ser>(sender: RawSender<Content>, serializer: Ser) -> Sender<Item>
+    where Ser: Serializer<Item, Content> + 'static, Content: Send + 'static, Item: 'static
+    {
+        let inner = SenderInner {
+            sender,
+            serializer,
+            _phantom_item: PhantomData
+        };
+        Sender {
+            inner: Box::pin(inner)
+        }
+    }
+}
+
+
+impl<Item> Sink<Item> for Sender<Item>
+{
+    type Error = SendError;
+    fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.project().inner.poll_ready(cx)
+    }
+    fn start_send(self: Pin<&mut Self>, item: Item) -> Result<(), Self::Error> {
+        self.project().inner.start_send(item)
+    }
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.project().inner.poll_flush(cx)
+    }
+    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.project().inner.poll_close(cx)
     }
 }
 
 #[pin_project]
-pub struct ChannelSender<Content> {
-    local_port: u32,
-    remote_port: u32,
+struct SenderInner<Item, Content, Ser> where Content: Send {
     #[pin]
-    sink: Pin<Box<
-        dyn Sink<
-            Content,
-            Error = ChannelSendError,
-        >,
-    >>,
+    sender: RawSender<Content>,
     #[pin]
-    drop_tx: mpsc::Sender<ChannelMsg<Content>>,
+    serializer: Ser,
+    _phantom_item: PhantomData<Item>,
 }
 
-impl<Content>
-    ChannelSender<Content>
+impl<Item, Content, Ser> Sink<Item> for SenderInner<Item, Content, Ser>
+where
+    Ser: Serializer<Item, Content>,
+    Content: Send
 {
-    pub(crate) fn new(
-        local_port: u32,
-        remote_port: u32,
-        tx: mpsc::Sender<ChannelMsg<Content>>,
-        tx_lock: ChannelSendLockRequester,
-    ) -> ChannelSender<Content>
-    where
-        Content: 'static,
-    {
-        let drop_tx = tx.clone();
-        let tx_lock = Arc::new(tx_lock);
-        let adapted_tx = tx.with(move |item: Content| {
-            let tx_lock = tx_lock.clone();
-            async move {
-                tx_lock.request().await?;
-                let msg = ChannelMsg::SendMsg {
-                    remote_port,
-                    content: item,
-                };
-                Ok::<
-                    ChannelMsg<Content>,
-                    ChannelSendError,
-                >(msg)
-            }
-        });
+    type Error = SendError;
 
-        ChannelSender {
-            local_port,
-            remote_port,
-            sink: Box::pin(adapted_tx),
-            drop_tx
-        }
+    fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.project().sender.poll_ready(cx).map_err(SendError::from)
     }
-}
 
-impl<Item> fmt::Debug for ChannelSender<Item> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "ChannelSender {{local_port={}, remote_port={}}}",
-               &self.local_port, &self.remote_port)
+    fn start_send(mut self: Pin<&mut Self>, item: Item) -> Result<(), Self::Error> {
+        let content = self.as_mut().project().serializer.serialize(&item).map_err(|err|
+            SendError::SerializationError(Box::new(err)))?;
+        self.as_mut().project().sender.start_send(content)?;
+        Ok(())
     }
-}
 
-impl<Item> Sink<Item> for ChannelSender<Item>
-{
-    type Error = ChannelSendError;
-    fn poll_ready(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
-        let this = self.project();
-        this.sink.poll_ready(cx)
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.project().sender.poll_flush(cx).map_err(SendError::from)
     }
-    fn start_send(self: Pin<&mut Self>, item: Item) -> Result<(), Self::Error> {
-        let this = self.project();
-        this.sink.start_send(item)
-    }
-    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
-        let this = self.project();
-        this.sink.poll_flush(cx)
-    }
-    fn poll_close(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
-        let this = self.project();
-        this.sink.poll_close(cx)
-    }
-}
 
-#[pinned_drop]
-impl<Item> PinnedDrop
-for ChannelSender<Item> {
-    fn drop(self: Pin<&mut Self>) {
-        let mut this = self.project();
-        block_on(async move {
-            let _ = this.drop_tx.send(ChannelMsg::SenderDropped {local_port: *this.local_port}).await;
-        });
+    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        ready!(self.as_mut().poll_flush(cx))?;
+        self.project().sender.poll_close(cx).map_err(SendError::from)
     }
 }

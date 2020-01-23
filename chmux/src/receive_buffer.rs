@@ -1,9 +1,11 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc};
 use std::collections::VecDeque;
 use futures::channel::{oneshot, mpsc};
 use futures::sink::SinkExt;
+use futures::lock::Mutex;
+use async_thread::on_thread;
 
-use crate::receiver::ChannelReceiveError;
+use crate::raw_receiver::RawReceiveError;
 use crate::multiplexer::ChannelMsg;
 
 
@@ -25,7 +27,7 @@ struct ChannelReceiverBufferState<Content> {
 }
 
 /// Channel receiver buffer item enqueuer.
-pub struct ChannelReceiverBufferEnqueuer<Content> {
+pub struct ChannelReceiverBufferEnqueuer<Content> where Content: Send {
     state: Arc<Mutex<ChannelReceiverBufferState<Content>>>,
     resume_length: usize,
     pause_length: usize,
@@ -33,7 +35,7 @@ pub struct ChannelReceiverBufferEnqueuer<Content> {
 }
 
 
-impl<Content> ChannelReceiverBufferEnqueuer<Content> {
+impl<Content> ChannelReceiverBufferEnqueuer<Content> where Content: Send {
     /// Enqueues an item into the receive queue.
     /// Blocks when the block queue length has been reached.
     /// Returns true when the pause queue length has been reached from below.
@@ -44,7 +46,7 @@ impl<Content> ChannelReceiverBufferEnqueuer<Content> {
                 let _ = rx.await;
             }
 
-            let mut state = self.state.lock().unwrap();
+            let mut state = self.state.lock().await;
             if state.dequeuer_dropped {
                 // Drop item when dequeuer has been dropped.
                 return false;
@@ -66,14 +68,14 @@ impl<Content> ChannelReceiverBufferEnqueuer<Content> {
     }
 
     /// Returns true, if buffer length is at or below resume length.
-    pub fn resumeable(&self) -> bool {
-        let state = self.state.lock().unwrap();
+    pub async fn resumeable(&self) -> bool {
+        let state = self.state.lock().await;
         state.buffer.len() <= self.resume_length
     }
 
     /// Indicates that the receive stream is finished.
-    pub fn close(self) {
-        let mut state = self.state.lock().unwrap();
+    pub async fn close(self) {
+        let mut state = self.state.lock().await;
         state.enqueuer_close_reason = Some(ChannelReceiverBufferCloseReason::Closed);
         if let Some(tx) = state.item_enqueued.take() {
             let _ = tx.send(());
@@ -81,43 +83,45 @@ impl<Content> ChannelReceiverBufferEnqueuer<Content> {
     }
 }
 
-impl<Content> Drop for ChannelReceiverBufferEnqueuer<Content> {
+impl<Content> Drop for ChannelReceiverBufferEnqueuer<Content> where Content: Send {
     fn drop(&mut self) {
-        let mut state = self.state.lock().unwrap();
-        if state.enqueuer_close_reason.is_none() {
-            state.enqueuer_close_reason = Some(ChannelReceiverBufferCloseReason::Dropped);
-            if let Some(tx) = state.item_enqueued.take() {
-                let _ = tx.send(());
-            }            
-        }
+        on_thread(async {
+            let mut state = self.state.lock().await;
+            if state.enqueuer_close_reason.is_none() {
+                state.enqueuer_close_reason = Some(ChannelReceiverBufferCloseReason::Dropped);
+                if let Some(tx) = state.item_enqueued.take() {
+                    let _ = tx.send(());
+                }            
+            }
+        });
     }
 }
 
 
 /// Channel receiver buffer item dequeuer.
-pub struct ChannelReceiverBufferDequeuer<Content> {
+pub struct ChannelReceiverBufferDequeuer<Content> where Content: Send {
     state: Arc<Mutex<ChannelReceiverBufferState<Content>>>,
     resume_length: usize,
     resume_notify_tx: mpsc::Sender<ChannelMsg<Content>>,
     local_port: u32,
 }
 
-impl<Content> ChannelReceiverBufferDequeuer<Content> {
+impl<Content> ChannelReceiverBufferDequeuer<Content> where Content: Send {
     /// Dequeues an item from the receive queue.
     /// Blocks until an item becomes available.
     /// Notifies the resume notify channel when the resume queue length has been reached from above.
-    pub async fn dequeue(&mut self) -> Option<Result<Content, ChannelReceiveError>> {
+    pub async fn dequeue(&mut self) -> Option<Result<Content, RawReceiveError>> {
         let mut rx_opt = None;
         loop {
             if let Some(rx) = rx_opt {
                 let _ = rx.await;
             }
 
-            let mut state = self.state.lock().unwrap();
+            let mut state = self.state.lock().await;
             if state.buffer.is_empty() {
                 match &state.enqueuer_close_reason {
                     Some (ChannelReceiverBufferCloseReason::Closed) => return None,
-                    Some (ChannelReceiverBufferCloseReason::Dropped) => return Some(Err(ChannelReceiveError::MultiplexerError)),
+                    Some (ChannelReceiverBufferCloseReason::Dropped) => return Some(Err(RawReceiveError::MultiplexerError)),
                     None => {                
                         let (tx, rx) = oneshot::channel();
                         state.item_enqueued = Some(tx);
@@ -143,13 +147,15 @@ impl<Content> ChannelReceiverBufferDequeuer<Content> {
     }
 }
 
-impl<Content> Drop for ChannelReceiverBufferDequeuer<Content> {
+impl<Content> Drop for ChannelReceiverBufferDequeuer<Content> where Content: Send {
     fn drop(&mut self) {
-        let mut state = self.state.lock().unwrap();
-        state.dequeuer_dropped = true;
-        if let Some(tx) = state.item_dequeued.take() {
-            let _ = tx.send(());
-        }            
+        on_thread(async{ 
+            let mut state = self.state.lock().await;
+            state.dequeuer_dropped = true;
+            if let Some(tx) = state.item_dequeued.take() {
+                let _ = tx.send(());
+            }            
+        });
     }
 }
 
@@ -169,7 +175,7 @@ pub struct ChannelReceiverBufferCfg<Content> {
 }
 
 
-impl<Content> ChannelReceiverBufferCfg<Content> where Content: 'static {
+impl<Content> ChannelReceiverBufferCfg<Content> where Content: Send + 'static {
     /// Creates a new channel receiver buffer and returns the associated
     /// enqueuer and dequeuer.
     pub fn instantiate(self) -> (

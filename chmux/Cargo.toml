@@ -12,6 +12,9 @@ keywords = ["multiplex", "channel", "mux", "multiple", "channels"]
 futures = "0.3"
 pin-project = "0.4"
 rand = "0.7"
+log = "0.4"
+async_thread = { path="../async_thread" }
 
 [dev-dependencies]
 futures = { version="0.3", features = ["thread-pool"] }
+env_logger = "0.7"
