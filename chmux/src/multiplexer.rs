@@ -5,6 +5,7 @@ use std::fmt;
 use std::pin::Pin;
 use std::collections::HashMap;
 use std::marker::PhantomData;
+use serde::{Serialize, Deserialize};
 
 use crate::number_allocator::{NumberAllocator, NumberAllocatorExhaustedError};
 use crate::send_lock::{ChannelSendLockAuthority, ChannelSendLockRequester, channel_send_lock};
@@ -46,8 +47,17 @@ pub struct Cfg {
     pub service_request_queue_length: usize,
 }
 
+impl Default for Cfg {
+    fn default() -> Cfg {
+        Cfg {
+            channel_rx_queue_length: 100,
+            service_request_queue_length: 10,
+        }
+    }
+}
+
 /// Message between two multiplexed endpoints.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum MultiplexMsg<Content> {
     /// Open connection to service on specified client port.
     RequestService { service: Content, client_port: u32 },
@@ -201,10 +211,6 @@ impl<Content, TransportSink, TransportStream, TransportSinkError, TransportStrea
         write!(f, "Multiplexer {{cfg={:?}}}", &self.cfg)
     }
 }
-
-// Need global termination condition.
-// Transport sink or stream closed should be one of them.
-// Also client and server dropped and no open channels anymore.
 
 impl<Content, TransportSink, TransportStream, TransportSinkError, TransportStreamError>
     Multiplexer<Content, TransportSink, TransportStream, TransportSinkError, TransportStreamError>
