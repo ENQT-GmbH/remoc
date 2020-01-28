@@ -42,6 +42,7 @@ fn raw_test() {
         loop {
             match b_server.next().await {
                 Some((service, req)) => {
+                    let service = service.unwrap();
                     println!("Server connection request: {}", &service);
                     if service == "abc" {
                         let (mut tx, mut rx) = req.accept().await.split();

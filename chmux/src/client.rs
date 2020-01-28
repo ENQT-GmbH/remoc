@@ -1,15 +1,20 @@
 use std::fmt;
+use std::error::Error;
 use futures::channel::{oneshot, mpsc};
 use futures::sink::{SinkExt};
 
-use crate::raw_channel::RawChannel;
+use crate::sender::{RawSender, Sender};
+use crate::receiver::{RawReceiver, Receiver};
+use crate::codec::{CodecFactory, Serializer};
 
 #[derive(Debug)]
 pub enum MultiplexerConnectError {
     /// Connection has been rejected by server.
     Rejected,
     /// A multiplexer error has occured or it has been terminated.
-    MultiplexerError
+    MultiplexerError,
+    /// Error serializing the service request.
+    SerializationError (Box<dyn Error + Send + 'static>),
 }
 
 
@@ -24,49 +29,58 @@ pub struct ConnectToRemoteServiceRequest<Content> where Content: Send {
 /// Connection to remote service response from local multiplexer.
 pub enum ConnectToRemoteServiceResponse<Content> where Content: Send {
     /// Connection accepted and channel opened.
-    Accepted (RawChannel<Content>),
+    Accepted (RawSender<Content>, RawReceiver<Content>),
     /// Connection rejected.
     Rejected 
 }
 
-
-/// Multiplexer client.
+/// Raw multiplexer client.
 /// 
 /// Allows to connect to remote services.
-pub struct MultiplexerClient<Content> where Content: Send {
+pub struct Client<Service, Content, Codec> where Content: Send {
     pub(crate) connect_tx: mpsc::Sender<ConnectToRemoteServiceRequest<Content>>,
+    serializer: Box<dyn Serializer<Service, Content>>,
+    codec_factory: Codec,
 }
 
-impl<Content> fmt::Debug for MultiplexerClient<Content> where Content: Send {
+impl<Service, Content, Codec> fmt::Debug for Client<Service, Content, Codec> where Content: Send {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "MultiplexerClient")
+        write!(f, "Client")
     }
 }
 
-impl<Content> MultiplexerClient<Content> where Content: Send {
+impl<Service, Content, Codec> Client<Service, Content, Codec> 
+where Content: Send + 'static,
+    Codec: CodecFactory<Content>
+{
+    pub(crate) fn new(connect_tx: mpsc::Sender<ConnectToRemoteServiceRequest<Content>>,
+        codec_factory: &Codec) -> Client<Service, Content, Codec>
+    {
+        Client {
+            connect_tx,
+            serializer: codec_factory.serializer(),
+            codec_factory: codec_factory.clone()
+        }
+    }
+
     /// Connects to the specified service of the remote endpoint.
     /// If connection is accepted, a pair of channel sender and receiver is returned.
-    pub async fn connect(&mut self, service: Content) -> 
-        Result<RawChannel<Content>, MultiplexerConnectError> 
+    pub async fn connect<SinkItem, StreamItem>(&mut self, service: Service) -> Result<(Sender<SinkItem>, Receiver<StreamItem>), MultiplexerConnectError> 
+    where SinkItem: 'static, StreamItem: 'static
     {
         let (response_tx, response_rx) = oneshot::channel();
+        let service = self.serializer.serialize(service).map_err(MultiplexerConnectError::SerializationError)?;
         self.connect_tx.send(ConnectToRemoteServiceRequest {service, response_tx}).await.map_err(|_| MultiplexerConnectError::MultiplexerError)?;
         match response_rx.await {
-            Ok(ConnectToRemoteServiceResponse::Accepted (raw_channel)) => Ok(raw_channel), 
+            Ok(ConnectToRemoteServiceResponse::Accepted (raw_sender, raw_receiver)) => {
+                let serializer = self.codec_factory.serializer();
+                let sender = Sender::new(raw_sender, serializer); 
+                let deserializer = self.codec_factory.deserializer();
+                let receiver = Receiver::new(raw_receiver, deserializer);
+                Ok((sender, receiver))
+            }
             Ok(ConnectToRemoteServiceResponse::Rejected) => Err(MultiplexerConnectError::Rejected),
             Err(_) => Err(MultiplexerConnectError::MultiplexerError)
         }   
     }
 }
-
-
-// For the request it makes sense to have a common format, because that is what the server must match on.
-// However, for reject it is a bit difficult, because it allows passing of one message.
-// So we could make reason an optional adapted field.
-// But this would mean that client and server both need additional serializers for little gain.
-// Okay, so remove this whole reason thing.
-
-// But how to adapt the client and server?
-// Use the async trait crate.
-// Let's see about the ergonomics later. Perhaps we can auto create the serializer/deserializer.
-

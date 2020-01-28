@@ -19,6 +19,13 @@ pub struct Channel<SinkItem, StreamItem> {
 }
 
 impl<SinkItem, StreamItem> Channel<SinkItem, StreamItem> {
+    /// Creates a bi-directional channel by combining a `Sender` and `Receiver`.
+    pub fn new(sender: Sender<SinkItem>, receiver: Receiver<StreamItem>) -> Channel<SinkItem, StreamItem> {
+        Channel { 
+            sender, receiver
+        }
+    }
+
     /// Splits the channel into a `Sender` and `Receiver`.
     pub fn split(self) -> (Sender<SinkItem>, Receiver<StreamItem>) {
         let Channel {sender, receiver} = self;

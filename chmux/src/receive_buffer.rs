@@ -5,7 +5,7 @@ use futures::sink::SinkExt;
 use futures::lock::Mutex;
 use async_thread::on_thread;
 
-use crate::raw_receiver::RawReceiveError;
+use crate::receiver::ReceiveError;
 use crate::multiplexer::ChannelMsg;
 
 
@@ -110,7 +110,7 @@ impl<Content> ChannelReceiverBufferDequeuer<Content> where Content: Send {
     /// Dequeues an item from the receive queue.
     /// Blocks until an item becomes available.
     /// Notifies the resume notify channel when the resume queue length has been reached from above.
-    pub async fn dequeue(&mut self) -> Option<Result<Content, RawReceiveError>> {
+    pub async fn dequeue(&mut self) -> Option<Result<Content, ReceiveError>> {
         let mut rx_opt = None;
         loop {
             if let Some(rx) = rx_opt {
@@ -121,7 +121,7 @@ impl<Content> ChannelReceiverBufferDequeuer<Content> where Content: Send {
             if state.buffer.is_empty() {
                 match &state.enqueuer_close_reason {
                     Some (ChannelReceiverBufferCloseReason::Closed) => return None,
-                    Some (ChannelReceiverBufferCloseReason::Dropped) => return Some(Err(RawReceiveError::MultiplexerError)),
+                    Some (ChannelReceiverBufferCloseReason::Dropped) => return Some(Err(ReceiveError::MultiplexerError)),
                     None => {                
                         let (tx, rx) = oneshot::channel();
                         state.item_enqueued = Some(tx);

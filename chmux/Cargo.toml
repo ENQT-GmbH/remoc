@@ -13,6 +13,7 @@ futures = "0.3"
 pin-project = "0.4"
 rand = "0.7"
 log = "0.4"
+async-trait = "0.1.22"
 serde = {version="1.0", features=["derive"]}
 async_thread = { path="../async_thread" }
 

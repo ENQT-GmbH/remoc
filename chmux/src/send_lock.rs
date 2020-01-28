@@ -3,7 +3,7 @@ use futures::channel::{oneshot};
 use futures::lock::Mutex;
 use async_thread::on_thread;
 
-use crate::raw_sender::RawSendError;
+use crate::sender::SendError;
 
 /// Sets the send lock state of a channel.
 pub struct ChannelSendLockAuthority {
@@ -77,7 +77,7 @@ impl Drop for ChannelSendLockAuthority {
 
 impl ChannelSendLockRequester {
     /// Blocks until sending on the channel is allowed.
-    pub async fn request(&self) -> Result<(), RawSendError> {
+    pub async fn request(&self) -> Result<(), SendError> {
         let mut rx_opt = None;
         loop {
             if let Some(rx) = rx_opt {
@@ -89,8 +89,8 @@ impl ChannelSendLockRequester {
                 return Ok(());
             } 
             match &state.close_reason {
-                Some (ChannelSendLockCloseReason::Closed {gracefully}) => return Err(RawSendError::Closed {gracefully: gracefully.clone()}),
-                Some (ChannelSendLockCloseReason::Dropped) => return Err(RawSendError::MultiplexerError),
+                Some (ChannelSendLockCloseReason::Closed {gracefully}) => return Err(SendError::Closed {gracefully: gracefully.clone()}),
+                Some (ChannelSendLockCloseReason::Dropped) => return Err(SendError::MultiplexerError),
                 None => ()                
             }
 

@@ -10,11 +10,11 @@ use serde::{Serialize, Deserialize};
 use crate::number_allocator::{NumberAllocator, NumberAllocatorExhaustedError};
 use crate::send_lock::{ChannelSendLockAuthority, ChannelSendLockRequester, channel_send_lock};
 use crate::receive_buffer::{ChannelReceiverBufferEnqueuer, ChannelReceiverBufferDequeuer, ChannelReceiverBufferCfg};
-use crate::raw_sender::RawSender;
-use crate::raw_receiver::RawReceiver;
-use crate::raw_channel::RawChannel;
-use crate::server::{MultiplexerServer, RemoteConnectToServiceRequest};
-use crate::client::{MultiplexerClient, ConnectToRemoteServiceRequest, ConnectToRemoteServiceResponse};
+use crate::sender::RawSender;
+use crate::receiver::RawReceiver;
+use crate::server::{Server, RemoteConnectToServiceRequest};
+use crate::client::{Client, ConnectToRemoteServiceRequest, ConnectToRemoteServiceResponse};
+use crate::codec::CodecFactory;
 
 /// Channel multiplexer error.
 #[derive(Debug, Clone)]
@@ -92,7 +92,7 @@ pub struct ChannelData<Content> where Content: Send {
 }
 
 impl<Content> ChannelData<Content> where Content: 'static + Send {
-    pub fn instantiate(self) -> RawChannel<Content> {
+    pub fn instantiate(self) -> (RawSender<Content>, RawReceiver<Content>) {
         let ChannelData {
             local_port, remote_port, tx, tx_lock, rx_buffer
         } = self;
@@ -109,7 +109,7 @@ impl<Content> ChannelData<Content> where Content: 'static + Send {
             tx,
             rx_buffer
         );
-        RawChannel {sender, receiver}
+        (sender, receiver)
     }
 }
 
@@ -189,10 +189,11 @@ enum LoopEvent<Content, TransportStreamError> where Content: Send {
 }
 
 /// Channel multiplexer.
-pub struct Multiplexer<Content, TransportSink, TransportStream, TransportSinkError, TransportStreamError> where Content: Send {
+pub struct Multiplexer<Content, Codec, TransportSink, TransportStream, TransportSinkError, TransportStreamError> where Content: Send {
     cfg: Cfg,
+    codec_factory: Codec,
     transport_tx: Pin<Box<TransportSink>>,
-    serve_tx: mpsc::Sender<(Content, RemoteConnectToServiceRequest<Content>)>,
+    serve_tx: mpsc::Sender<(Content, RemoteConnectToServiceRequest<Content, Codec>)>,
 
     ports: HashMap<u32, PortState<Content>>,
     port_pool: NumberAllocator,
@@ -206,24 +207,25 @@ pub struct Multiplexer<Content, TransportSink, TransportStream, TransportSinkErr
     _transport_sink_error_ghost: PhantomData<TransportSinkError>,
 }
 
-impl<Content, TransportSink, TransportStream, TransportSinkError, TransportStreamError> fmt::Debug for Multiplexer<Content, TransportSink, TransportStream, TransportSinkError, TransportStreamError> where Content: Send {
+impl<Content, Codec, TransportSink, TransportStream, TransportSinkError, TransportStreamError> fmt::Debug for Multiplexer<Content, Codec, TransportSink, TransportStream, TransportSinkError, TransportStreamError> where Content: Send {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Multiplexer {{cfg={:?}}}", &self.cfg)
     }
 }
 
-impl<Content, TransportSink, TransportStream, TransportSinkError, TransportStreamError>
-    Multiplexer<Content, TransportSink, TransportStream, TransportSinkError, TransportStreamError>
+impl<Content, Codec, TransportSink, TransportStream, TransportSinkError, TransportStreamError>
+    Multiplexer<Content, Codec, TransportSink, TransportStream, TransportSinkError, TransportStreamError>
 where     
     Content: Send + 'static,
+    Codec: CodecFactory<Content>,
     TransportSink: Sink<MultiplexMsg<Content>, Error = TransportSinkError> + Send + 'static,
     TransportStream: Stream<Item = Result<MultiplexMsg<Content>, TransportStreamError>> + Send + 'static,
     TransportSinkError: 'static,
     TransportStreamError: 'static,
 {
-    pub fn new(cfg: Cfg, transport_tx: TransportSink, transport_rx: TransportStream) -> 
-        (Multiplexer<Content, TransportSink, TransportStream, TransportSinkError, TransportStreamError>,
-         MultiplexerClient<Content>, MultiplexerServer<Content>)
+    pub fn new<Service>(cfg: Cfg, codec_factory: Codec, transport_tx: TransportSink, transport_rx: TransportStream) -> 
+        (Multiplexer<Content, Codec, TransportSink, TransportStream, TransportSinkError, TransportStreamError>,
+         Client<Service, Content, Codec>, Server<Service, Content, Codec>)
     {
         // Check configuration.
         assert!(
@@ -249,6 +251,7 @@ where
         // Create user objects.
         let multiplexer = Multiplexer {
             cfg,
+            codec_factory,
             transport_tx: Box::pin(transport_tx),
             serve_tx,
             ports: HashMap::new(),
@@ -260,8 +263,8 @@ where
             _transport_stream_ghost: PhantomData,
             _transport_sink_error_ghost: PhantomData,
         };
-        let client = MultiplexerClient {connect_tx};
-        let server = MultiplexerServer {serve_rx, drop_tx: server_drop_tx};
+        let client = Client::new(connect_tx, &multiplexer.codec_factory);
+        let server = Server::new(serve_rx, server_drop_tx, &multiplexer.codec_factory);
 
         (multiplexer, client, server)
     }
@@ -397,7 +400,7 @@ where
                         tx: self.channel_tx.clone(),
                         tx_lock: tx_lock_requester,
                         rx_buffer: rx_buffer_dequeuer,
-                    });
+                    }, &self.codec_factory);
                     let _ = self.serve_tx.send((service, req)).await;
                 },
 
@@ -422,8 +425,8 @@ where
                             tx_lock: tx_lock_requester,
                             rx_buffer: rx_buffer_dequeuer,
                         };
-                        let channel = channel_data.instantiate();
-                        let _ = response_tx.send(ConnectToRemoteServiceResponse::Accepted (channel));
+                        let (raw_sender, raw_receiver) = channel_data.instantiate();
+                        let _ = response_tx.send(ConnectToRemoteServiceResponse::Accepted (raw_sender, raw_receiver)); 
                     } else {
                         return Err(MultiplexRunError::ProtocolError(format!("Received accepted message for port {} not in LocalRequestingRemoteService state.", client_port)));
                     }                

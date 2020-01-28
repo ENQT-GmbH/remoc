@@ -1,54 +1,153 @@
-use std::pin::Pin;
-use std::marker::PhantomData;
-use std::error::Error;
-use pin_project::{pin_project};
+use futures::channel::{mpsc};
+use futures::future;
+use futures::sink::{SinkExt};
+use futures::stream::{self, Stream, StreamExt};
 use futures::task::{Context, Poll};
+use futures::lock::Mutex;
 use futures::ready;
-use futures::stream::Stream;
+use pin_project::{pin_project, pinned_drop};
+use std::fmt;
+use std::pin::Pin;
+use std::sync::{Arc};
+use std::error::Error;
+use async_thread::on_thread;
+use log::trace;
 
 use crate::codec::Deserializer;
-use crate::raw_receiver::{RawReceiver, RawReceiveError};
+use crate::receive_buffer::{ChannelReceiverBufferDequeuer};
+use crate::multiplexer::ChannelMsg;
 
-
+/// An error occured during receiving a message.
+#[derive(Debug)]
 pub enum ReceiveError {
+    /// The multiplexer encountered an error or was terminated.
     MultiplexerError,
-    DeserializationError (Box<dyn Error + 'static>)
+    /// A deserialization error occured.
+    DeserializationError (Box<dyn Error + Send + 'static>)
 }
 
-impl From<RawReceiveError> for ReceiveError {
-    fn from(err: RawReceiveError) -> Self {
-        match err {
-            RawReceiveError::MultiplexerError => Self::MultiplexerError,
+impl fmt::Display for ReceiveError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::MultiplexerError => write!(f, "A channel multiplexer error occured."),
+            Self::DeserializationError (err) => 
+                write!(f, "A deserialization error occured: {}", err)
         }
     }
 }
 
+impl Error for ReceiveError {}
 
+#[pin_project(PinnedDrop)]
+pub struct RawReceiver<Content> where Content: Send {
+    local_port: u32,
+    remote_port: u32,
+    closed: bool,
+    #[pin]
+    stream: Pin<Box<dyn Stream<Item=Result<Content, ReceiveError>> + Send>>,
+    #[pin]
+    drop_tx: mpsc::Sender<ChannelMsg<Content>>,
+}
+
+impl<Content> RawReceiver<Content> where Content: 'static + Send {
+    pub(crate) fn new(
+        local_port: u32,
+        remote_port: u32,        
+        tx: mpsc::Sender<ChannelMsg<Content>>,
+        rx_buffer: ChannelReceiverBufferDequeuer<Content>,
+    ) -> RawReceiver<Content> 
+    {
+        let rx_buffer = Arc::new(Mutex::new(rx_buffer));
+        let stream =
+            stream::repeat(()).then(move |_| {
+                let rx_buffer = rx_buffer.clone();
+                async move {
+                    let mut rx_buffer = rx_buffer.lock().await;
+                    rx_buffer.dequeue().await
+            }}).take_while(|opt_item| future::ready(opt_item.is_some()))
+            .map(|opt_item| opt_item.unwrap());
+
+        RawReceiver {
+            local_port,
+            remote_port,
+            closed: false,
+            drop_tx: tx,
+            stream: Box::pin(stream),
+        }       
+    }
+
+    /// Prevents the remote endpoint from sending new messages into this channel while
+    /// allowing in-flight messages to be received.
+    pub fn close_sync(&mut self) {
+        if !self.closed {
+            on_thread(async {
+                let _ = self.drop_tx.send(ChannelMsg::ReceiverClosed {local_port: self.local_port, gracefully: true}).await;     
+            });
+            self.closed = true;
+        }
+    }
+}
+
+impl<Content> fmt::Debug for RawReceiver<Content> where Content: Send {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "RawReceiver {{local_port={}, remote_port={}}}",
+               &self.local_port, &self.remote_port)
+    }
+}
+
+impl<Content> Stream for RawReceiver<Content> where Content: Send
+{
+    type Item = Result<Content, ReceiveError>;
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
+        let this = self.project();
+        this.stream.poll_next(cx)        
+    }
+}
+
+#[pinned_drop]
+impl<Content> PinnedDrop for RawReceiver<Content> where Content: Send {
+    fn drop(self: Pin<&mut Self>) {
+        trace!("ChannelReceiver dropping...");
+        let mut this = self.project();
+        if !*this.closed {
+            on_thread(async {
+                let _ = this.drop_tx.send(ChannelMsg::ReceiverClosed {local_port: *this.local_port, gracefully: false}).await;
+            });
+        }
+        trace!("ChannelReceiver dropped.");
+    }
+}
+
+trait CloseableStream : Stream {
+    fn close(self: Pin<&mut Self>);
+}
 
 #[pin_project]
 pub struct Receiver<Item> {
     #[pin]
-    inner: Pin<Box<dyn Stream<Item=Result<Item, ReceiveError>>>>
+    inner: Pin<Box<dyn CloseableStream<Item=Result<Item, ReceiveError>>>>
 }
 
 impl<Item> Receiver<Item> {
-    pub(crate) fn new<Content, Deser>(receiver: RawReceiver<Content>, deserialzer: Deser) -> Receiver<Item>
-    where Deser: Deserializer<Item, Content> + 'static,
-        Content: Send + 'static,
-        Item: 'static
+    pub(crate) fn new<Content>(receiver: RawReceiver<Content>, deserialzer: Box<dyn Deserializer<Item, Content>>) -> Receiver<Item>
+    where Content: Send + 'static,
+          Item: 'static
     {
         let inner = ReceiverInner {
             receiver,
             deserialzer,
-            _phantom_item: PhantomData
         };
         Receiver {
             inner: Box::pin(inner)
         }
     }
+
+    /// Prevents the remote endpoint from sending new messages into this channel while
+    /// allowing in-flight messages to be received.    
+    pub fn close(&mut self) {
+        self.inner.as_mut().close();
+    }
 }
-
-
 
 impl<Item> Stream for Receiver<Item> {
     type Item = Result<Item, ReceiveError>;
@@ -58,16 +157,14 @@ impl<Item> Stream for Receiver<Item> {
 }
 
 #[pin_project]
-struct ReceiverInner<Item, Content, Deser> where Content: Send {
+struct ReceiverInner<Item, Content> where Content: Send {
     #[pin]
     receiver: RawReceiver<Content>,
     #[pin]
-    deserialzer: Deser,
-    _phantom_item: PhantomData<Item>,
+    deserialzer: Box<dyn Deserializer<Item, Content>>,
 }
 
-impl<Item, Content, Deser> Stream for ReceiverInner<Item, Content, Deser> where
-    Deser: Deserializer<Item, Content>,
+impl<Item, Content> Stream for ReceiverInner<Item, Content> where
     Content: Send,
 {
     type Item = Result<Item, ReceiveError>;
@@ -75,8 +172,7 @@ impl<Item, Content, Deser> Stream for ReceiverInner<Item, Content, Deser> where
         let this = self.project();
         let item =
             match ready!(this.receiver.poll_next(cx)) {
-                Some(Ok(content)) => Some(this.deserialzer.deserialize(&content).map_err(|err|
-                    ReceiveError::DeserializationError(Box::new(err)))),
+                Some(Ok(content)) => Some(this.deserialzer.deserialize(content).map_err(ReceiveError::DeserializationError)),
                 Some(Err(err)) => Some(Err(ReceiveError::from(err))),
                 None => None
             };
@@ -84,3 +180,8 @@ impl<Item, Content, Deser> Stream for ReceiverInner<Item, Content, Deser> where
     }
 }
 
+impl<Item, Content> CloseableStream for ReceiverInner<Item, Content> where Content: Send + 'static {
+    fn close(self: Pin<&mut Self>) {
+        self.project().receiver.close_sync(); 
+    }
+}
