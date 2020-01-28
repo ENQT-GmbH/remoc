@@ -13,12 +13,12 @@ futures = "0.3"
 pin-project = "0.4"
 rand = "0.7"
 log = "0.4"
-serde = "1.0"
+serde = {version="1.0", features=["derive"]}
 async_thread = { path="../async_thread" }
 
 [dev-dependencies]
 futures = { version="0.3", features = ["thread-pool"] }
-tokio = { version="0.2", features = ["tcp"] }
+tokio = { version="0.2.11", features = ["tcp", "io-util"] }
 tokio-util = { version="0.2", features = ["codec"] }
 tokio-serde = { version="0.6", features = ["json"] }
 env_logger = "0.7"

@@ -11,7 +11,8 @@ use crate::raw_channel::RawChannel;
 use crate::multiplexer::{ChannelData, ChannelMsg};
 
 /// A service request by the remote endpoint.
-/// If the request is dropped, it is automatically rejected.
+/// 
+/// Drop the request to reject it.
 pub struct RemoteConnectToServiceRequest<Content> where Content: Send {
     channel_data: Option<ChannelData<Content>>,
 }
@@ -38,24 +39,21 @@ impl<Content> RemoteConnectToServiceRequest<Content> where Content: 'static  + S
         let _ = channel_data.tx.send(ChannelMsg::Accepted {local_port: channel_data.local_port}).await;
         channel_data.instantiate()
     }
-
-    /// Rejects the service request, optionally providing the specified reason to the remote endpoint.
-    pub async fn reject(mut self, reason: Option<Content>) {
-        let mut channel_data = self.channel_data.take().unwrap();
-        let _ = channel_data.tx.send(ChannelMsg::Rejected {local_port: channel_data.local_port, reason}).await;
-    }
 }
 
 impl<Content> Drop for RemoteConnectToServiceRequest<Content> where Content: Send {
     fn drop(&mut self) {
         if let Some(mut channel_data) = self.channel_data.take() {
             on_thread(async {
-                let _ = channel_data.tx.send(ChannelMsg::Rejected {local_port: channel_data.local_port, reason: None}).await;
+                let _ = channel_data.tx.send(ChannelMsg::Rejected {local_port: channel_data.local_port}).await;
             });    
         }
     }
 }
 
+/// Multiplexer server.
+/// 
+/// Provides a stream of remote service requests.
 #[pin_project(PinnedDrop)]
 pub struct MultiplexerServer<Content> where Content: Send {
     #[pin]

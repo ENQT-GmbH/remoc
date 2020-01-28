@@ -64,7 +64,7 @@ pub enum MultiplexMsg<Content> {
     /// Connection accepted.
     Accepted { client_port: u32, server_port: u32 },
     /// Connection to service refused.
-    Rejected { client_port: u32, reason: Option<Content>},
+    Rejected { client_port: u32 },
     /// Pause sending data from specified port.
     Pause { port: u32 },
     /// Resume sending data from specified port.
@@ -170,7 +170,7 @@ pub enum ChannelMsg<Content> {
     /// Connection has been accepted.
     Accepted {local_port: u32},
     /// Connection has been rejected.
-    Rejected {local_port: u32, reason: Option<Content>},
+    Rejected {local_port: u32 },
 }
 
 enum LoopEvent<Content, TransportStreamError> where Content: Send {
@@ -372,10 +372,10 @@ where
                 }
 
                 // Remote service request was rejected by local.
-                Some(LoopEvent::ChannelMsg(ChannelMsg::Rejected {local_port, reason})) => {
+                Some(LoopEvent::ChannelMsg(ChannelMsg::Rejected {local_port})) => {
                     if let Some(PortState::RemoteRequestingLocalService {remote_port, ..}) = self.ports.remove(&local_port) {
                         self.port_pool.release(local_port);
-                        self.transport_send(MultiplexMsg::Rejected {client_port: remote_port, reason}).await?;
+                        self.transport_send(MultiplexMsg::Rejected {client_port: remote_port}).await?;
                     } else {
                         panic!("ChannelMsg Rejected for non-requesting port {}.", &local_port);
                     }
@@ -430,10 +430,10 @@ where
                 }
 
                 // Process rejected service request message from remote endpoint.
-                Some(LoopEvent::ReceiveMsg(Ok(MultiplexMsg::Rejected {client_port, reason}))) => {
+                Some(LoopEvent::ReceiveMsg(Ok(MultiplexMsg::Rejected {client_port}))) => {
                     if let Some(PortState::LocalRequestingRemoteService {response_tx}) = self.ports.remove(&client_port) {
                         self.port_pool.release(client_port);
-                        let _ = response_tx.send(ConnectToRemoteServiceResponse::Rejected {reason});
+                        let _ = response_tx.send(ConnectToRemoteServiceResponse::Rejected);
                     } else {
                         return Err(MultiplexRunError::ProtocolError(format!("Received rejected message for port {} not in LocalRequestingRemoteService state.", client_port)));
                     }    
