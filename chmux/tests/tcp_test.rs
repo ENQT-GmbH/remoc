@@ -41,6 +41,7 @@ fn tcp_server() {
                     let service = service.unwrap();
                     println!("Server accepting service request {}", &service);
                     let (mut tx, mut rx): (chmux::Sender<String>, chmux::Receiver<String>) = req.accept().await;
+                    println!("Server accepted service request.");
 
                     tx.send("Hi from server".to_string()).await.unwrap();
                     drop(tx);
