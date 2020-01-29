@@ -11,6 +11,7 @@ use std::pin::Pin;
 use std::sync::{Arc};
 use std::error::Error;
 use async_thread::on_thread;
+use async_trait::async_trait;
 use log::trace;
 
 use crate::codec::Deserializer;
@@ -42,11 +43,11 @@ impl Error for ReceiveError {}
 pub struct RawReceiver<Content> where Content: Send {
     local_port: u32,
     remote_port: u32,
-    closed: bool,
+    pub(crate) closed: bool,
     #[pin]
     stream: Pin<Box<dyn Stream<Item=Result<Content, ReceiveError>> + Send>>,
     #[pin]
-    drop_tx: mpsc::Sender<ChannelMsg<Content>>,
+    pub(crate) drop_tx: mpsc::Sender<ChannelMsg<Content>>,
 }
 
 impl<Content> RawReceiver<Content> where Content: 'static + Send {
@@ -78,11 +79,9 @@ impl<Content> RawReceiver<Content> where Content: 'static + Send {
 
     /// Prevents the remote endpoint from sending new messages into this channel while
     /// allowing in-flight messages to be received.
-    pub fn close_sync(&mut self) {
+    pub async fn close(&mut self) {
         if !self.closed {
-            on_thread(async {
-                let _ = self.drop_tx.send(ChannelMsg::ReceiverClosed {local_port: self.local_port, gracefully: true}).await;     
-            });
+            let _ = self.drop_tx.send(ChannelMsg::ReceiverClosed {local_port: self.local_port, gracefully: true}).await;     
             self.closed = true;
         }
     }
@@ -107,19 +106,20 @@ impl<Content> Stream for RawReceiver<Content> where Content: Send
 #[pinned_drop]
 impl<Content> PinnedDrop for RawReceiver<Content> where Content: Send {
     fn drop(self: Pin<&mut Self>) {
-        trace!("ChannelReceiver dropping...");
+        trace!("RawReceiver dropping...");
         let mut this = self.project();
         if !*this.closed {
             on_thread(async {
                 let _ = this.drop_tx.send(ChannelMsg::ReceiverClosed {local_port: *this.local_port, gracefully: false}).await;
             });
         }
-        trace!("ChannelReceiver dropped.");
+        trace!("RawReceiver dropped.");
     }
 }
 
+#[async_trait]
 trait CloseableStream : Stream {
-    fn close(self: Pin<&mut Self>);
+    async fn close(self: Pin<&mut Self>);
 }
 
 #[pin_project]
@@ -144,8 +144,8 @@ impl<Item> Receiver<Item> {
 
     /// Prevents the remote endpoint from sending new messages into this channel while
     /// allowing in-flight messages to be received.    
-    pub fn close(&mut self) {
-        self.inner.as_mut().close();
+    pub async fn close(&mut self) {
+        self.inner.as_mut().close().await;
     }
 }
 
@@ -180,8 +180,9 @@ impl<Item, Content> Stream for ReceiverInner<Item, Content> where
     }
 }
 
+#[async_trait]
 impl<Item, Content> CloseableStream for ReceiverInner<Item, Content> where Content: Send + 'static {
-    fn close(self: Pin<&mut Self>) {
-        self.project().receiver.close_sync(); 
+    async fn close(self: Pin<&mut Self>) {
+        self.project().receiver.close().await; 
     }
 }
