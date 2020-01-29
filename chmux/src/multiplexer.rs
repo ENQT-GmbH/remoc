@@ -5,7 +5,9 @@ use std::fmt;
 use std::pin::Pin;
 use std::collections::HashMap;
 use std::marker::PhantomData;
+use std::error::Error;
 use serde::{Serialize, Deserialize};
+use serde::de::DeserializeOwned;
 
 use crate::number_allocator::{NumberAllocator, NumberAllocatorExhaustedError};
 use crate::send_lock::{ChannelSendLockAuthority, ChannelSendLockRequester, channel_send_lock};
@@ -14,29 +16,49 @@ use crate::sender::RawSender;
 use crate::receiver::RawReceiver;
 use crate::server::{Server, RemoteConnectToServiceRequest};
 use crate::client::{Client, ConnectToRemoteServiceRequest, ConnectToRemoteServiceResponse};
-use crate::codec::CodecFactory;
+use crate::codec::{CodecFactory, Serializer};
 
 /// Channel multiplexer error.
-#[derive(Debug, Clone)]
-pub enum MultiplexRunError<TransportSinkError, TransportStreamError> {
+#[derive(Debug)]
+pub enum MultiplexError {
     /// An error was encountered while sending data to the transport sink.
-    TransportSinkError(TransportSinkError),
+    TransportSinkError (Box<dyn Error + Send + 'static>),
     /// An error was encountered while receiving data from the transport stream.
-    TransportStreamError(TransportStreamError),
+    TransportStreamError (Box<dyn Error + Send + 'static>),
     /// The transport stream was close while multiplex channels were active or the 
     /// multiplex client was not dropped.
     TransportStreamClosed,
     /// A multiplex protocol error occured.
     ProtocolError(String),
     /// The multiplexer ports were exhausted.
-    PortsExhausted
+    PortsExhausted,
+    /// Error serializing protocol message.
+    SerializationError (Box<dyn Error + Send + 'static>),
+    /// Error deserializing protocol message.
+    DeserializationError (Box<dyn Error + Send + 'static>)
 }
 
-impl<TransportSinkError, TransportStreamError> From<NumberAllocatorExhaustedError> for MultiplexRunError<TransportSinkError, TransportStreamError> {
+impl From<NumberAllocatorExhaustedError> for MultiplexError {
     fn from(_err: NumberAllocatorExhaustedError) -> Self {
         Self::PortsExhausted
     }
 }
+
+impl fmt::Display for MultiplexError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::TransportSinkError (err) => write!(f, "Error sending multiplex message: {:?}", err),
+            Self::TransportStreamError (err) => write!(f, "Error receiving multiplex message: {:?}", err),
+            Self::TransportStreamClosed => write!(f, "Transport was closed."),
+            Self::ProtocolError (err) => write!(f, "Multiplex protocol error: {}", err),
+            Self::PortsExhausted => write!(f, "The maximum number of multiplex ports has been reached."),
+            Self::SerializationError (err) => write!(f, "Error serializing multiplex message: {:?}", err),
+            Self::DeserializationError (err) => write!(f, "Error deserializing multiplex message: {:?}", err),
+        }
+    }
+}
+
+impl Error for MultiplexError {}
 
 /// Multiplexer configuration.
 #[derive(Clone, Debug)]
@@ -83,6 +105,7 @@ pub enum MultiplexMsg<Content> {
 }
 
 
+/// All necessary data to instantiate the user portion of a channel.
 pub struct ChannelData<Content> where Content: Send {
     pub local_port: u32,
     pub remote_port: u32,
@@ -112,7 +135,6 @@ impl<Content> ChannelData<Content> where Content: 'static + Send {
         (sender, receiver)
     }
 }
-
 
 
 /// Port state.
@@ -155,6 +177,7 @@ enum PortState<Content> where Content: Send {
 }
 
 
+/// Message from a channel to the multiplexer event loop.
 pub enum ChannelMsg<Content> {
     /// Send message with content.
     SendMsg {
@@ -173,11 +196,12 @@ pub enum ChannelMsg<Content> {
     Rejected {local_port: u32 },
 }
 
-enum LoopEvent<Content, TransportStreamError> where Content: Send {
+/// Multiplexer event loop event.
+enum LoopEvent<Content> where Content: Send {
     /// A message from a local channel.
     ChannelMsg (ChannelMsg<Content>),
     /// Received message from transport.
-    ReceiveMsg(Result<MultiplexMsg<Content>, TransportStreamError>),
+    ReceiveMsg(Result<MultiplexMsg<Content>, MultiplexError>),
     /// Transport stream is finished.
     TransportFinished,
     /// MultiplexClient has been dropped.
@@ -189,43 +213,48 @@ enum LoopEvent<Content, TransportStreamError> where Content: Send {
 }
 
 /// Channel multiplexer.
-pub struct Multiplexer<Content, Codec, TransportSink, TransportStream, TransportSinkError, TransportStreamError> where Content: Send {
+pub struct Multiplexer<Content, ContentCodec, TransportType, TransportCodec, TransportSink, TransportStream> where Content: Send {
     cfg: Cfg,
-    codec_factory: Codec,
+    content_codec: ContentCodec,
     transport_tx: Pin<Box<TransportSink>>,
-    serve_tx: mpsc::Sender<(Content, RemoteConnectToServiceRequest<Content, Codec>)>,
+    serve_tx: mpsc::Sender<(Content, RemoteConnectToServiceRequest<Content, ContentCodec>)>,
 
     ports: HashMap<u32, PortState<Content>>,
     port_pool: NumberAllocator,
     channel_tx: mpsc::Sender<ChannelMsg<Content>>,
-    event_rx: Pin<Box<dyn Stream<Item=LoopEvent<Content, TransportStreamError>> + Send>>,
+    event_rx: Pin<Box<dyn Stream<Item=LoopEvent<Content>> + Send>>,
+    transport_serializer: Box<dyn Serializer<MultiplexMsg<Content>, TransportType>>,
 
     client_dropped: bool,
     server_dropped: bool,
 
+    _transport_codec_ghost: PhantomData<TransportCodec>,
     _transport_stream_ghost: PhantomData<TransportStream>,
-    _transport_sink_error_ghost: PhantomData<TransportSinkError>,
 }
 
-impl<Content, Codec, TransportSink, TransportStream, TransportSinkError, TransportStreamError> fmt::Debug for Multiplexer<Content, Codec, TransportSink, TransportStream, TransportSinkError, TransportStreamError> where Content: Send {
+impl<Content, ContentCodec, TransportType, TransportCodec, TransportSink, TransportStream> fmt::Debug for Multiplexer<Content, ContentCodec, TransportType, TransportCodec, TransportSink, TransportStream> where Content: Send {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Multiplexer {{cfg={:?}}}", &self.cfg)
     }
 }
 
-impl<Content, Codec, TransportSink, TransportStream, TransportSinkError, TransportStreamError>
-    Multiplexer<Content, Codec, TransportSink, TransportStream, TransportSinkError, TransportStreamError>
+impl<Content, ContentCodec, TransportType, TransportCodec, TransportSink, TransportStream, TransportSinkError, TransportStreamError>
+    Multiplexer<Content, ContentCodec, TransportType, TransportCodec, TransportSink, TransportStream>
 where     
-    Content: Send + 'static,
-    Codec: CodecFactory<Content>,
-    TransportSink: Sink<MultiplexMsg<Content>, Error = TransportSinkError> + Send + 'static,
-    TransportStream: Stream<Item = Result<MultiplexMsg<Content>, TransportStreamError>> + Send + 'static,
-    TransportSinkError: 'static,
-    TransportStreamError: 'static,
+    Content: Serialize + DeserializeOwned + Send + 'static, 
+    ContentCodec: CodecFactory<Content>,
+    TransportType: Send + 'static,
+    TransportCodec: CodecFactory<TransportType>,
+    TransportSink: Sink<TransportType, Error=TransportSinkError> + Send + 'static,
+    TransportStream: Stream<Item=Result<TransportType, TransportStreamError>> + Send + 'static,
+    TransportSinkError: Error + Send + 'static,
+    TransportStreamError: Error + Send + 'static,
 {
-    pub fn new<Service>(cfg: Cfg, codec_factory: Codec, transport_tx: TransportSink, transport_rx: TransportStream) -> 
-        (Multiplexer<Content, Codec, TransportSink, TransportStream, TransportSinkError, TransportStreamError>,
-         Client<Service, Content, Codec>, Server<Service, Content, Codec>)
+    pub fn new<Service>(cfg: &Cfg, content_codec: &ContentCodec, transport_codec: &TransportCodec, transport_tx: TransportSink, transport_rx: TransportStream) -> 
+        (Multiplexer<Content, ContentCodec, TransportType, TransportCodec, TransportSink, TransportStream>,
+         Client<Service, Content, ContentCodec>, 
+         Server<Service, Content, ContentCodec>) 
+    where Service: Serialize + DeserializeOwned + 'static
     {
         // Check configuration.
         assert!(
@@ -235,14 +264,30 @@ where
         assert!(cfg.service_request_queue_length >= 1,
             "Service request queue length must be at least 1.");
 
+        // Create serializer and deserializer for message transport encoding.
+        let transport_serializer = transport_codec.serializer();
+        let transport_deserializer = transport_codec.deserializer();
+
         // Create internal communication channels.
         let (channel_tx, channel_rx) = mpsc::channel(1);
         let (connect_tx, connect_rx) = mpsc::channel(1);
         let (serve_tx, serve_rx) = mpsc::channel(cfg.service_request_queue_length);
         let (server_drop_tx, server_drop_rx) = mpsc::channel(1);
 
+        // Decode received messages.
+        let transport_rx = transport_rx.map(move |msg| {
+            match msg {
+                Ok(wire) => {
+                    match transport_deserializer.deserialize(wire) {
+                        Ok(msg) => LoopEvent::ReceiveMsg (Ok(msg)),
+                        Err(err) => LoopEvent::ReceiveMsg (Err(MultiplexError::DeserializationError(err)))
+                    }
+                },
+                Err(err) => LoopEvent::ReceiveMsg (Err(MultiplexError::TransportStreamError(Box::new(err))))
+            }
+        }).chain(stream::once(async {LoopEvent::TransportFinished}));
+
         // Create event loop stream.
-        let transport_rx = transport_rx.map(LoopEvent::ReceiveMsg).chain(stream::once(async {LoopEvent::TransportFinished}));
         let channel_rx = channel_rx.map(LoopEvent::ChannelMsg);
         let connect_rx = connect_rx.map(LoopEvent::ConnectToRemoteServiceRequest).chain(stream::once(async {LoopEvent::ClientDropped}));
         let server_drop_rx = server_drop_rx.map(|()| LoopEvent::ServerDropped);
@@ -250,21 +295,22 @@ where
         
         // Create user objects.
         let multiplexer = Multiplexer {
-            cfg,
-            codec_factory,
+            cfg: cfg.clone(), 
+            content_codec: content_codec.clone(),
             transport_tx: Box::pin(transport_tx),
             serve_tx,
             ports: HashMap::new(),
             port_pool: NumberAllocator::new(),
             channel_tx,
             event_rx: Box::pin(event_rx),
+            transport_serializer,
             client_dropped: false,
             server_dropped: false,
+            _transport_codec_ghost: PhantomData, 
             _transport_stream_ghost: PhantomData,
-            _transport_sink_error_ghost: PhantomData,
         };
-        let client = Client::new(connect_tx, &multiplexer.codec_factory);
-        let server = Server::new(serve_rx, server_drop_tx, &multiplexer.codec_factory);
+        let client = Client::new(connect_tx, &multiplexer.content_codec);
+        let server = Server::new(serve_rx, server_drop_tx, &multiplexer.content_codec);
 
         (multiplexer, client, server)
     }
@@ -279,8 +325,9 @@ where
         }
     }
 
-    async fn transport_send(&mut self, msg: MultiplexMsg<Content>) -> Result<(), MultiplexRunError<TransportSinkError, TransportStreamError>> {
-        self.transport_tx.send(msg).await.map_err(MultiplexRunError::TransportSinkError)        
+    async fn transport_send(&mut self, msg: MultiplexMsg<Content>) -> Result<(), MultiplexError> {
+        let content = self.transport_serializer.serialize(msg).map_err(MultiplexError::SerializationError)?;
+        self.transport_tx.send(content).await.map_err(|err| MultiplexError::TransportSinkError(Box::new(err)))        
     }
 
     fn should_terminate(&self) -> bool {
@@ -300,7 +347,7 @@ where
         self.should_terminate()
     }
 
-    pub async fn run(mut self) -> Result<(), MultiplexRunError<TransportSinkError, TransportStreamError>> {
+    pub async fn run(mut self) -> Result<(), MultiplexError> {
         loop {
             match self.event_rx.next().await {
                 // Send data from channel.
@@ -400,7 +447,7 @@ where
                         tx: self.channel_tx.clone(),
                         tx_lock: tx_lock_requester,
                         rx_buffer: rx_buffer_dequeuer,
-                    }, &self.codec_factory);
+                    }, &self.content_codec);
                     let _ = self.serve_tx.send((service, req)).await;
                 },
 
@@ -428,7 +475,7 @@ where
                         let (raw_sender, raw_receiver) = channel_data.instantiate();
                         let _ = response_tx.send(ConnectToRemoteServiceResponse::Accepted (raw_sender, raw_receiver)); 
                     } else {
-                        return Err(MultiplexRunError::ProtocolError(format!("Received accepted message for port {} not in LocalRequestingRemoteService state.", client_port)));
+                        return Err(MultiplexError::ProtocolError(format!("Received accepted message for port {} not in LocalRequestingRemoteService state.", client_port)));
                     }                
                 }
 
@@ -438,7 +485,7 @@ where
                         self.port_pool.release(client_port);
                         let _ = response_tx.send(ConnectToRemoteServiceResponse::Rejected);
                     } else {
-                        return Err(MultiplexRunError::ProtocolError(format!("Received rejected message for port {} not in LocalRequestingRemoteService state.", client_port)));
+                        return Err(MultiplexError::ProtocolError(format!("Received rejected message for port {} not in LocalRequestingRemoteService state.", client_port)));
                     }    
                 }
 
@@ -450,7 +497,7 @@ where
                             tx_lock.pause().await;
                         }
                     } else {
-                        return Err(MultiplexRunError::ProtocolError(format!("Received pause message for port {} not in Connected state.", &port)));
+                        return Err(MultiplexError::ProtocolError(format!("Received pause message for port {} not in Connected state.", &port)));
                     }    
                 }
 
@@ -462,7 +509,7 @@ where
                             tx_lock.resume().await;
                         }
                     } else {
-                        return Err(MultiplexRunError::ProtocolError(format!("Received resume message for port {} not in Connected state.", &port)));
+                        return Err(MultiplexError::ProtocolError(format!("Received resume message for port {} not in Connected state.", &port)));
                     }    
                 }
 
@@ -475,10 +522,10 @@ where
                             self.transport_send(msg).await?;        
                             if self.maybe_free_port(port) { break }
                         } else {
-                            return Err(MultiplexRunError::ProtocolError(format!("Received Finish message for port {} more than once.", &port)));
+                            return Err(MultiplexError::ProtocolError(format!("Received Finish message for port {} more than once.", &port)));
                         }
                     } else {
-                        return Err(MultiplexRunError::ProtocolError(format!("Received Finish message for port {} not in Connected state.", &port)));
+                        return Err(MultiplexError::ProtocolError(format!("Received Finish message for port {} not in Connected state.", &port)));
                     } 
                 }
 
@@ -488,7 +535,7 @@ where
                         *tx_finished_ack = true;
                         if self.maybe_free_port(port) { break }
                     } else {
-                        return Err(MultiplexRunError::ProtocolError(format!("Received FinishAck message for port {} not in Connected state.", &port)));
+                        return Err(MultiplexError::ProtocolError(format!("Received FinishAck message for port {} not in Connected state.", &port)));
                     } 
                 }
 
@@ -499,10 +546,10 @@ where
                             tx_lock.close(gracefully).await;  
                             if self.maybe_free_port(port) { break }
                         } else {
-                            return Err(MultiplexRunError::ProtocolError(format!("Received more than one Hangup message for port {}.", &port)));
+                            return Err(MultiplexError::ProtocolError(format!("Received more than one Hangup message for port {}.", &port)));
                         }
                     } else {
-                        return Err(MultiplexRunError::ProtocolError(format!("Received Hangup message for port {} not in Connected state.", &port)));
+                        return Err(MultiplexError::ProtocolError(format!("Received Hangup message for port {} not in Connected state.", &port)));
                     } 
                 }
 
@@ -517,16 +564,16 @@ where
                                 self.transport_send(msg).await?;
                             }
                         } else {
-                            return Err(MultiplexRunError::ProtocolError(format!("Received data after finish for port {}.", &port)));
+                            return Err(MultiplexError::ProtocolError(format!("Received data after finish for port {}.", &port)));
                         }
                     } else {
-                        return Err(MultiplexRunError::ProtocolError(format!("Received data for non-connected port {}.", &port)));
+                        return Err(MultiplexError::ProtocolError(format!("Received data for non-connected port {}.", &port)));
                     }
                 }
 
                 // Process receive error.
                 Some(LoopEvent::ReceiveMsg(Err(rx_err))) => {
-                    return Err(MultiplexRunError::TransportStreamError(rx_err));
+                    return Err(rx_err);
                 }
 
                 // Process local request to connect to remote service.
@@ -556,7 +603,7 @@ where
                     if self.client_dropped && self.ports.is_empty() {
                         break
                     } else {
-                        return Err(MultiplexRunError::TransportStreamClosed)
+                        return Err(MultiplexError::TransportStreamClosed)
                     }
                 }
 

@@ -15,10 +15,13 @@ mod receiver;
 mod client;
 mod server;
 
-pub use multiplexer::{Cfg, Multiplexer, MultiplexRunError, MultiplexMsg};
+pub mod codecs;
+
+
+pub use multiplexer::{Cfg, Multiplexer, MultiplexError, MultiplexMsg};
 pub use sender::{SendError, Sender};
 pub use receiver::{Receiver, ReceiveError};
-pub use client::{Client, MultiplexerConnectError};
+pub use client::{Client, ConnectError};
 pub use server::{Server};
 pub use channel::Channel;
 

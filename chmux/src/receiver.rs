@@ -13,6 +13,7 @@ use std::error::Error;
 use async_thread::on_thread;
 use async_trait::async_trait;
 use log::trace;
+use serde::de::DeserializeOwned;
 
 use crate::codec::Deserializer;
 use crate::receive_buffer::{ChannelReceiverBufferDequeuer};
@@ -87,13 +88,6 @@ impl<Content> RawReceiver<Content> where Content: 'static + Send {
     }
 }
 
-impl<Content> fmt::Debug for RawReceiver<Content> where Content: Send {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "RawReceiver {{local_port={}, remote_port={}}}",
-               &self.local_port, &self.remote_port)
-    }
-}
-
 impl<Content> Stream for RawReceiver<Content> where Content: Send
 {
     type Item = Result<Content, ReceiveError>;
@@ -124,21 +118,29 @@ trait CloseableStream : Stream {
 
 #[pin_project]
 pub struct Receiver<Item> {
+    local_port: u32,
+    remote_port: u32,
     #[pin]
-    inner: Pin<Box<dyn CloseableStream<Item=Result<Item, ReceiveError>>>>
+    inner: Pin<Box<dyn CloseableStream<Item=Result<Item, ReceiveError>> + Send>> 
 }
 
-impl<Item> Receiver<Item> {
+impl<Item> Receiver<Item>
+where Item: DeserializeOwned
+{
     pub(crate) fn new<Content>(receiver: RawReceiver<Content>, deserialzer: Box<dyn Deserializer<Item, Content>>) -> Receiver<Item>
     where Content: Send + 'static,
           Item: 'static
     {
+        let local_port = receiver.local_port;
+        let remote_port = receiver.remote_port;
         let inner = ReceiverInner {
             receiver,
             deserialzer,
         };
-        Receiver {
-            inner: Box::pin(inner)
+        Receiver { 
+            local_port,
+            remote_port,
+            inner: Box::pin(inner) 
         }
     }
 
@@ -147,6 +149,12 @@ impl<Item> Receiver<Item> {
     pub async fn close(&mut self) {
         self.inner.as_mut().close().await;
     }
+}
+
+impl<Item> fmt::Debug for Receiver<Item> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Receiver {{local_port={}, remote_port={}}}", self.local_port, self.remote_port)
+    } 
 }
 
 impl<Item> Stream for Receiver<Item> {
@@ -165,6 +173,7 @@ struct ReceiverInner<Item, Content> where Content: Send {
 }
 
 impl<Item, Content> Stream for ReceiverInner<Item, Content> where
+    Item: DeserializeOwned,
     Content: Send,
 {
     type Item = Result<Item, ReceiveError>;
@@ -181,7 +190,10 @@ impl<Item, Content> Stream for ReceiverInner<Item, Content> where
 }
 
 #[async_trait]
-impl<Item, Content> CloseableStream for ReceiverInner<Item, Content> where Content: Send + 'static {
+impl<Item, Content> CloseableStream for ReceiverInner<Item, Content> 
+where Item: DeserializeOwned,
+    Content: Send + 'static 
+{
     async fn close(self: Pin<&mut Self>) {
         self.project().receiver.close().await; 
     }

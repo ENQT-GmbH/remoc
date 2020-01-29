@@ -1,6 +1,4 @@
 use std::net::Ipv4Addr;
-use tokio::prelude::*;
-use tokio::net::ToSocketAddrs;
 use tokio::io::split;
 use tokio::runtime::Runtime;
 use tokio::net::TcpListener;
@@ -10,6 +8,8 @@ use tokio_serde::SymmetricallyFramed;
 use tokio_serde::formats::SymmetricalJson;
 
 use chmux;
+use chmux::codecs::json::{JsonContentCodec, JsonTransportCodec};
+
 
 fn tcp_server() {
     let mut rt = Runtime::new().unwrap();
@@ -24,9 +24,13 @@ fn tcp_server() {
         let msg_tx = SymmetricallyFramed::new(framed_tx, SymmetricalJson::default());
         let msg_rx = SymmetricallyFramed::new(framed_rx, SymmetricalJson::default());
 
+        let mux_cfg = chmux::Cfg::default();
+        let content_codec = JsonContentCodec::new();
+        let transport_codec = JsonTransportCodec::new();
+
         let (mux, _, mut server) = 
-            chmux::Multiplexer::new(chmux::Cfg::default(), msg_tx, msg_rx);
-        let mut server: chmux::Server<String> = server;
+            chmux::Multiplexer::new(&mux_cfg, &content_codec, &transport_codec, msg_tx, msg_rx);
+        let mut server: chmux::Server<String, _, _> = server;
 
         // loop {
         //     match server.next().await {

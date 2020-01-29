@@ -8,6 +8,11 @@ keywords = ["multiplex", "channel", "mux", "multiple", "channels"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+default = ["json_codec", "bincode_codec"]
+json_codec = ["serde_json"]
+bincode_codec = ["bincode"]
+
 [dependencies]
 futures = "0.3"
 pin-project = "0.4"
@@ -16,6 +21,8 @@ log = "0.4"
 async-trait = "0.1.22"
 serde = {version="1.0", features=["derive"]}
 async_thread = { path="../async_thread" }
+serde_json = {version="1.0", optional=true}
+bincode = {version="1.2", optional=true}
 
 [dev-dependencies]
 futures = { version="0.3", features = ["thread-pool"] }

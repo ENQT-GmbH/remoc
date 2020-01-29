@@ -7,18 +7,30 @@ use std::pin::Pin;
 use std::error::Error;
 use pin_project::{pin_project, pinned_drop};
 use async_thread::on_thread;
+use serde::Serialize;
+use serde::de::DeserializeOwned;
 
 use crate::codec::{Deserializer, CodecFactory};
 use crate::sender::Sender;
 use crate::receiver::Receiver;
 use crate::multiplexer::{ChannelData, ChannelMsg};
 
+/// An multiplexer server error.
 #[derive(Debug)]
 pub enum ServerError {
     /// Error deserializing the service request.
     DeserializationError (Box<dyn Error + Send + 'static>)
 }
 
+impl fmt::Display for ServerError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::DeserializationError (err) => write!(f, "A deserialization error occured: {}", err),
+        }
+    }
+}
+
+impl Error for ServerError {}
 
 /// A service request by the remote endpoint.
 /// 
@@ -30,11 +42,16 @@ pub struct RemoteConnectToServiceRequest<Content, Codec> where Content: Send {
 
 impl<Content, Codec> fmt::Debug for RemoteConnectToServiceRequest<Content, Codec> where Content: Send {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "RemoteConnectToServiceRequest")
+        write!(f, "RemoteConnectToServiceRequest")?;
+        if let Some(channel_data) = self.channel_data.as_ref() {
+            write!(f, "{{local_port={}, remote_port={}}}", channel_data.local_port, channel_data.remote_port)?;
+        } 
+        Ok(())
     }
 }
 
-impl<Content, Codec> RemoteConnectToServiceRequest<Content, Codec> where Content: 'static  + Send, Codec: CodecFactory<Content> {
+impl<Content, Codec> RemoteConnectToServiceRequest<Content, Codec> 
+where Content: Serialize + DeserializeOwned + Send + 'static, Codec: CodecFactory<Content> {
     pub(crate) fn new(channel_data: ChannelData<Content>, codec_factory: &Codec)
         -> RemoteConnectToServiceRequest<Content, Codec> 
     {
@@ -45,7 +62,10 @@ impl<Content, Codec> RemoteConnectToServiceRequest<Content, Codec> where Content
     }
 
     /// Accepts the service request and returns a pair of channel sender and receiver.
-    pub async fn accept<SinkItem, StreamItem>(mut self) -> (Sender<Content>, Receiver<Content>) {
+    pub async fn accept<SinkItem, StreamItem>(mut self) -> (Sender<SinkItem>, Receiver<StreamItem>) 
+    where SinkItem: Serialize + 'static,
+        StreamItem: DeserializeOwned + 'static
+    {
         let mut channel_data = self.channel_data.take().unwrap();
         // If multiplexer has terminated, sender and receiver will return errors.
         let _ = channel_data.tx.send(ChannelMsg::Accepted {local_port: channel_data.local_port}).await;
@@ -88,7 +108,10 @@ impl<Service, Content, Codec> fmt::Debug for Server<Service, Content, Codec> whe
 }
 
 impl<Service, Content, Codec> Server<Service, Content, Codec>
-where Content: Send, Codec: CodecFactory<Content>
+where 
+    Service: DeserializeOwned + 'static,
+    Content: Serialize + DeserializeOwned + Send, 
+    Codec: CodecFactory<Content>
 {
     pub(crate) fn new(serve_rx: mpsc::Receiver<(Content, RemoteConnectToServiceRequest<Content, Codec>)>,
            drop_tx: mpsc::Sender<()>, 
@@ -113,7 +136,10 @@ impl<Service, Content, Codec> PinnedDrop for Server<Service, Content, Codec> whe
     }
 }
 
-impl<Service, Content, Codec> Stream for Server<Service, Content, Codec> where Content: Send {
+impl<Service, Content, Codec> Stream for Server<Service, Content, Codec> 
+where Service: DeserializeOwned,
+        Content: Send 
+{
     type Item = (Result<Service, ServerError>, RemoteConnectToServiceRequest<Content, Codec>);
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
         let this = self.project();

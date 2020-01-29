@@ -8,6 +8,7 @@ use std::sync::{Arc};
 use std::error::Error;
 use async_thread::on_thread;
 use log::trace;
+use serde::Serialize;
 
 use crate::send_lock::{ChannelSendLockRequester};
 use crate::multiplexer::ChannelMsg;
@@ -33,7 +34,7 @@ impl fmt::Display for SendError {
             Self::Closed {gracefully} if *gracefully => 
                 write!(f, "Remote endpoint does not want any more data to be sent."),
             Self::Closed {..} => write!(f, "Remote endpoint closed its receiver."),
-            Self::MultiplexerError => write!(f, "A channel multiplexer error occured."),
+            Self::MultiplexerError => write!(f, "A multiplexer error has occured or it has been terminated."),
             Self::SerializationError (err) => 
                 write!(f, "A serialization error occured: {}", err)
         }
@@ -137,24 +138,36 @@ impl<Content> PinnedDrop for RawSender<Content> where Content: Send {
 
 #[pin_project]
 pub struct Sender<Item> {
+    local_port: u32,
+    remote_port: u32,
     #[pin]
-    inner: Pin<Box<dyn Sink<Item, Error=SendError>>>
+    inner: Pin<Box<dyn Sink<Item, Error=SendError> + Send>>,
 }
 
-impl<Item> Sender<Item> {
+impl<Item> Sender<Item>
+where Item: Serialize {
     pub(crate) fn new<Content>(sender: RawSender<Content>, serializer: Box<dyn Serializer<Item, Content>>) -> Sender<Item>
     where Content: Send + 'static, Item: 'static
     { 
+        let local_port = sender.local_port;
+        let remote_port = sender.remote_port;
         let inner = SenderInner {
             sender,
             serializer,
         };
         Sender {
-            inner: Box::pin(inner)
+            local_port, 
+            remote_port,
+            inner: Box::pin(inner),
         }
     }
 }
 
+impl<Item> fmt::Debug for Sender<Item> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Sender {{local_port={}, remote_port={}}}", self.local_port, self.remote_port)
+    } 
+}
 
 impl<Item> Sink<Item> for Sender<Item>
 {
@@ -183,6 +196,7 @@ struct SenderInner<Item, Content> where Content: Send {
 
 impl<Item, Content> Sink<Item> for SenderInner<Item, Content>
 where
+    Item: Serialize,
     Content: Send
 {
     type Error = SendError;
