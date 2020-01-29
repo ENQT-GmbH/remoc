@@ -41,7 +41,11 @@ fn tcp_server() {
                     println!("Server accepted service request.");
 
                     tx.send("Hi from server".to_string()).await.unwrap();
+                    println!("Server sent Hi message");
+
+                    println!("Server dropping sender");
                     drop(tx);
+                    println!("Server dropped sender");
 
                     loop {
                         match rx.next().await {
@@ -78,17 +82,21 @@ fn tcp_client() {
 
         let (mux, client, _) =
             chmux::Multiplexer::new(&mux_cfg, &content_codec, &transport_codec, framed_tx, framed_rx);
-        let mut client: chmux::Client<String, _, _> = client;
-
         let mux_run = tokio::spawn(async move { mux.run().await.unwrap() });
 
         {
+            let mut client: chmux::Client<String, _, _> = client;
+
             println!("Client connecting to TestService...");
             let (mut tx, mut rx) = client.connect("TestService".to_string()).await.unwrap();
             println!("Client connected");
 
             tx.send("Hi from client".to_string()).await.unwrap();
+            println!("Client sent Hi message");
+
+            println!("Client dropping sender");
             drop(tx);
+            println!("Client dropped sender");
 
             loop {
                 match rx.next().await {
@@ -110,9 +118,11 @@ fn tcp_client() {
 
 #[test]
 fn tcp_test() {
+    env_logger::init();
+
     println!("Starting server thread...");
     let server_thread = std::thread::spawn(tcp_server);
-    std::thread::sleep(Duration::from_secs(1));
+    std::thread::sleep(Duration::from_millis(100));
 
     println!("String client thread...");
     let client_thread = std::thread::spawn(tcp_client);

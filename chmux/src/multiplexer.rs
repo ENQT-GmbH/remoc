@@ -225,6 +225,9 @@ where
     _transport_stream_ghost: PhantomData<TransportStream>,
 }
 
+/// Buffer size of internal communication channels.
+const INTERNAL_CHANNEL_BUFFER: usize = 10;
+
 impl<Content, ContentCodec, TransportType, TransportCodec, TransportSink, TransportStream> fmt::Debug
     for Multiplexer<Content, ContentCodec, TransportType, TransportCodec, TransportSink, TransportStream>
 where
@@ -275,10 +278,10 @@ where
         let transport_deserializer = transport_codec.deserializer();
 
         // Create internal communication channels.
-        let (channel_tx, channel_rx) = mpsc::channel(1);
-        let (connect_tx, connect_rx) = mpsc::channel(1);
+        let (channel_tx, channel_rx) = mpsc::channel(INTERNAL_CHANNEL_BUFFER);
+        let (connect_tx, connect_rx) = mpsc::channel(INTERNAL_CHANNEL_BUFFER);
         let (serve_tx, serve_rx) = mpsc::channel(cfg.service_request_queue_length);
-        let (server_drop_tx, server_drop_rx) = mpsc::channel(1);
+        let (server_drop_tx, server_drop_rx) = mpsc::channel(INTERNAL_CHANNEL_BUFFER);
 
         // Decode received messages.
         let transport_rx = transport_rx
@@ -713,7 +716,7 @@ where
                 }
 
                 // All event streams have ended.
-                None => break,
+                None => panic!("Unexpected end of event stream."),
             }
         }
         Ok(())
