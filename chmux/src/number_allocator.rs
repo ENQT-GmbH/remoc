@@ -12,9 +12,7 @@ pub struct NumberAllocatorExhaustedError;
 impl NumberAllocator {
     /// Creates a new number allocator.
     pub fn new() -> NumberAllocator {
-        NumberAllocator {
-            used: HashSet::new(),
-        }
+        NumberAllocator { used: HashSet::new() }
     }
 
     /// Allocates a random, unique number.

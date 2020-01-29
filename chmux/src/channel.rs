@@ -1,14 +1,14 @@
-use std::pin::Pin;
+use futures::sink::Sink;
+use futures::stream::Stream;
 use futures::task::{Context, Poll};
-use futures::sink::{Sink};
-use futures::stream::{Stream};
-use pin_project::{pin_project};
+use pin_project::pin_project;
+use std::pin::Pin;
 
-use crate::sender::Sender;
 use crate::receiver::Receiver;
+use crate::sender::Sender;
 
 /// A bi-directional communication channel, implementing `Sink` and `Stream`.
-/// 
+///
 /// Can be split into separate `Sender` and `Receiver`.
 #[pin_project]
 pub struct Channel<SinkItem, StreamItem> {
@@ -21,20 +21,17 @@ pub struct Channel<SinkItem, StreamItem> {
 impl<SinkItem, StreamItem> Channel<SinkItem, StreamItem> {
     /// Creates a bi-directional channel by combining a `Sender` and `Receiver`.
     pub fn new(sender: Sender<SinkItem>, receiver: Receiver<StreamItem>) -> Channel<SinkItem, StreamItem> {
-        Channel { 
-            sender, receiver
-        }
+        Channel { sender, receiver }
     }
 
     /// Splits the channel into a `Sender` and `Receiver`.
     pub fn split(self) -> (Sender<SinkItem>, Receiver<StreamItem>) {
-        let Channel {sender, receiver} = self;
+        let Channel { sender, receiver } = self;
         (sender, receiver)
     }
 }
 
-impl<SinkItem, StreamItem> Sink<SinkItem> for Channel<SinkItem, StreamItem> 
-{
+impl<SinkItem, StreamItem> Sink<SinkItem> for Channel<SinkItem, StreamItem> {
     type Error = <Sender<SinkItem> as Sink<SinkItem>>::Error;
     fn poll_ready(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
         self.project().sender.poll_ready(cx)
@@ -50,12 +47,9 @@ impl<SinkItem, StreamItem> Sink<SinkItem> for Channel<SinkItem, StreamItem>
     }
 }
 
-impl<SinkItem, StreamItem> Stream for Channel<SinkItem, StreamItem>
-{
+impl<SinkItem, StreamItem> Stream for Channel<SinkItem, StreamItem> {
     type Item = <Receiver<StreamItem> as Stream>::Item;
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
         self.project().receiver.poll_next(cx)
     }
 }
-
-
