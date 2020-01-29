@@ -14,8 +14,8 @@ fn raw_test() {
     let pool = executor::ThreadPool::new().unwrap();
 
     let queue_length = 10;
-    let (a_tx, b_rx) = mpsc::channel(queue_length);
-    let (b_tx, a_rx) = mpsc::channel(queue_length);
+    let (a_tx, b_rx) = mpsc::channel::<Vec<u8>>(queue_length);
+    let (b_tx, a_rx) = mpsc::channel::<Vec<u8>>(queue_length);
 
     let a_rx = a_rx.map(|v| Ok::<_, io::Error>(v));
     let b_rx = b_rx.map(|v| Ok::<_, io::Error>(v));    

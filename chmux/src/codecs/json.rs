@@ -5,6 +5,7 @@ use std::marker::PhantomData;
 use serde::{Serialize};
 use serde::de::DeserializeOwned;
 use serde_json::{Value, to_value, to_vec, from_slice, from_value};
+use bytes::Bytes;
 
 use crate::codec::{Serializer, Deserializer, CodecFactory};
 
@@ -75,6 +76,15 @@ where Item: Serialize
     }
 }
 
+impl<Item> Serializer<Item, Bytes> for JsonTransportSerializer<Item>
+where Item: Serialize 
+{
+    fn serialize(&self, item: Item) -> Result<Bytes, Box<dyn Error + Send + 'static>> {
+        to_vec(&item).map(Bytes::from).map_err(|err| Box::new(err) as Box<dyn Error + Send + 'static>)
+    } 
+}
+
+
 pub struct JsonTransportDeserializer<Item> {
     _ghost_item: PhantomData<fn() -> Item>
 }
@@ -87,6 +97,13 @@ where Item: DeserializeOwned
     }
 }
 
+impl<Item> Deserializer<Item, Bytes> for JsonTransportDeserializer<Item>
+where Item: DeserializeOwned
+{
+    fn deserialize(&self, data: Bytes) -> Result<Item, Box<dyn Error + Send + 'static>> {
+        from_slice(&data).map_err(|err| Box::new(err) as Box<dyn Error + Send + 'static>)
+    } 
+}
 
 
 #[derive(Clone)]
@@ -109,6 +126,20 @@ impl CodecFactory<Vec<u8>> for JsonTransportCodec {
     }
 
     fn deserializer<Item: DeserializeOwned + 'static>(&self) -> Box<dyn Deserializer<Item, Vec<u8>>> {
+        Box::new(JsonTransportDeserializer {
+            _ghost_item: PhantomData
+        })
+    }    
+}
+
+impl CodecFactory<Bytes> for JsonTransportCodec {
+    fn serializer<Item: Serialize + 'static>(&self) -> Box<dyn Serializer<Item, Bytes>> {
+        Box::new(JsonTransportSerializer {
+            _ghost_item: PhantomData
+        })
+    }
+
+    fn deserializer<Item: DeserializeOwned + 'static>(&self) -> Box<dyn Deserializer<Item, Bytes>> {
         Box::new(JsonTransportDeserializer {
             _ghost_item: PhantomData
         })
