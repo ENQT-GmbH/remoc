@@ -20,5 +20,5 @@ pub use channel::Channel;
 pub use client::{Client, ConnectError};
 pub use multiplexer::{Cfg, MultiplexError, MultiplexMsg, Multiplexer};
 pub use receiver::{ReceiveError, Receiver};
-pub use sender::{SendError, Sender};
+pub use sender::{HangupNotify, SendError, Sender};
 pub use server::Server;

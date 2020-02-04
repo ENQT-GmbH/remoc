@@ -58,7 +58,7 @@ where
 /// Raw multiplexer client.
 ///
 /// Allows to connect to remote services.
-/// 
+///
 /// A client can be cloned to allow multiple simultaneous service requests.
 pub struct Client<Service, Content, Codec>
 where
@@ -119,7 +119,7 @@ where
     }
 }
 
-impl<Service, Content, Codec> Clone for Client<Service, Content, Codec> 
+impl<Service, Content, Codec> Clone for Client<Service, Content, Codec>
 where
     Service: Serialize + 'static,
     Content: Send + 'static,
@@ -129,4 +129,3 @@ where
         Self::new(self.connect_tx.clone(), &self.codec_factory)
     }
 }
-

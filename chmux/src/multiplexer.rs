@@ -8,6 +8,7 @@ use std::error::Error;
 use std::fmt;
 use std::marker::PhantomData;
 use std::pin::Pin;
+use std::sync::{Arc, Mutex};
 
 use crate::client::{Client, ConnectToRemoteServiceRequest, ConnectToRemoteServiceResponse};
 use crate::codec::{CodecFactory, Serializer};
@@ -110,6 +111,7 @@ where
     pub tx: mpsc::Sender<ChannelMsg<Content>>,
     pub tx_lock: ChannelSendLockRequester,
     pub rx_buffer: ChannelReceiverBufferDequeuer<Content>,
+    pub hangup_notify: Arc<Mutex<Option<Vec<oneshot::Sender<()>>>>>,
 }
 
 impl<Content> ChannelData<Content>
@@ -117,9 +119,9 @@ where
     Content: 'static + Send,
 {
     pub fn instantiate(self) -> (RawSender<Content>, RawReceiver<Content>) {
-        let ChannelData { local_port, remote_port, tx, tx_lock, rx_buffer } = self;
+        let ChannelData { local_port, remote_port, tx, tx_lock, rx_buffer, hangup_notify } = self;
 
-        let sender = RawSender::new(local_port, remote_port, tx.clone(), tx_lock);
+        let sender = RawSender::new(local_port, remote_port, tx.clone(), tx_lock, hangup_notify);
         let receiver = RawReceiver::new(local_port, remote_port, tx, rx_buffer);
         (sender, receiver)
     }
@@ -145,6 +147,8 @@ where
         tx_lock: ChannelSendLockAuthority,
         /// Receive buffer enqueuer.
         rx_buffer: ChannelReceiverBufferEnqueuer<Content>,
+        /// Notification senders for when Hangup message has been received.
+        hangup_notify: Arc<Mutex<Option<Vec<oneshot::Sender<()>>>>>,
     },
     /// Port is connected.
     Connected {
@@ -156,6 +160,8 @@ where
         /// Receive buffer enqueuer.
         /// Initially present, None when Finish message has been received.
         rx_buffer: Option<ChannelReceiverBufferEnqueuer<Content>>,
+        /// Notification senders for when Hangup message has been received.
+        hangup_notify: Arc<Mutex<Option<Vec<oneshot::Sender<()>>>>>,
         /// Pause request has been sent to remote endpoint.
         rx_paused: bool,
         /// Receiver has been dropped and Hangup message has been sent to remote endpoint.
@@ -446,8 +452,12 @@ where
 
                 // Remote service request was accepted by local.
                 Some(LoopEvent::ChannelMsg(ChannelMsg::Accepted { local_port })) => {
-                    if let Some(PortState::RemoteRequestingLocalService { remote_port, tx_lock, rx_buffer }) =
-                        self.ports.remove(&local_port)
+                    if let Some(PortState::RemoteRequestingLocalService {
+                        remote_port,
+                        tx_lock,
+                        rx_buffer,
+                        hangup_notify,
+                    }) = self.ports.remove(&local_port)
                     {
                         self.ports.insert(
                             local_port,
@@ -455,6 +465,7 @@ where
                                 remote_port,
                                 tx_lock: Some(tx_lock),
                                 rx_buffer: Some(rx_buffer),
+                                hangup_notify,
                                 rx_paused: false,
                                 rx_hangedup: false,
                                 tx_finished: false,
@@ -489,12 +500,14 @@ where
                     let (tx_lock_authority, tx_lock_requester) = channel_send_lock();
                     let (rx_buffer_enqueuer, rx_buffer_dequeuer) =
                         self.make_channel_receiver_buffer_cfg(server_port).instantiate();
+                    let hangup_notify = Arc::new(Mutex::new(Some(Vec::new())));
                     self.ports.insert(
                         server_port,
                         PortState::RemoteRequestingLocalService {
                             remote_port: client_port,
                             tx_lock: tx_lock_authority,
                             rx_buffer: rx_buffer_enqueuer,
+                            hangup_notify: hangup_notify.clone(),
                         },
                     );
                     let req = RemoteConnectToServiceRequest::new(
@@ -504,6 +517,7 @@ where
                             tx: self.channel_tx.clone(),
                             tx_lock: tx_lock_requester,
                             rx_buffer: rx_buffer_dequeuer,
+                            hangup_notify,
                         },
                         &self.content_codec,
                     );
@@ -518,12 +532,14 @@ where
                         let (tx_lock_authority, tx_lock_requester) = channel_send_lock();
                         let (rx_buffer_enqueuer, rx_buffer_dequeuer) =
                             self.make_channel_receiver_buffer_cfg(client_port).instantiate();
+                        let hangup_notify = Arc::new(Mutex::new(Some(Vec::new())));
                         self.ports.insert(
                             client_port,
                             PortState::Connected {
                                 remote_port: server_port,
                                 tx_lock: Some(tx_lock_authority),
                                 rx_buffer: Some(rx_buffer_enqueuer),
+                                hangup_notify: hangup_notify.clone(),
                                 rx_paused: false,
                                 rx_hangedup: false,
                                 tx_finished: false,
@@ -536,6 +552,7 @@ where
                             tx: self.channel_tx.clone(),
                             tx_lock: tx_lock_requester,
                             rx_buffer: rx_buffer_dequeuer,
+                            hangup_notify,
                         };
                         let (raw_sender, raw_receiver) = channel_data.instantiate();
                         let _ =
@@ -634,9 +651,16 @@ where
 
                 // Process hangup information from remote endpoint.
                 Some(LoopEvent::ReceiveMsg(Ok(MultiplexMsg::Hangup { port, gracefully }))) => {
-                    if let Some(PortState::Connected { tx_lock, .. }) = self.ports.get_mut(&port) {
+                    if let Some(PortState::Connected { tx_lock, hangup_notify, .. }) = self.ports.get_mut(&port) {
                         if let Some(tx_lock) = tx_lock.take() {
                             tx_lock.close(gracefully).await;
+
+                            // Send hangup notifications.
+                            let notifies = hangup_notify.lock().unwrap().take().unwrap();
+                            for tx in notifies {
+                                let _ = tx.send(());
+                            }
+
                             if self.maybe_free_port(port) {
                                 break;
                             }

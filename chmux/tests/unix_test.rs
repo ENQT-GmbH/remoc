@@ -2,8 +2,8 @@
 mod unix {
     use futures::sink::SinkExt;
     use futures::stream::StreamExt;
-    use std::time::Duration;
     use std::fs;
+    use std::time::Duration;
     use tokio::io::split;
     use tokio::net::{UnixListener, UnixStream};
     use tokio::runtime::Runtime;
@@ -40,7 +40,8 @@ mod unix {
                     Some((service, req)) => {
                         let service = service.unwrap();
                         println!("Server accepting service request {}", &service);
-                        let (mut tx, mut rx): (chmux::Sender<String>, chmux::Receiver<String>) = req.accept().await;
+                        let (mut tx, mut rx): (chmux::Sender<String>, chmux::Receiver<String>) =
+                            req.accept().await;
                         println!("Server accepted service request.");
 
                         tx.send("Hi from server".to_string()).await.unwrap();

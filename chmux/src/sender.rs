@@ -1,14 +1,15 @@
 use async_thread::on_thread;
-use futures::channel::mpsc;
+use futures::channel::{mpsc, oneshot};
 use futures::sink::{Sink, SinkExt};
 use futures::task::{Context, Poll};
+use futures::{ready, Future};
 use log::trace;
 use pin_project::{pin_project, pinned_drop};
 use serde::Serialize;
 use std::error::Error;
 use std::fmt;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::codec::Serializer;
 use crate::multiplexer::ChannelMsg;
@@ -62,7 +63,8 @@ where
     #[pin]
     sink: Pin<Box<dyn Sink<Content, Error = SendError> + Send>>,
     #[pin]
-    drop_tx: mpsc::Sender<ChannelMsg<Content>>,
+    tx: mpsc::Sender<ChannelMsg<Content>>,
+    hangup_notify: Arc<Mutex<Option<Vec<oneshot::Sender<()>>>>>,
 }
 
 impl<Content> RawSender<Content>
@@ -71,12 +73,12 @@ where
 {
     pub(crate) fn new(
         local_port: u32, remote_port: u32, tx: mpsc::Sender<ChannelMsg<Content>>,
-        tx_lock: ChannelSendLockRequester,
+        tx_lock: ChannelSendLockRequester, hangup_notify: Arc<Mutex<Option<Vec<oneshot::Sender<()>>>>>,
     ) -> RawSender<Content>
     where
         Content: 'static + Send,
     {
-        let drop_tx = tx.clone();
+        let control_tx = tx.clone();
         let tx_lock = Arc::new(tx_lock);
         let adapted_tx = tx.with(move |item: Content| {
             let tx_lock = tx_lock.clone();
@@ -87,7 +89,7 @@ where
             }
         });
 
-        RawSender { local_port, remote_port, sink: Box::pin(adapted_tx), drop_tx }
+        RawSender { local_port, remote_port, sink: Box::pin(adapted_tx), tx: control_tx, hangup_notify }
     }
 }
 
@@ -119,18 +121,40 @@ where
         trace!("RawSender dropping...");
         let mut this = self.project();
         on_thread(async move {
-            let _ = this.drop_tx.send(ChannelMsg::SenderDropped { local_port: *this.local_port }).await;
+            let _ = this.tx.send(ChannelMsg::SenderDropped { local_port: *this.local_port }).await;
         });
         trace!("RawSender dropped.");
     }
 }
 
+/// This Future resolves when the remote endpoint has closed its receiver.
+///
+/// It will also resolve when the channel is closed or the channel multiplexer
+/// is shutdown.
+#[pin_project]
+pub struct HangupNotify {
+    #[pin]
+    rx: oneshot::Receiver<()>,
+}
+
+impl Future for HangupNotify {
+    type Output = ();
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let _ = ready!(self.project().rx.poll(cx));
+        Poll::Ready(())
+    }
+}
+
+/// Send end of a multiplexer channel.
+///
+/// Implements a `Sink`.
 #[pin_project]
 pub struct Sender<Item> {
     local_port: u32,
     remote_port: u32,
     #[pin]
     inner: Pin<Box<dyn Sink<Item, Error = SendError> + Send>>,
+    hangup_notify: Arc<Mutex<Option<Vec<oneshot::Sender<()>>>>>,
 }
 
 impl<Item> Sender<Item>
@@ -146,8 +170,20 @@ where
     {
         let local_port = sender.local_port;
         let remote_port = sender.remote_port;
+        let hangup_notify = sender.hangup_notify.clone();
         let inner = SenderInner { sender, serializer };
-        Sender { local_port, remote_port, inner: Box::pin(inner) }
+        Sender { local_port, remote_port, inner: Box::pin(inner), hangup_notify }
+    }
+
+    /// Returns a Future that will resolve when the remote endpoint has closed its receiver.
+    ///
+    /// It will resolve immediately when the remote endpoint has already hung up.
+    pub fn hangup_notify(&self) -> HangupNotify {
+        let (tx, rx) = oneshot::channel();
+        if let Some(notifiers) = self.hangup_notify.lock().unwrap().as_mut() {
+            notifiers.push(tx);
+        }
+        HangupNotify { rx }
     }
 }
 

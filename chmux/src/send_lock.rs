@@ -25,8 +25,11 @@ enum ChannelSendLockCloseReason {
 
 /// Internal state of a channel send lock.
 struct ChannelSendLockState {
+    /// Is sending currently allowed or paused by the remote endpoint?
     send_allowed: bool,
+    /// If closed by authority, reason for closure.
     close_reason: Option<ChannelSendLockCloseReason>,
+    /// Notification channel to event loop.
     notify_tx: Option<oneshot::Sender<()>>,
 }
 

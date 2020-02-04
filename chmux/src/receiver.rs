@@ -133,6 +133,9 @@ pub struct Receiver<Item> {
     inner: Pin<Box<dyn CloseableStream<Item = Result<Item, ReceiveError>> + Send>>,
 }
 
+/// Receive end of a multiplexer channel.
+///
+/// Implements a `Stream`.
 impl<Item> Receiver<Item>
 where
     Item: DeserializeOwned,
