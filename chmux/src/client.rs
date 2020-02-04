@@ -2,6 +2,7 @@ use futures::channel::{mpsc, oneshot};
 use futures::sink::SinkExt;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use std::clone::Clone;
 use std::error::Error;
 use std::fmt;
 
@@ -57,6 +58,8 @@ where
 /// Raw multiplexer client.
 ///
 /// Allows to connect to remote services.
+/// 
+/// A client can be cloned to allow multiple simultaneous service requests.
 pub struct Client<Service, Content, Codec>
 where
     Content: Send,
@@ -115,3 +118,15 @@ where
         }
     }
 }
+
+impl<Service, Content, Codec> Clone for Client<Service, Content, Codec> 
+where
+    Service: Serialize + 'static,
+    Content: Send + 'static,
+    Codec: CodecFactory<Content>,
+{
+    fn clone(&self) -> Self {
+        Self::new(self.connect_tx.clone(), &self.codec_factory)
+    }
+}
+

@@ -207,20 +207,28 @@ pub struct Multiplexer<Content, ContentCodec, TransportType, TransportCodec, Tra
 where
     Content: Send,
 {
+    /// Configuration
     cfg: Cfg,
+    /// Codec factory for message content.
     content_codec: ContentCodec,
+    /// Transport sink.
     transport_tx: Pin<Box<TransportSink>>,
+    /// Channel to send server connection requests to.
     serve_tx: mpsc::Sender<(Content, RemoteConnectToServiceRequest<Content, ContentCodec>)>,
-
+    /// Open local ports.
     ports: HashMap<u32, PortState<Content>>,
+    /// Port number allocator.
     port_pool: NumberAllocator,
+    /// Channel to send requests from user parts of sender/receiver to event loop.
     channel_tx: mpsc::Sender<ChannelMsg<Content>>,
+    /// Receiver of event loop.
     event_rx: Pin<Box<dyn Stream<Item = LoopEvent<Content>> + Send>>,
+    /// Serializer applied for transport.
     transport_serializer: Box<dyn Serializer<MultiplexMsg<Content>, TransportType>>,
-
-    client_dropped: bool,
+    /// All user clients have been dropped.
+    all_clients_dropped: bool,
+    /// User server has been dropped.
     server_dropped: bool,
-
     _transport_codec_ghost: PhantomData<TransportCodec>,
     _transport_stream_ghost: PhantomData<TransportStream>,
 }
@@ -314,7 +322,7 @@ where
             channel_tx,
             event_rx: Box::pin(event_rx),
             transport_serializer,
-            client_dropped: false,
+            all_clients_dropped: false,
             server_dropped: false,
             _transport_codec_ghost: PhantomData,
             _transport_stream_ghost: PhantomData,
@@ -341,7 +349,7 @@ where
     }
 
     fn should_terminate(&self) -> bool {
-        self.client_dropped && self.server_dropped && self.ports.is_empty()
+        self.all_clients_dropped && self.server_dropped && self.ports.is_empty()
     }
 
     fn maybe_free_port(&mut self, local_port: u32) -> bool {
@@ -689,7 +697,7 @@ where
 
                 // Process that client has been dropped.
                 Some(LoopEvent::ClientDropped) => {
-                    self.client_dropped = true;
+                    self.all_clients_dropped = true;
                     if self.should_terminate() {
                         break;
                     }
@@ -708,7 +716,7 @@ where
                     // If client is dropped and no multiplex connections are active,
                     // treat transport closure as normal disconnection of remote
                     // endpoint.
-                    if self.client_dropped && self.ports.is_empty() {
+                    if self.all_clients_dropped && self.ports.is_empty() {
                         break;
                     } else {
                         return Err(MultiplexError::TransportStreamClosed);
