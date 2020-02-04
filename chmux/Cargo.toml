@@ -27,6 +27,6 @@ bytes = {version="0.5", optional=true}
 
 [dev-dependencies]
 futures = { version="0.3", features = ["thread-pool"] }
-tokio = { version="0.2.11", features = ["tcp", "io-util", "rt-core"] }
+tokio = { version="0.2.11", features = ["tcp", "uds", "io-util", "rt-core"] }
 tokio-util = { version="0.2", features = ["codec"] }
 env_logger = "0.7"
