@@ -3,6 +3,7 @@ mod unix {
     use futures::sink::SinkExt;
     use futures::stream::StreamExt;
     use std::time::Duration;
+    use std::fs;
     use tokio::io::split;
     use tokio::net::{UnixListener, UnixStream};
     use tokio::runtime::Runtime;
@@ -15,6 +16,7 @@ mod unix {
     fn uds_server() {
         let mut rt = Runtime::new().unwrap();
         rt.block_on(async {
+            let _ = fs::remove_file("/tmp/chmux_test");
             let mut listener = UnixListener::bind("/tmp/chmux_test").unwrap();
 
             let (socket, _) = listener.accept().await.unwrap();
