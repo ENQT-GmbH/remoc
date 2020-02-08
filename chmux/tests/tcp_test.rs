@@ -85,7 +85,7 @@ fn tcp_client() {
         let mux_run = tokio::spawn(async move { mux.run().await.unwrap() });
 
         {
-            let mut client: chmux::Client<String, _, _> = client;
+            let client: chmux::Client<String, _, _> = client;
 
             println!("Client connecting to TestService...");
             let (mut tx, mut rx) = client.connect("TestService".to_string()).await.unwrap();

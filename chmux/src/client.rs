@@ -1,12 +1,14 @@
 use futures::channel::{mpsc, oneshot};
 use futures::sink::SinkExt;
+use futures::Future;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::clone::Clone;
 use std::error::Error;
 use std::fmt;
+use std::marker::PhantomData;
 
-use crate::codec::{CodecFactory, Serializer};
+use crate::codec::CodecFactory;
 use crate::receiver::{RawReceiver, Receiver};
 use crate::sender::{RawSender, Sender};
 
@@ -65,8 +67,8 @@ where
     Content: Send,
 {
     pub(crate) connect_tx: mpsc::Sender<ConnectToRemoteServiceRequest<Content>>,
-    serializer: Box<dyn Serializer<Service, Content>>,
     codec_factory: Codec,
+    _service_ghost: PhantomData<Service>,
 }
 
 impl<Service, Content, Codec> fmt::Debug for Client<Service, Content, Codec>
@@ -87,34 +89,43 @@ where
     pub(crate) fn new(
         connect_tx: mpsc::Sender<ConnectToRemoteServiceRequest<Content>>, codec_factory: &Codec,
     ) -> Client<Service, Content, Codec> {
-        Client { connect_tx, serializer: codec_factory.serializer(), codec_factory: codec_factory.clone() }
+        Client { connect_tx, codec_factory: codec_factory.clone(), _service_ghost: PhantomData }
     }
 
     /// Connects to the specified service of the remote endpoint.
     /// If connection is accepted, a pair of channel sender and receiver is returned.
-    pub async fn connect<SinkItem, StreamItem>(
-        &mut self, service: Service,
-    ) -> Result<(Sender<SinkItem>, Receiver<StreamItem>), ConnectError>
+    /// 
+    /// Multiple connect requests can be outstanding at the same time.
+    pub fn connect<SinkItem, StreamItem>(
+        &self, service: Service,
+    ) -> impl Future<Output=Result<(Sender<SinkItem>, Receiver<StreamItem>), ConnectError>>
     where
         SinkItem: 'static + Serialize,
         StreamItem: 'static + DeserializeOwned,
     {
-        let (response_tx, response_rx) = oneshot::channel();
-        let service = self.serializer.serialize(service).map_err(ConnectError::SerializationError)?;
-        self.connect_tx
-            .send(ConnectToRemoteServiceRequest { service, response_tx })
-            .await
-            .map_err(|_| ConnectError::MultiplexerError)?;
-        match response_rx.await {
-            Ok(ConnectToRemoteServiceResponse::Accepted(raw_sender, raw_receiver)) => {
-                let serializer = self.codec_factory.serializer();
-                let sender = Sender::new(raw_sender, serializer);
-                let deserializer = self.codec_factory.deserializer();
-                let receiver = Receiver::new(raw_receiver, deserializer);
-                Ok((sender, receiver))
+        let mut connect_tx = self.connect_tx.clone();
+        let codec_factory = self.codec_factory.clone();
+
+        async move {
+            let serializer = codec_factory.serializer();
+            let service = serializer.serialize(service).map_err(ConnectError::SerializationError)?;
+    
+            let (response_tx, response_rx) = oneshot::channel();
+            connect_tx
+                .send(ConnectToRemoteServiceRequest { service, response_tx })
+                .await
+                .map_err(|_| ConnectError::MultiplexerError)?;
+            match response_rx.await {
+                Ok(ConnectToRemoteServiceResponse::Accepted(raw_sender, raw_receiver)) => {
+                    let serializer = codec_factory.serializer();
+                    let sender = Sender::new(raw_sender, serializer);
+                    let deserializer = codec_factory.deserializer();
+                    let receiver = Receiver::new(raw_receiver, deserializer);
+                    Ok((sender, receiver))
+                }
+                Ok(ConnectToRemoteServiceResponse::Rejected) => Err(ConnectError::Rejected),
+                Err(_) => Err(ConnectError::MultiplexerError),
             }
-            Ok(ConnectToRemoteServiceResponse::Rejected) => Err(ConnectError::Rejected),
-            Err(_) => Err(ConnectError::MultiplexerError),
         }
     }
 }

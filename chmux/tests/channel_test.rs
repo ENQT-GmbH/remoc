@@ -23,7 +23,7 @@ fn raw_test() {
     let content_codec = JsonContentCodec::new();
     let transport_codec = JsonTransportCodec::new();
 
-    let (a_mux, mut a_client, _a_server) =
+    let (a_mux, a_client, _a_server) =
         chmux::Multiplexer::new(&mux_cfg, &content_codec, &transport_codec, a_tx, a_rx);
     let (b_mux, _b_client, mut b_server) =
         chmux::Multiplexer::new(&mux_cfg, &content_codec, &transport_codec, b_tx, b_rx);
@@ -113,7 +113,7 @@ fn hangup_test() {
     let content_codec = JsonContentCodec::new();
     let transport_codec = JsonTransportCodec::new();
 
-    let (a_mux, mut a_client, _a_server) =
+    let (a_mux, a_client, _a_server) =
         chmux::Multiplexer::new(&mux_cfg, &content_codec, &transport_codec, a_tx, a_rx);
     let (b_mux, _b_client, mut b_server) =
         chmux::Multiplexer::new(&mux_cfg, &content_codec, &transport_codec, b_tx, b_rx);
