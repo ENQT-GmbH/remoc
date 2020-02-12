@@ -166,7 +166,10 @@ impl<Item> fmt::Debug for Receiver<Item> {
     }
 }
 
-impl<Item> Stream for Receiver<Item> {
+impl<Item> Stream for Receiver<Item>
+where
+    Item: DeserializeOwned,
+{
     type Item = Result<Item, ReceiveError>;
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
         self.project().inner.poll_next(cx)

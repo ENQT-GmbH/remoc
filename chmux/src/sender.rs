@@ -193,7 +193,10 @@ impl<Item> fmt::Debug for Sender<Item> {
     }
 }
 
-impl<Item> Sink<Item> for Sender<Item> {
+impl<Item> Sink<Item> for Sender<Item>
+where
+    Item: Serialize,
+{
     type Error = SendError;
     fn poll_ready(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.project().inner.poll_ready(cx)

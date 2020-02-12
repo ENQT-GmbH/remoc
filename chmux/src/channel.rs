@@ -2,6 +2,7 @@ use futures::sink::Sink;
 use futures::stream::Stream;
 use futures::task::{Context, Poll};
 use pin_project::pin_project;
+use serde::{de::DeserializeOwned, Serialize};
 use std::pin::Pin;
 
 use crate::receiver::Receiver;
@@ -31,7 +32,10 @@ impl<SinkItem, StreamItem> Channel<SinkItem, StreamItem> {
     }
 }
 
-impl<SinkItem, StreamItem> Sink<SinkItem> for Channel<SinkItem, StreamItem> {
+impl<SinkItem, StreamItem> Sink<SinkItem> for Channel<SinkItem, StreamItem>
+where
+    SinkItem: Serialize,
+{
     type Error = <Sender<SinkItem> as Sink<SinkItem>>::Error;
     fn poll_ready(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
         self.project().sender.poll_ready(cx)
@@ -47,7 +51,10 @@ impl<SinkItem, StreamItem> Sink<SinkItem> for Channel<SinkItem, StreamItem> {
     }
 }
 
-impl<SinkItem, StreamItem> Stream for Channel<SinkItem, StreamItem> {
+impl<SinkItem, StreamItem> Stream for Channel<SinkItem, StreamItem>
+where
+    StreamItem: DeserializeOwned,
+{
     type Item = <Receiver<StreamItem> as Stream>::Item;
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
         self.project().receiver.poll_next(cx)

@@ -94,11 +94,11 @@ where
 
     /// Connects to the specified service of the remote endpoint.
     /// If connection is accepted, a pair of channel sender and receiver is returned.
-    /// 
+    ///
     /// Multiple connect requests can be outstanding at the same time.
     pub fn connect<SinkItem, StreamItem>(
         &self, service: Service,
-    ) -> impl Future<Output=Result<(Sender<SinkItem>, Receiver<StreamItem>), ConnectError>>
+    ) -> impl Future<Output = Result<(Sender<SinkItem>, Receiver<StreamItem>), ConnectError>>
     where
         SinkItem: 'static + Serialize,
         StreamItem: 'static + DeserializeOwned,
@@ -109,7 +109,7 @@ where
         async move {
             let serializer = codec_factory.serializer();
             let service = serializer.serialize(service).map_err(ConnectError::SerializationError)?;
-    
+
             let (response_tx, response_rx) = oneshot::channel();
             connect_tx
                 .send(ConnectToRemoteServiceRequest { service, response_tx })
