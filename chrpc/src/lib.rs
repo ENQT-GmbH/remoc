@@ -4,7 +4,7 @@
 //!
 //! Use `[service]` macro to annotate your server trait.
 //! A server method and a client proxy will be generated.
-//! 
+//!
 
 use futures::sink::Sink;
 use futures::stream::{Stream, StreamExt};

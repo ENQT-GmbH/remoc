@@ -727,6 +727,7 @@ impl ServiceMethod {
 
         quote! {
             #method_header {
+                use ::futures::stream::StreamExt;
                 let service = #service_enum_ident :: #service_ident { #arg_list };
                 let (mut tx, mut rx): (::chmux::Sender<#receive_ty>, ::chmux::Receiver<#response_ty>) =
                     self.client.connect(service).await?;
