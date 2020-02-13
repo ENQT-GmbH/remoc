@@ -125,6 +125,7 @@ trait CloseableStream: Stream {
     async fn close(self: Pin<&mut Self>);
 }
 
+/// Receive end of a multiplexer channel.
 #[pin_project]
 pub struct Receiver<Item> {
     local_port: u32,

@@ -272,6 +272,11 @@ where
     TransportSinkError: Error + Send + 'static,
     TransportStreamError: Error + Send + 'static,
 {
+    /// Creates a new multiplexer.
+    /// 
+    /// See the `codecs` module for provided transport and content codecs.
+    /// 
+    /// After creation use the `run` method of the multiplexer to launch the dispatch task.
     pub fn new<Service>(
         cfg: &Cfg, content_codec: &ContentCodec, transport_codec: &TransportCodec, transport_tx: TransportSink,
         transport_rx: TransportStream,
@@ -378,6 +383,10 @@ where
         self.should_terminate()
     }
 
+    /// Runs the multiplexer dispatcher.
+    /// 
+    /// The dispatches terminates when the client, server and all channels have been dropped or
+    /// the transport is closed. 
     pub async fn run(mut self) -> Result<(), MultiplexError> {
         loop {
             match self.event_rx.next().await {
