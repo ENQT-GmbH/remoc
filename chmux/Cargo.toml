@@ -3,8 +3,8 @@ name = "chmux"
 version = "0.1.0"
 authors = ["ENQT GmbH <su@enqt.de>"]
 edition = "2018"
-description = "Multiplexes multiple channels over a single channel (or anything that implements Sink and Stream)."
-keywords = ["multiplex", "channel", "mux", "multiple", "channels"]
+description = "Multiplexes multiple channels over a single transport (anything that implements Sink and Stream)."
+keywords = ["multiplex", "transport", "mux", "multiple", "channels", "channel"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

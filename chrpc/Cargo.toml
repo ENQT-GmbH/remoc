@@ -1,0 +1,23 @@
+[package]
+name = "chrpc"
+version = "0.1.0"
+authors = ["ENQT GmbH <su@enqt.de>"]
+edition = "2018"
+description = "Streaming remote procedure calls (RPC) over chmux."
+keywords = ["rpc", "chmux"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+chmux = { path="../chmux" }
+chrpc_macro = { path="../chrpc_macro" }
+async-trait = "0.1.22"
+serde = {version="1.0", features=["derive"]}
+futures = "0.3"
+tokio = { version="0.2", features = ["rt-core", "macros", "sync"] }
+pin-project = "0.4"
+
+[dev-dependencies]
+tokio = { version="0.2.11", features = ["tcp", "uds", "io-util", "rt-core", "macros", "sync"] }
+tokio-util = { version="0.2", features = ["codec"] }
+env_logger = "0.7"
