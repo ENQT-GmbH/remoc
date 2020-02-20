@@ -28,6 +28,16 @@ pub enum ReceiveError {
     DeserializationError(Box<dyn Error + Send + 'static>),
 }
 
+impl ReceiveError {
+    /// Returns true, if error is due to multiplexer being terminated.
+    pub fn is_terminated(&self) -> bool {
+        match self {
+            Self::MultiplexerError => true,
+            Self::DeserializationError (_) => false
+        }
+    }
+}
+
 impl fmt::Display for ReceiveError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {

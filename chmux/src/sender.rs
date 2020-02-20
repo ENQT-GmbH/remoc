@@ -29,6 +29,17 @@ pub enum SendError {
     SerializationError(Box<dyn Error + Send + 'static>),
 }
 
+impl SendError {
+    /// Returns true, if error is due to channel being closed or multiplexer
+    /// being terminated.
+    pub fn is_terminated(&self) -> bool {
+        match self {
+            Self::Closed {..} | Self::MultiplexerError => true,
+            Self::SerializationError (_) => false
+        }
+    }
+}
+
 impl fmt::Display for SendError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
