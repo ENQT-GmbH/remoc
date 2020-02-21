@@ -34,8 +34,8 @@ impl SendError {
     /// being terminated.
     pub fn is_terminated(&self) -> bool {
         match self {
-            Self::Closed {..} | Self::MultiplexerError => true,
-            Self::SerializationError (_) => false
+            Self::Closed { .. } | Self::MultiplexerError => true,
+            Self::SerializationError(_) => false,
         }
     }
 }

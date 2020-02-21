@@ -131,6 +131,8 @@ impl Service {
                 #defs
 
                 #[doc="Binds an RPC server to a chmux server."]
+                #[allow(unused_mut)]
+                #[allow(unused_variables)]
                 async fn serve<Content, Codec>(
                     self,
                     mut server: ::chmux::Server<#enum_ident, Content, Codec>,
@@ -147,7 +149,7 @@ impl Service {
                         match server.next().await {
                             None => {
                                 let mut this_write = this.write().await;
-                                return Ok(this_write.take().unwrap());
+                                return Ok(this_write.take().expect("Internal chrpc error: Server instance already taken during exit."));
                             }
                             Some((Err(err), _)) => return Err(err),
                             Some((Ok(service), req)) => {
@@ -210,6 +212,8 @@ impl Service {
 
             #[doc(hidden)]
             #[async_trait::async_trait]
+            #[allow(unused_mut)]
+            #[allow(unused_variables)]
             impl<Content, Codec> #client_trait_ident for #client_inner_ident <Content, Codec>
             where
                 Content: Send + 'static,
@@ -577,11 +581,18 @@ impl ServiceMethod {
         let obj = match &self.self_ref {
             SelfRef::Ref => quote! {
                 let this_read = this.read().await;
-                let this_obj = this_read.as_ref().unwrap();
+                let this_obj = match this_read.as_ref() {
+                    Some(this_obj) => this_obj,
+                    None => {
+                        // This is a spawned task and server has already terminated.
+                        // Drop the request.
+                        return;
+                    }
+                };
             },
             SelfRef::MutRef => quote! {
                 let mut this_write = this.write().await;
-                let this_obj = this_write.as_mut().unwrap();
+                let this_obj = this_write.as_mut().expect("Internal chrpc error: Server instance missing for mutable reference.");
             },
         };
 
@@ -631,6 +642,7 @@ impl ServiceMethod {
 
         quote! {
             #service_enum_ident :: #enum_entry_ident { #entries } => {
+                //println!("Dispatching {} for this {:x}", stringify!(#ident), &this as *const _ as u64);
                 #task_spawn
             },
         }

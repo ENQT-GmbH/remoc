@@ -33,7 +33,7 @@ impl ReceiveError {
     pub fn is_terminated(&self) -> bool {
         match self {
             Self::MultiplexerError => true,
-            Self::DeserializationError (_) => false
+            Self::DeserializationError(_) => false,
         }
     }
 }
