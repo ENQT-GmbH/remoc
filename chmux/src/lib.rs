@@ -13,6 +13,7 @@ mod receiver;
 mod send_lock;
 mod sender;
 mod server;
+mod timeout;
 
 pub mod codecs;
 

@@ -8,7 +8,10 @@ use std::error::Error;
 use std::fmt;
 use std::marker::PhantomData;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::{
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
 
 use crate::client::{Client, ConnectToRemoteServiceRequest, ConnectToRemoteServiceResponse};
 use crate::codec::{CodecFactory, Serializer};
@@ -19,7 +22,10 @@ use crate::receive_buffer::{
 use crate::receiver::RawReceiver;
 use crate::send_lock::{channel_send_lock, ChannelSendLockAuthority, ChannelSendLockRequester};
 use crate::sender::RawSender;
-use crate::server::{RemoteConnectToServiceRequest, Server};
+use crate::{
+    server::{RemoteConnectToServiceRequest, Server},
+    timeout::Timeout,
+};
 
 /// Channel multiplexer error.
 #[derive(Debug)]
@@ -39,6 +45,8 @@ pub enum MultiplexError {
     SerializationError(Box<dyn Error + Send + 'static>),
     /// Error deserializing protocol message.
     DeserializationError(Box<dyn Error + Send + 'static>),
+    /// No messages where received over the configured connection timeout.
+    ConnectionTimeout,
 }
 
 impl From<NumberAllocatorExhaustedError> for MultiplexError {
@@ -57,6 +65,9 @@ impl fmt::Display for MultiplexError {
             Self::PortsExhausted => write!(f, "The maximum number of multiplex ports has been reached."),
             Self::SerializationError(err) => write!(f, "Error serializing multiplex message: {:?}", err),
             Self::DeserializationError(err) => write!(f, "Error deserializing multiplex message: {:?}", err),
+            Self::ConnectionTimeout => {
+                write!(f, "No messages where received over the configured connection timeout.")
+            }
         }
     }
 }
@@ -70,11 +81,21 @@ pub struct Cfg {
     pub channel_rx_queue_length: usize,
     /// Service request receive queue length.
     pub service_request_queue_length: usize,
+    /// Interval at which pings are send, when no data is sent.
+    pub ping_interval: Option<Duration>,
+    /// Time after which connection is closed when not data or ping
+    /// is received.
+    pub connection_timeout: Option<Duration>,
 }
 
 impl Default for Cfg {
     fn default() -> Cfg {
-        Cfg { channel_rx_queue_length: 100, service_request_queue_length: 10 }
+        Cfg {
+            channel_rx_queue_length: 100,
+            service_request_queue_length: 10,
+            ping_interval: Some(Duration::from_secs(10)),
+            connection_timeout: Some(Duration::from_secs(20)),
+        }
     }
 }
 
@@ -99,6 +120,8 @@ pub enum MultiplexMsg<Content> {
     Hangup { port: u32, gracefully: bool },
     /// Data for specified port.
     Data { port: u32, content: Content },
+    /// Ping to keep connection alive when there is no data to send.
+    Ping,
 }
 
 /// All necessary data to instantiate the user portion of a channel.
@@ -206,6 +229,10 @@ where
     ServerDropped,
     /// Connect to service with specified id on the remote side.
     ConnectToRemoteServiceRequest(ConnectToRemoteServiceRequest<Content>),
+    /// Send ping timeout triggered.
+    SendPingTimeout,
+    /// Connection timeout triggered.
+    ConnectionTimeout,
 }
 
 /// Channel multiplexer.
@@ -235,7 +262,17 @@ where
     all_clients_dropped: bool,
     /// User server has been dropped.
     server_dropped: bool,
+    /// Timeout that will fire when next ping must be send.
+    send_ping_timeout: Timeout,
+    /// Timeout that will fire when connection times out.
+    connection_timeout: Timeout,
+    /// Time when last message was transmitted.
+    last_tx_time: Instant,
+    /// Time when last message was received.
+    last_rx_time: Instant,
+    /// Phantom data.
     _transport_codec_ghost: PhantomData<TransportCodec>,
+    /// Phantom data.
     _transport_stream_ghost: PhantomData<TransportStream>,
 }
 
@@ -313,14 +350,28 @@ where
             })
             .chain(stream::once(async { LoopEvent::TransportFinished }));
 
+        // Create timeouts
+        let (send_ping_timeout, send_ping_timeout_rx) = Timeout::new();
+        let (connection_timeout, connection_timeout_rx) = Timeout::new();
+
         // Create event loop stream.
         let channel_rx = channel_rx.map(LoopEvent::ChannelMsg);
         let connect_rx = connect_rx
             .map(LoopEvent::ConnectToRemoteServiceRequest)
             .chain(stream::once(async { LoopEvent::ClientDropped }));
         let server_drop_rx = server_drop_rx.map(|()| LoopEvent::ServerDropped);
-        let event_rx =
-            stream::select(transport_rx, stream::select(channel_rx, stream::select(connect_rx, server_drop_rx)));
+        let send_ping_timeout_rx = send_ping_timeout_rx.map(|()| LoopEvent::SendPingTimeout);
+        let connection_timeout_rx = connection_timeout_rx.map(|()| LoopEvent::ConnectionTimeout);
+        let event_rx = stream::select(
+            transport_rx,
+            stream::select(
+                channel_rx,
+                stream::select(
+                    connect_rx,
+                    stream::select(server_drop_rx, stream::select(send_ping_timeout_rx, connection_timeout_rx)),
+                ),
+            ),
+        );
 
         // Create user objects.
         let multiplexer = Multiplexer {
@@ -335,6 +386,10 @@ where
             transport_serializer,
             all_clients_dropped: false,
             server_dropped: false,
+            send_ping_timeout,
+            connection_timeout,
+            last_tx_time: Instant::now(),
+            last_rx_time: Instant::now(),
             _transport_codec_ghost: PhantomData,
             _transport_stream_ghost: PhantomData,
         };
@@ -356,6 +411,7 @@ where
 
     async fn transport_send(&mut self, msg: MultiplexMsg<Content>) -> Result<(), MultiplexError> {
         let content = self.transport_serializer.serialize(msg).map_err(MultiplexError::SerializationError)?;
+        self.last_tx_time = Instant::now();
         self.transport_tx.send(content).await.map_err(|err| MultiplexError::TransportSinkError(Box::new(err)))
     }
 
@@ -388,8 +444,24 @@ where
     /// The dispatches terminates when the client, server and all channels have been dropped or
     /// the transport is closed.
     pub async fn run(mut self) -> Result<(), MultiplexError> {
+        // Initialize timers.
+        if let Some(ping_timeout) = self.cfg.ping_interval {
+            self.send_ping_timeout.set_duration(ping_timeout);
+        }
+        if let Some(connection_timeout) = self.cfg.connection_timeout {
+            self.connection_timeout.set_duration(connection_timeout);
+        }
+        self.last_tx_time = Instant::now();
+        self.last_rx_time = Instant::now();
+
+        // Process events.
         loop {
-            match self.event_rx.next().await {
+            let event = self.event_rx.next().await;
+            if let Some(LoopEvent::ReceiveMsg(_)) = &event {
+                self.last_rx_time = Instant::now();
+            }
+
+            match event {
                 // Send data from channel.
                 Some(LoopEvent::ChannelMsg(ChannelMsg::SendMsg { remote_port, content })) => {
                     self.transport_send(MultiplexMsg::Data { port: remote_port, content }).await?;
@@ -713,6 +785,11 @@ where
                     }
                 }
 
+                // Process ping message.
+                Some(LoopEvent::ReceiveMsg(Ok(MultiplexMsg::Ping))) => {
+                    // Nothing to do, because last_rx_time was already updated.
+                }
+
                 // Process receive error.
                 Some(LoopEvent::ReceiveMsg(Err(rx_err))) => {
                     return Err(rx_err);
@@ -753,6 +830,25 @@ where
                         break;
                     } else {
                         return Err(MultiplexError::TransportStreamClosed);
+                    }
+                }
+
+                // Send ping timeout triggered.
+                Some(LoopEvent::SendPingTimeout) => {
+                    let timeout = self.cfg.ping_interval.unwrap();
+                    if Instant::now() - self.last_tx_time > timeout {
+                        self.transport_send(MultiplexMsg::Ping).await?;
+                    }
+                    self.send_ping_timeout.set_instant(self.last_tx_time + timeout);
+                }
+
+                // Connection timeout triggered.
+                Some(LoopEvent::ConnectionTimeout) => {
+                    let timeout = self.cfg.connection_timeout.unwrap();
+                    if Instant::now() - self.last_rx_time > timeout {
+                        return Err(MultiplexError::ConnectionTimeout);
+                    } else {
+                        self.connection_timeout.set_instant(self.last_rx_time + timeout);
                     }
                 }
 
