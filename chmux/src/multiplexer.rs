@@ -9,7 +9,7 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::{
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, Weak},
     time::{Duration, Instant},
 };
 
@@ -93,8 +93,8 @@ impl Default for Cfg {
         Cfg {
             channel_rx_queue_length: 100,
             service_request_queue_length: 10,
-            ping_interval: Some(Duration::from_secs(10)),
-            connection_timeout: Some(Duration::from_secs(20)),
+            ping_interval: Some(Duration::from_secs(30)),
+            connection_timeout: Some(Duration::from_secs(60)),
         }
     }
 }
@@ -134,7 +134,7 @@ where
     pub tx: mpsc::Sender<ChannelMsg<Content>>,
     pub tx_lock: ChannelSendLockRequester,
     pub rx_buffer: ChannelReceiverBufferDequeuer<Content>,
-    pub hangup_notify: Arc<Mutex<Option<Vec<oneshot::Sender<()>>>>>,
+    pub hangup_notify: Weak<Mutex<Option<Vec<oneshot::Sender<()>>>>>,
 }
 
 impl<Content> ChannelData<Content>
@@ -598,7 +598,7 @@ where
                             tx: self.channel_tx.clone(),
                             tx_lock: tx_lock_requester,
                             rx_buffer: rx_buffer_dequeuer,
-                            hangup_notify,
+                            hangup_notify: Arc::downgrade(&hangup_notify),
                         },
                         &self.content_codec,
                     );
@@ -633,7 +633,7 @@ where
                             tx: self.channel_tx.clone(),
                             tx_lock: tx_lock_requester,
                             rx_buffer: rx_buffer_dequeuer,
-                            hangup_notify,
+                            hangup_notify: Arc::downgrade(&hangup_notify),
                         };
                         let (raw_sender, raw_receiver) = channel_data.instantiate();
                         let _ =
@@ -838,6 +838,7 @@ where
                     let timeout = self.cfg.ping_interval.unwrap();
                     if Instant::now() - self.last_tx_time > timeout {
                         self.transport_send(MultiplexMsg::Ping).await?;
+                    } else {
                     }
                     self.send_ping_timeout.set_instant(self.last_tx_time + timeout);
                 }
@@ -857,5 +858,15 @@ where
             }
         }
         Ok(())
+    }
+}
+
+impl<Content, ContentCodec, TransportType, TransportCodec, TransportSink, TransportStream> Drop
+    for Multiplexer<Content, ContentCodec, TransportType, TransportCodec, TransportSink, TransportStream>
+where
+    Content: Send,
+{
+    fn drop(&mut self) {
+        // Should be present to ensure correct drop order.
     }
 }

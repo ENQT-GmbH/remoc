@@ -615,7 +615,7 @@ impl ServiceMethod {
             quote! {
                 ::tokio::select! {
                     ret = ret_fut => { #reply },
-                    () = hangup => { }
+                    () = hangup => { },
                 }
             }
         } else {

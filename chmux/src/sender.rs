@@ -9,7 +9,7 @@ use serde::Serialize;
 use std::error::Error;
 use std::fmt;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 
 use crate::codec::Serializer;
 use crate::multiplexer::ChannelMsg;
@@ -75,7 +75,7 @@ where
     sink: Pin<Box<dyn Sink<Content, Error = SendError> + Send>>,
     #[pin]
     tx: mpsc::Sender<ChannelMsg<Content>>,
-    hangup_notify: Arc<Mutex<Option<Vec<oneshot::Sender<()>>>>>,
+    hangup_notify: Weak<Mutex<Option<Vec<oneshot::Sender<()>>>>>,
 }
 
 impl<Content> RawSender<Content>
@@ -84,7 +84,7 @@ where
 {
     pub(crate) fn new(
         local_port: u32, remote_port: u32, tx: mpsc::Sender<ChannelMsg<Content>>,
-        tx_lock: ChannelSendLockRequester, hangup_notify: Arc<Mutex<Option<Vec<oneshot::Sender<()>>>>>,
+        tx_lock: ChannelSendLockRequester, hangup_notify: Weak<Mutex<Option<Vec<oneshot::Sender<()>>>>>,
     ) -> RawSender<Content>
     where
         Content: 'static + Send,
@@ -165,7 +165,7 @@ pub struct Sender<Item> {
     remote_port: u32,
     #[pin]
     inner: Pin<Box<dyn Sink<Item, Error = SendError> + Send>>,
-    hangup_notify: Arc<Mutex<Option<Vec<oneshot::Sender<()>>>>>,
+    hangup_notify: Weak<Mutex<Option<Vec<oneshot::Sender<()>>>>>,
 }
 
 impl<Item> Sender<Item>
@@ -191,8 +191,10 @@ where
     /// It will resolve immediately when the remote endpoint has already hung up.
     pub fn hangup_notify(&self) -> HangupNotify {
         let (tx, rx) = oneshot::channel();
-        if let Some(notifiers) = self.hangup_notify.lock().unwrap().as_mut() {
-            notifiers.push(tx);
+        if let Some(hangup_notify) = self.hangup_notify.upgrade() {
+            if let Some(notifiers) = hangup_notify.lock().unwrap().as_mut() {
+                notifiers.push(tx);
+            }
         }
         HangupNotify { rx }
     }
