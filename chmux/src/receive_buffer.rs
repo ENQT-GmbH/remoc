@@ -1,12 +1,12 @@
 use async_thread::on_thread;
-use futures::channel::{mpsc, oneshot};
-use futures::lock::Mutex;
-use futures::sink::SinkExt;
-use std::collections::VecDeque;
-use std::sync::Arc;
+use futures::{
+    channel::{mpsc, oneshot},
+    lock::Mutex,
+    sink::SinkExt,
+};
+use std::{collections::VecDeque, sync::Arc};
 
-use crate::multiplexer::ChannelMsg;
-use crate::receiver::ReceiveError;
+use crate::{multiplexer::ChannelMsg, receiver::ReceiveError};
 
 /// Closed reason for channel receive buffer.
 enum ChannelReceiverBufferCloseReason {

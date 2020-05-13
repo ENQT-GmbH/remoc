@@ -1,28 +1,27 @@
-use futures::channel::{mpsc, oneshot};
-use futures::sink::{Sink, SinkExt};
-use futures::stream::{self, Stream, StreamExt};
-use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::error::Error;
-use std::fmt;
-use std::marker::PhantomData;
-use std::pin::Pin;
+use futures::{
+    channel::{mpsc, oneshot},
+    sink::{Sink, SinkExt},
+    stream::{self, Stream, StreamExt},
+};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
+    collections::HashMap,
+    error::Error,
+    fmt,
+    marker::PhantomData,
+    pin::Pin,
     sync::{Arc, Mutex, Weak},
     time::{Duration, Instant},
 };
 
-use crate::client::{Client, ConnectToRemoteServiceRequest, ConnectToRemoteServiceResponse};
-use crate::codec::{CodecFactory, Serializer};
-use crate::number_allocator::{NumberAllocator, NumberAllocatorExhaustedError};
-use crate::receive_buffer::{
-    ChannelReceiverBufferCfg, ChannelReceiverBufferDequeuer, ChannelReceiverBufferEnqueuer,
-};
-use crate::receiver::RawReceiver;
-use crate::send_lock::{channel_send_lock, ChannelSendLockAuthority, ChannelSendLockRequester};
-use crate::sender::RawSender;
 use crate::{
+    client::{Client, ConnectToRemoteServiceRequest, ConnectToRemoteServiceResponse},
+    codec::{CodecFactory, Serializer},
+    number_allocator::{NumberAllocator, NumberAllocatorExhaustedError},
+    receive_buffer::{ChannelReceiverBufferCfg, ChannelReceiverBufferDequeuer, ChannelReceiverBufferEnqueuer},
+    receiver::RawReceiver,
+    send_lock::{channel_send_lock, ChannelSendLockAuthority, ChannelSendLockRequester},
+    sender::RawSender,
     server::{RemoteConnectToServiceRequest, Server},
     timeout::Timeout,
 };

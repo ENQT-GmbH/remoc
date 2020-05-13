@@ -1,11 +1,9 @@
 //! JSON codec.
 
 use bytes::Bytes;
-use serde::de::DeserializeOwned;
-use serde::Serialize;
+use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{from_slice, from_value, to_value, to_vec, Value};
-use std::error::Error;
-use std::marker::PhantomData;
+use std::{error::Error, marker::PhantomData};
 
 use crate::codec::{CodecFactory, Deserializer, Serializer};
 

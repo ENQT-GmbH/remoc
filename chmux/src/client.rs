@@ -1,16 +1,16 @@
-use futures::channel::{mpsc, oneshot};
-use futures::sink::SinkExt;
-use futures::Future;
-use serde::de::DeserializeOwned;
-use serde::Serialize;
-use std::clone::Clone;
-use std::error::Error;
-use std::fmt;
-use std::marker::PhantomData;
+use futures::{
+    channel::{mpsc, oneshot},
+    sink::SinkExt,
+    Future,
+};
+use serde::{de::DeserializeOwned, Serialize};
+use std::{clone::Clone, error::Error, fmt, marker::PhantomData};
 
-use crate::codec::CodecFactory;
-use crate::receiver::{RawReceiver, Receiver};
-use crate::sender::{RawSender, Sender};
+use crate::{
+    codec::CodecFactory,
+    receiver::{RawReceiver, Receiver},
+    sender::{RawSender, Sender},
+};
 
 /// An error occured during connecting to a remote service.
 #[derive(Debug)]

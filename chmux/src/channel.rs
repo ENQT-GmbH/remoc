@@ -1,12 +1,13 @@
-use futures::sink::Sink;
-use futures::stream::Stream;
-use futures::task::{Context, Poll};
+use futures::{
+    sink::Sink,
+    stream::Stream,
+    task::{Context, Poll},
+};
 use pin_project::pin_project;
 use serde::{de::DeserializeOwned, Serialize};
 use std::pin::Pin;
 
-use crate::receiver::Receiver;
-use crate::sender::Sender;
+use crate::{receiver::Receiver, sender::Sender};
 
 /// A bi-directional communication channel, implementing `Sink` and `Stream`.
 ///

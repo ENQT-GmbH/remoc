@@ -1,10 +1,9 @@
-use futures::channel::mpsc;
-use futures::executor::block_on;
-use futures::sink::SinkExt;
-use std::sync::mpsc as sync_mpsc;
-use std::thread;
-use std::time::Duration;
-use std::time::Instant;
+use futures::{channel::mpsc, executor::block_on, sink::SinkExt};
+use std::{
+    sync::mpsc as sync_mpsc,
+    thread,
+    time::{Duration, Instant},
+};
 
 /// Sends timeout notifications over a channel.
 pub struct Timeout {

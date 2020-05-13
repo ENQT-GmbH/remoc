@@ -1,19 +1,20 @@
 use async_thread::on_thread;
-use futures::channel::mpsc;
-use futures::sink::SinkExt;
-use futures::stream::Stream;
-use futures::task::{Context, Poll};
+use futures::{
+    channel::mpsc,
+    sink::SinkExt,
+    stream::Stream,
+    task::{Context, Poll},
+};
 use pin_project::{pin_project, pinned_drop};
-use serde::de::DeserializeOwned;
-use serde::Serialize;
-use std::error::Error;
-use std::fmt;
-use std::pin::Pin;
+use serde::{de::DeserializeOwned, Serialize};
+use std::{error::Error, fmt, pin::Pin};
 
-use crate::codec::{CodecFactory, Deserializer};
-use crate::multiplexer::{ChannelData, ChannelMsg};
-use crate::receiver::Receiver;
-use crate::sender::Sender;
+use crate::{
+    codec::{CodecFactory, Deserializer},
+    multiplexer::{ChannelData, ChannelMsg},
+    receiver::Receiver,
+    sender::Sender,
+};
 
 /// An multiplexer server error.
 #[derive(Debug)]

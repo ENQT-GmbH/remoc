@@ -6,16 +6,13 @@
 //! A server method and a client proxy will be generated.
 //!
 
-use futures::sink::Sink;
-use futures::stream::{Stream, StreamExt};
-use futures::task::Context;
-use futures::task::Poll;
-use pin_project::pin_project;
-use pin_project::pinned_drop;
-use std::error::Error;
-use std::fmt;
-use std::marker::PhantomData;
-use std::pin::Pin;
+use futures::{
+    sink::Sink,
+    stream::{Stream, StreamExt},
+    task::{Context, Poll},
+};
+use pin_project::{pin_project, pinned_drop};
+use std::{error::Error, fmt, marker::PhantomData, pin::Pin};
 
 use chmux::{ConnectError, ReceiveError, SendError};
 use serde::{de::DeserializeOwned, Serialize};

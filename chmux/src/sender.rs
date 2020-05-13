@@ -1,19 +1,22 @@
 use async_thread::on_thread;
-use futures::channel::{mpsc, oneshot};
-use futures::sink::{Sink, SinkExt};
-use futures::task::{Context, Poll};
-use futures::{ready, Future};
+use futures::{
+    channel::{mpsc, oneshot},
+    ready,
+    sink::{Sink, SinkExt},
+    task::{Context, Poll},
+    Future,
+};
 use log::trace;
 use pin_project::{pin_project, pinned_drop};
 use serde::Serialize;
-use std::error::Error;
-use std::fmt;
-use std::pin::Pin;
-use std::sync::{Arc, Mutex, Weak};
+use std::{
+    error::Error,
+    fmt,
+    pin::Pin,
+    sync::{Arc, Mutex, Weak},
+};
 
-use crate::codec::Serializer;
-use crate::multiplexer::ChannelMsg;
-use crate::send_lock::ChannelSendLockRequester;
+use crate::{codec::Serializer, multiplexer::ChannelMsg, send_lock::ChannelSendLockRequester};
 
 /// An error occured during sending of a message.
 #[derive(Debug)]

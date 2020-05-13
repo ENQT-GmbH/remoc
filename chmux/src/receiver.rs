@@ -1,23 +1,20 @@
 use async_thread::on_thread;
 use async_trait::async_trait;
-use futures::channel::mpsc;
-use futures::future;
-use futures::lock::Mutex;
-use futures::ready;
-use futures::sink::SinkExt;
-use futures::stream::{self, Stream, StreamExt};
-use futures::task::{Context, Poll};
+use futures::{
+    channel::mpsc,
+    future,
+    lock::Mutex,
+    ready,
+    sink::SinkExt,
+    stream::{self, Stream, StreamExt},
+    task::{Context, Poll},
+};
 use log::trace;
 use pin_project::{pin_project, pinned_drop};
 use serde::de::DeserializeOwned;
-use std::error::Error;
-use std::fmt;
-use std::pin::Pin;
-use std::sync::Arc;
+use std::{error::Error, fmt, pin::Pin, sync::Arc};
 
-use crate::codec::Deserializer;
-use crate::multiplexer::ChannelMsg;
-use crate::receive_buffer::ChannelReceiverBufferDequeuer;
+use crate::{codec::Deserializer, multiplexer::ChannelMsg, receive_buffer::ChannelReceiverBufferDequeuer};
 
 /// An error occured during receiving a message.
 #[derive(Debug)]

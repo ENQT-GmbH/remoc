@@ -1,17 +1,18 @@
 #[cfg(unix)]
 mod unix {
-    use futures::sink::SinkExt;
-    use futures::stream::StreamExt;
-    use std::fs;
-    use std::time::Duration;
-    use tokio::io::split;
-    use tokio::net::{UnixListener, UnixStream};
-    use tokio::runtime::Runtime;
-    use tokio_util::codec::length_delimited::LengthDelimitedCodec;
-    use tokio_util::codec::{FramedRead, FramedWrite};
+    use futures::{sink::SinkExt, stream::StreamExt};
+    use std::{fs, time::Duration};
+    use tokio::{
+        io::split,
+        net::{UnixListener, UnixStream},
+        runtime::Runtime,
+    };
+    use tokio_util::codec::{length_delimited::LengthDelimitedCodec, FramedRead, FramedWrite};
 
-    use chmux;
-    use chmux::codecs::json::{JsonContentCodec, JsonTransportCodec};
+    use chmux::{
+        self,
+        codecs::json::{JsonContentCodec, JsonTransportCodec},
+    };
 
     fn uds_server() {
         let mut rt = Runtime::new().unwrap();

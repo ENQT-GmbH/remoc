@@ -1,6 +1,5 @@
 use async_thread::on_thread;
-use futures::channel::oneshot;
-use futures::lock::Mutex;
+use futures::{channel::oneshot, lock::Mutex};
 use std::sync::Arc;
 
 use crate::sender::SendError;

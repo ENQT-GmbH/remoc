@@ -1,11 +1,10 @@
-use futures::channel::mpsc;
-use futures::executor;
-use futures::prelude::*;
-use futures::stream::StreamExt;
+use futures::{channel::mpsc, executor, prelude::*, stream::StreamExt};
 use std::io;
 
-use chmux;
-use chmux::codecs::json::{JsonContentCodec, JsonTransportCodec};
+use chmux::{
+    self,
+    codecs::json::{JsonContentCodec, JsonTransportCodec},
+};
 
 #[test]
 fn raw_test() {

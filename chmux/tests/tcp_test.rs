@@ -1,15 +1,16 @@
-use futures::sink::SinkExt;
-use futures::stream::StreamExt;
-use std::net::Ipv4Addr;
-use std::time::Duration;
-use tokio::io::split;
-use tokio::net::{TcpListener, TcpStream};
-use tokio::runtime::Runtime;
-use tokio_util::codec::length_delimited::LengthDelimitedCodec;
-use tokio_util::codec::{FramedRead, FramedWrite};
+use futures::{sink::SinkExt, stream::StreamExt};
+use std::{net::Ipv4Addr, time::Duration};
+use tokio::{
+    io::split,
+    net::{TcpListener, TcpStream},
+    runtime::Runtime,
+};
+use tokio_util::codec::{length_delimited::LengthDelimitedCodec, FramedRead, FramedWrite};
 
-use chmux;
-use chmux::codecs::json::{JsonContentCodec, JsonTransportCodec};
+use chmux::{
+    self,
+    codecs::json::{JsonContentCodec, JsonTransportCodec},
+};
 
 fn tcp_server() {
     let mut rt = Runtime::new().unwrap();
