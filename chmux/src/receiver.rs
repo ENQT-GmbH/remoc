@@ -1,4 +1,3 @@
-use async_thread::on_thread;
 use async_trait::async_trait;
 use futures::{
     channel::mpsc,
@@ -9,7 +8,6 @@ use futures::{
     stream::{self, Stream, StreamExt},
     task::{Context, Poll},
 };
-use log::trace;
 use pin_project::{pin_project, pinned_drop};
 use serde::de::DeserializeOwned;
 use std::{error::Error, fmt, pin::Pin, sync::Arc};
@@ -87,10 +85,7 @@ where
     /// allowing in-flight messages to be received.
     pub async fn close(&mut self) {
         if !self.closed {
-            let _ = self
-                .drop_tx
-                .send(ChannelMsg::ReceiverClosed { local_port: self.local_port, gracefully: true })
-                .await;
+            let _ = self.drop_tx.send(ChannelMsg::ReceiverClosed { local_port: self.local_port }).await;
             self.closed = true;
         }
     }
@@ -113,17 +108,7 @@ where
     Content: Send,
 {
     fn drop(self: Pin<&mut Self>) {
-        trace!("RawReceiver dropping...");
-        let mut this = self.project();
-        if !*this.closed {
-            on_thread(async {
-                let _ = this
-                    .drop_tx
-                    .send(ChannelMsg::ReceiverClosed { local_port: *this.local_port, gracefully: false })
-                    .await;
-            });
-        }
-        trace!("RawReceiver dropped.");
+        // required for correct drop order
     }
 }
 

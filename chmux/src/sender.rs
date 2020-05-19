@@ -1,4 +1,3 @@
-use async_thread::on_thread;
 use futures::{
     channel::{mpsc, oneshot},
     ready,
@@ -6,7 +5,6 @@ use futures::{
     task::{Context, Poll},
     Future,
 };
-use log::trace;
 use pin_project::{pin_project, pinned_drop};
 use serde::Serialize;
 use std::{
@@ -93,10 +91,11 @@ where
         Content: 'static + Send,
     {
         let control_tx = tx.clone();
-        let tx_lock = Arc::new(tx_lock);
+        let tx_lock = Arc::new(futures::lock::Mutex::new(tx_lock));
         let adapted_tx = tx.with(move |item: Content| {
             let tx_lock = tx_lock.clone();
             async move {
+                let mut tx_lock = tx_lock.lock().await;
                 tx_lock.request().await?;
                 let msg = ChannelMsg::SendMsg { remote_port, content: item };
                 Ok::<ChannelMsg<Content>, SendError>(msg)
@@ -132,12 +131,7 @@ where
     Content: Send,
 {
     fn drop(self: Pin<&mut Self>) {
-        trace!("RawSender dropping...");
-        let mut this = self.project();
-        on_thread(async move {
-            let _ = this.tx.send(ChannelMsg::SenderDropped { local_port: *this.local_port }).await;
-        });
-        trace!("RawSender dropped.");
+        // required for correct drop order
     }
 }
 

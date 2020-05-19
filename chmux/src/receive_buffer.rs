@@ -1,10 +1,10 @@
 use futures::{
     channel::{mpsc, oneshot},
+    future::FutureExt,
     lock::Mutex,
+    select,
     sink::SinkExt,
     stream::StreamExt,
-    future::FutureExt,
-    select,
 };
 use std::{collections::VecDeque, sync::Arc};
 
@@ -54,7 +54,7 @@ where
             // Drop item when dequeuer has been dropped.
             if self.dequeuer_dropped {
                 return false;
-            }            
+            }
 
             let mut state = self.state.lock().await;
             if state.buffer.len() >= self.block_length {
@@ -109,7 +109,7 @@ where
     local_port: u32,
     enqueuer_dropped_rx: mpsc::Receiver<()>,
     enqueuer_dropped: bool,
-    _dequeuer_dropped_tx: mpsc::Sender<()>,    
+    _dequeuer_dropped_tx: mpsc::Sender<()>,
 }
 
 impl<Content> ChannelReceiverBufferDequeuer<Content>
@@ -212,7 +212,7 @@ where
             block_length: self.block_length,
             dequeuer_dropped: false,
             dequeuer_dropped_rx,
-            _enqueuer_dropped_tx: enqueuer_dropped_tx
+            _enqueuer_dropped_tx: enqueuer_dropped_tx,
         };
         let dequeuer = ChannelReceiverBufferDequeuer {
             state: state.clone(),
@@ -221,7 +221,7 @@ where
             local_port: self.local_port,
             enqueuer_dropped: false,
             enqueuer_dropped_rx,
-            _dequeuer_dropped_tx: dequeuer_dropped_tx
+            _dequeuer_dropped_tx: dequeuer_dropped_tx,
         };
         (enqueuer, dequeuer)
     }

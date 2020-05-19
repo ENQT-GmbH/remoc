@@ -25,6 +25,7 @@ use crate::{
     server::{RemoteConnectToServiceRequest, Server},
     timeout::Timeout,
 };
+use stream::SelectAll;
 
 /// Channel multiplexer error.
 #[derive(Debug)]
@@ -33,7 +34,7 @@ pub enum MultiplexError {
     TransportSinkError(Box<dyn Error + Send + 'static>),
     /// An error was encountered while receiving data from the transport stream.
     TransportStreamError(Box<dyn Error + Send + 'static>),
-    /// The transport stream was close while multiplex channels were active or the
+    /// The transport stream was closed while multiplex channels were active or the
     /// multiplex client was not dropped.
     TransportStreamClosed,
     /// A multiplex protocol error occured.
@@ -121,6 +122,8 @@ pub enum MultiplexMsg<Content> {
     Data { port: u32, content: Content },
     /// Ping to keep connection alive when there is no data to send.
     Ping,
+    /// All clients have been dropped, therefore no more service requests will occur.
+    AllClientsDropped,
 }
 
 /// All necessary data to instantiate the user portion of a channel.
@@ -130,7 +133,8 @@ where
 {
     pub local_port: u32,
     pub remote_port: u32,
-    pub tx: mpsc::Sender<ChannelMsg<Content>>,
+    pub sender_tx: mpsc::Sender<ChannelMsg<Content>>,
+    pub receiver_tx: mpsc::Sender<ChannelMsg<Content>>,
     pub tx_lock: ChannelSendLockRequester,
     pub rx_buffer: ChannelReceiverBufferDequeuer<Content>,
     pub hangup_notify: Weak<Mutex<Option<Vec<oneshot::Sender<()>>>>>,
@@ -141,10 +145,11 @@ where
     Content: 'static + Send,
 {
     pub fn instantiate(self) -> (RawSender<Content>, RawReceiver<Content>) {
-        let ChannelData { local_port, remote_port, tx, tx_lock, rx_buffer, hangup_notify } = self;
+        let ChannelData { local_port, remote_port, sender_tx, receiver_tx, tx_lock, rx_buffer, hangup_notify } =
+            self;
 
-        let sender = RawSender::new(local_port, remote_port, tx.clone(), tx_lock, hangup_notify);
-        let receiver = RawReceiver::new(local_port, remote_port, tx, rx_buffer);
+        let sender = RawSender::new(local_port, remote_port, sender_tx, tx_lock, hangup_notify);
+        let receiver = RawReceiver::new(local_port, remote_port, receiver_tx, rx_buffer);
         (sender, receiver)
     }
 }
@@ -186,8 +191,10 @@ where
         hangup_notify: Arc<Mutex<Option<Vec<oneshot::Sender<()>>>>>,
         /// Pause request has been sent to remote endpoint.
         rx_paused: bool,
-        /// Receiver has been dropped and Hangup message has been sent to remote endpoint.
+        /// Receiver has been closed and Hangup message has been sent to remote endpoint.
         rx_hangedup: bool,
+        /// Receiver has been dropped and Hangup message has been sent to remote endpoint.
+        rx_dropped: bool,
         /// Sender has been dropped, thus no more data can be send from this port to remote endpoint.
         tx_finished: bool,
         /// Finished message has been acknowledged by remote endpoint.
@@ -202,13 +209,13 @@ pub enum ChannelMsg<Content> {
     /// Sender has been dropped.
     SenderDropped { local_port: u32 },
     /// Receiver has been dropped.
-    ReceiverClosed { local_port: u32, gracefully: bool },
+    ReceiverDropped { local_port: u32 },
+    /// Receiver has been closed, i.e. remote endpoint should stop sending messages on this channel.
+    ReceiverClosed { local_port: u32 },
     /// The channel receive buffer has reached the resume length from above.
     ReceiveBufferReachedResumeLength { local_port: u32 },
     /// Connection has been accepted.
     Accepted { local_port: u32 },
-    /// Connection has been rejected.
-    Rejected { local_port: u32 },
 }
 
 /// Multiplexer event loop event.
@@ -246,15 +253,15 @@ where
     /// Transport sink.
     transport_tx: Pin<Box<TransportSink>>,
     /// Channel to send server connection requests to.
-    serve_tx: mpsc::Sender<(Content, RemoteConnectToServiceRequest<Content, ContentCodec>)>,
+    serve_tx: Option<mpsc::Sender<(Content, RemoteConnectToServiceRequest<Content, ContentCodec>)>>,
     /// Open local ports.
     ports: HashMap<u32, PortState<Content>>,
     /// Port number allocator.
     port_pool: NumberAllocator,
     /// Channel to send requests from user parts of sender/receiver to event loop.
-    channel_tx: mpsc::Sender<ChannelMsg<Content>>,
+    //channel_tx: mpsc::Sender<ChannelMsg<Content>>,
     /// Receiver of event loop.
-    event_rx: Pin<Box<dyn Stream<Item = LoopEvent<Content>> + Send>>,
+    event_rx: SelectAll<Pin<Box<dyn Stream<Item = LoopEvent<Content>> + Send>>>,
     /// Serializer applied for transport.
     transport_serializer: Box<dyn Serializer<MultiplexMsg<Content>, TransportType>>,
     /// All user clients have been dropped.
@@ -333,10 +340,9 @@ where
         let transport_deserializer = transport_codec.deserializer();
 
         // Create internal communication channels.
-        let (channel_tx, channel_rx) = mpsc::channel(INTERNAL_CHANNEL_BUFFER);
         let (connect_tx, connect_rx) = mpsc::channel(INTERNAL_CHANNEL_BUFFER);
         let (serve_tx, serve_rx) = mpsc::channel(cfg.service_request_queue_length);
-        let (server_drop_tx, server_drop_rx) = mpsc::channel(INTERNAL_CHANNEL_BUFFER);
+        let (server_drop_tx, server_drop_rx) = mpsc::channel(1);
 
         // Decode received messages.
         let transport_rx = transport_rx
@@ -354,34 +360,29 @@ where
         let (connection_timeout, connection_timeout_rx) = Timeout::new();
 
         // Create event loop stream.
-        let channel_rx = channel_rx.map(LoopEvent::ChannelMsg);
         let connect_rx = connect_rx
             .map(LoopEvent::ConnectToRemoteServiceRequest)
             .chain(stream::once(async { LoopEvent::ClientDropped }));
-        let server_drop_rx = server_drop_rx.map(|()| LoopEvent::ServerDropped);
+        let server_drop_rx = server_drop_rx.chain(stream::once(async { () })).map(|()| LoopEvent::ServerDropped);
         let send_ping_timeout_rx = send_ping_timeout_rx.map(|()| LoopEvent::SendPingTimeout);
         let connection_timeout_rx = connection_timeout_rx.map(|()| LoopEvent::ConnectionTimeout);
-        let event_rx = stream::select(
-            transport_rx,
-            stream::select(
-                channel_rx,
-                stream::select(
-                    connect_rx,
-                    stream::select(server_drop_rx, stream::select(send_ping_timeout_rx, connection_timeout_rx)),
-                ),
-            ),
-        );
+        let event_rx = stream::select_all(vec![
+            transport_rx.boxed(),
+            connect_rx.boxed(),
+            server_drop_rx.boxed(),
+            send_ping_timeout_rx.boxed(),
+            connection_timeout_rx.boxed(),
+        ]);
 
         // Create user objects.
         let multiplexer = Multiplexer {
             cfg: cfg.clone(),
             content_codec: content_codec.clone(),
             transport_tx: Box::pin(transport_tx),
-            serve_tx,
+            serve_tx: Some(serve_tx),
             ports: HashMap::new(),
             port_pool: NumberAllocator::new(),
-            channel_tx,
-            event_rx: Box::pin(event_rx),
+            event_rx,
             transport_serializer,
             all_clients_dropped: false,
             server_dropped: false,
@@ -398,12 +399,14 @@ where
         (multiplexer, client, server)
     }
 
-    fn make_channel_receiver_buffer_cfg(&self, local_port: u32) -> ChannelReceiverBufferCfg<Content> {
+    fn make_channel_receiver_buffer_cfg(
+        &self, local_port: u32, channel_tx: mpsc::Sender<ChannelMsg<Content>>,
+    ) -> ChannelReceiverBufferCfg<Content> {
         ChannelReceiverBufferCfg {
             resume_length: self.cfg.channel_rx_queue_length / 2,
             pause_length: self.cfg.channel_rx_queue_length,
             block_length: self.cfg.channel_rx_queue_length * 2,
-            resume_notify_tx: self.channel_tx.clone(),
+            resume_notify_tx: channel_tx,
             local_port,
         }
     }
@@ -415,20 +418,20 @@ where
     }
 
     fn should_terminate(&self) -> bool {
-        self.all_clients_dropped && self.server_dropped && self.ports.is_empty()
+        self.all_clients_dropped && self.server_dropped && self.ports.is_empty() && self.serve_tx.is_none()
     }
 
     fn maybe_free_port(&mut self, local_port: u32) -> bool {
         let free = if let Some(PortState::Connected {
             tx_lock,
             rx_buffer,
-            rx_hangedup,
+            rx_dropped,
             tx_finished,
             tx_finished_ack,
             ..
         }) = self.ports.get(&local_port)
         {
-            tx_lock.is_none() && rx_buffer.is_none() && *rx_hangedup && *tx_finished && *tx_finished_ack
+            tx_lock.is_none() && rx_buffer.is_none() && *rx_dropped && *tx_finished && *tx_finished_ack
         } else {
             panic!("maybe_free_port called for port {} not in connected state.", &local_port);
         };
@@ -468,39 +471,78 @@ where
 
                 // Local channel sender has been dropped.
                 Some(LoopEvent::ChannelMsg(ChannelMsg::SenderDropped { local_port })) => {
-                    if let Some(PortState::Connected { remote_port, tx_finished, .. }) =
-                        self.ports.get_mut(&local_port)
-                    {
-                        if *tx_finished {
-                            panic!("ChannelMsg SenderDropped more than once for port {}.", &local_port);
+                    match self.ports.get_mut(&local_port) {
+                        Some(PortState::Connected { remote_port, tx_finished, .. }) => {
+                            if *tx_finished {
+                                panic!("ChannelMsg SenderDropped more than once for port {}.", &local_port);
+                            }
+                            *tx_finished = true;
+                            let msg = MultiplexMsg::Finish { port: *remote_port };
+                            self.transport_send(msg).await?;
+                            if self.maybe_free_port(local_port) {
+                                break;
+                            }
                         }
-                        *tx_finished = true;
-                        let msg = MultiplexMsg::Finish { port: *remote_port };
-                        self.transport_send(msg).await?;
-                        if self.maybe_free_port(local_port) {
-                            break;
+                        Some(PortState::RemoteRequestingLocalService { remote_port, .. }) => {
+                            let remote_port = *remote_port;
+                            self.port_pool.release(local_port);
+                            self.transport_send(MultiplexMsg::Rejected { client_port: remote_port }).await?;
+                            self.ports.remove(&local_port);
+                            if self.should_terminate() {
+                                break;
+                            }
                         }
-                    } else {
-                        panic!("ChannelMsg SenderDropped for non-connected port {}.", &local_port);
+                        _ => {
+                            panic!("ChannelMsg SenderDropped for port {} in invalid state.", &local_port);
+                        }
                     }
                 }
 
                 // Local channel receiver has been closed.
-                Some(LoopEvent::ChannelMsg(ChannelMsg::ReceiverClosed { local_port, gracefully })) => {
-                    if let Some(PortState::Connected { remote_port, rx_hangedup, .. }) =
+                Some(LoopEvent::ChannelMsg(ChannelMsg::ReceiverClosed { local_port })) => {
+                    if let Some(PortState::Connected { remote_port, rx_hangedup, rx_dropped, .. }) =
                         self.ports.get_mut(&local_port)
                     {
-                        if *rx_hangedup {
-                            panic!("ChannelMsg ReceiverClosed more than once for port {}.", &local_port);
+                        if *rx_hangedup || *rx_dropped {
+                            panic!(
+                                "ChannelMsg ReceiverClosed or ReceiverDropped more than once for port {}.",
+                                &local_port
+                            );
                         }
                         *rx_hangedup = true;
-                        let msg = MultiplexMsg::Hangup { port: *remote_port, gracefully };
+                        let msg = MultiplexMsg::Hangup { port: *remote_port, gracefully: true };
                         self.transport_send(msg).await?;
-                        if self.maybe_free_port(local_port) {
-                            break;
-                        }
                     } else {
                         panic!("ChannelMsg ReceiverClosed for non-connected port {}.", &local_port);
+                    }
+                }
+
+                // Local channel receiver has been dropped.
+                Some(LoopEvent::ChannelMsg(ChannelMsg::ReceiverDropped { local_port })) => {
+                    match self.ports.get_mut(&local_port) {
+                        Some(PortState::Connected { remote_port, rx_hangedup, rx_dropped, .. }) => {
+                            if *rx_dropped {
+                                panic!("ChannelMsg ReceiverDropped more than once for port {}.", &local_port);
+                            }
+                            *rx_dropped = true;
+                            if !*rx_hangedup {
+                                *rx_hangedup = true;
+                                let msg = MultiplexMsg::Hangup { port: *remote_port, gracefully: false };
+                                self.transport_send(msg).await?;
+                            }
+                            if self.maybe_free_port(local_port) {
+                                break;
+                            }
+                        }
+                        Some(PortState::RemoteRequestingLocalService { .. }) => {
+                            // handled by ChannelMsg::SenderDropped
+                        }
+                        None => {
+                            // port has already been cleaned up by ChannelMsg::SenderDropped
+                        }
+                        _ => {
+                            panic!("ChannelMsg ReceiverDropped for port {} in invalid state.", &local_port);
+                        }
                     }
                 }
 
@@ -548,6 +590,7 @@ where
                                 hangup_notify,
                                 rx_paused: false,
                                 rx_hangedup: false,
+                                rx_dropped: false,
                                 tx_finished: false,
                                 tx_finished_ack: false,
                             },
@@ -562,24 +605,27 @@ where
                     }
                 }
 
-                // Remote service request was rejected by local.
-                Some(LoopEvent::ChannelMsg(ChannelMsg::Rejected { local_port })) => {
-                    if let Some(PortState::RemoteRequestingLocalService { remote_port, .. }) =
-                        self.ports.remove(&local_port)
-                    {
-                        self.port_pool.release(local_port);
-                        self.transport_send(MultiplexMsg::Rejected { client_port: remote_port }).await?;
-                    } else {
-                        panic!("ChannelMsg Rejected for non-requesting port {}.", &local_port);
-                    }
-                }
-
                 // Process request service message from remote endpoint.
                 Some(LoopEvent::ReceiveMsg(Ok(MultiplexMsg::RequestService { service, client_port }))) => {
                     let server_port = self.port_pool.allocate()?;
+
+                    let (sender_tx, sender_rx) = mpsc::channel(INTERNAL_CHANNEL_BUFFER);
+                    let sender_events = sender_rx
+                        .chain(stream::once(async move { ChannelMsg::SenderDropped { local_port: server_port } }))
+                        .map(LoopEvent::ChannelMsg);
+                    self.event_rx.push(sender_events.boxed());
+
+                    let (receiver_tx, receiver_rx) = mpsc::channel(INTERNAL_CHANNEL_BUFFER);
+                    let receiver_events = receiver_rx
+                        .chain(stream::once(
+                            async move { ChannelMsg::ReceiverDropped { local_port: server_port } },
+                        ))
+                        .map(LoopEvent::ChannelMsg);
+                    self.event_rx.push(receiver_events.boxed());
+
                     let (tx_lock_authority, tx_lock_requester) = channel_send_lock();
                     let (rx_buffer_enqueuer, rx_buffer_dequeuer) =
-                        self.make_channel_receiver_buffer_cfg(server_port).instantiate();
+                        self.make_channel_receiver_buffer_cfg(server_port, receiver_tx.clone()).instantiate();
                     let hangup_notify = Arc::new(Mutex::new(Some(Vec::new())));
                     self.ports.insert(
                         server_port,
@@ -590,18 +636,23 @@ where
                             hangup_notify: hangup_notify.clone(),
                         },
                     );
+
                     let req = RemoteConnectToServiceRequest::new(
                         ChannelData {
                             local_port: server_port,
                             remote_port: client_port,
-                            tx: self.channel_tx.clone(),
+                            sender_tx,
+                            receiver_tx,
                             tx_lock: tx_lock_requester,
                             rx_buffer: rx_buffer_dequeuer,
                             hangup_notify: Arc::downgrade(&hangup_notify),
                         },
                         &self.content_codec,
                     );
-                    let _ = self.serve_tx.send((service, req)).await;
+
+                    if let Some(serve_tx) = self.serve_tx.as_mut() {
+                        let _ = serve_tx.send((service, req)).await;
+                    }
                 }
 
                 // Process accepted service request message from remote endpoint.
@@ -609,9 +660,25 @@ where
                     if let Some(PortState::LocalRequestingRemoteService { response_tx }) =
                         self.ports.remove(&client_port)
                     {
+                        let (sender_tx, sender_rx) = mpsc::channel(INTERNAL_CHANNEL_BUFFER);
+                        let sender_events = sender_rx
+                            .chain(stream::once(
+                                async move { ChannelMsg::SenderDropped { local_port: client_port } },
+                            ))
+                            .map(LoopEvent::ChannelMsg);
+                        self.event_rx.push(sender_events.boxed());
+
+                        let (receiver_tx, receiver_rx) = mpsc::channel(INTERNAL_CHANNEL_BUFFER);
+                        let receiver_events = receiver_rx
+                            .chain(stream::once(async move {
+                                ChannelMsg::ReceiverDropped { local_port: client_port }
+                            }))
+                            .map(LoopEvent::ChannelMsg);
+                        self.event_rx.push(receiver_events.boxed());
+
                         let (tx_lock_authority, tx_lock_requester) = channel_send_lock();
                         let (rx_buffer_enqueuer, rx_buffer_dequeuer) =
-                            self.make_channel_receiver_buffer_cfg(client_port).instantiate();
+                            self.make_channel_receiver_buffer_cfg(client_port, receiver_tx.clone()).instantiate();
                         let hangup_notify = Arc::new(Mutex::new(Some(Vec::new())));
                         self.ports.insert(
                             client_port,
@@ -622,14 +689,17 @@ where
                                 hangup_notify: hangup_notify.clone(),
                                 rx_paused: false,
                                 rx_hangedup: false,
+                                rx_dropped: false,
                                 tx_finished: false,
                                 tx_finished_ack: false,
                             },
                         );
+
                         let channel_data = ChannelData {
                             local_port: client_port,
                             remote_port: server_port,
-                            tx: self.channel_tx.clone(),
+                            sender_tx,
+                            receiver_tx,
                             tx_lock: tx_lock_requester,
                             rx_buffer: rx_buffer_dequeuer,
                             hangup_notify: Arc::downgrade(&hangup_notify),
@@ -789,6 +859,19 @@ where
                     // Nothing to do, because last_rx_time was already updated.
                 }
 
+                // Process all clients dropped.
+                Some(LoopEvent::ReceiveMsg(Ok(MultiplexMsg::AllClientsDropped))) => {
+                    if self.serve_tx.is_none() {
+                        return Err(MultiplexError::ProtocolError(format!(
+                            "Received all clients dropped notification more than once."
+                        )));
+                    }
+                    self.serve_tx = None;
+                    if self.should_terminate() {
+                        break;
+                    }
+                }
+
                 // Process receive error.
                 Some(LoopEvent::ReceiveMsg(Err(rx_err))) => {
                     return Err(rx_err);
@@ -807,6 +890,7 @@ where
                 // Process that client has been dropped.
                 Some(LoopEvent::ClientDropped) => {
                     self.all_clients_dropped = true;
+                    self.transport_send(MultiplexMsg::AllClientsDropped).await?;
                     if self.should_terminate() {
                         break;
                     }

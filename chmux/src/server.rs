@@ -1,4 +1,3 @@
-use async_thread::on_thread;
 use futures::{
     channel::mpsc,
     sink::SinkExt,
@@ -76,7 +75,7 @@ where
     {
         let mut channel_data = self.channel_data.take().unwrap();
         // If multiplexer has terminated, sender and receiver will return errors.
-        let _ = channel_data.tx.send(ChannelMsg::Accepted { local_port: channel_data.local_port }).await;
+        let _ = channel_data.sender_tx.send(ChannelMsg::Accepted { local_port: channel_data.local_port }).await;
         let (raw_sender, raw_receiver) = channel_data.instantiate();
 
         let serializer = self.codec_factory.serializer();
@@ -92,11 +91,7 @@ where
     Content: Send,
 {
     fn drop(&mut self) {
-        if let Some(mut channel_data) = self.channel_data.take() {
-            on_thread(async {
-                let _ = channel_data.tx.send(ChannelMsg::Rejected { local_port: channel_data.local_port }).await;
-            });
-        }
+        // required for correct drop order
     }
 }
 
@@ -111,7 +106,7 @@ where
 {
     #[pin]
     pub(crate) serve_rx: mpsc::Receiver<(Content, RemoteConnectToServiceRequest<Content, Codec>)>,
-    pub(crate) drop_tx: Option<mpsc::Sender<()>>,
+    pub(crate) drop_tx: mpsc::Sender<()>,
     deserializer: Box<dyn Deserializer<Service, Content>>,
 }
 
@@ -134,7 +129,7 @@ where
         serve_rx: mpsc::Receiver<(Content, RemoteConnectToServiceRequest<Content, Codec>)>,
         drop_tx: mpsc::Sender<()>, codec_factory: &Codec,
     ) -> Server<Service, Content, Codec> {
-        Server { serve_rx, drop_tx: Some(drop_tx), deserializer: codec_factory.deserializer() }
+        Server { serve_rx, drop_tx, deserializer: codec_factory.deserializer() }
     }
 }
 
@@ -144,11 +139,7 @@ where
     Content: Send,
 {
     fn drop(self: Pin<&mut Self>) {
-        let this = self.project();
-        let mut drop_tx = this.drop_tx.take().unwrap();
-        on_thread(async move {
-            let _ = drop_tx.send(()).await;
-        })
+        // required for correct drop order
     }
 }
 
