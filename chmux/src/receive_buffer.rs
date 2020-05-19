@@ -1,26 +1,19 @@
-use async_thread::on_thread;
 use futures::{
     channel::{mpsc, oneshot},
     lock::Mutex,
     sink::SinkExt,
+    stream::StreamExt,
+    future::FutureExt,
+    select,
 };
 use std::{collections::VecDeque, sync::Arc};
 
 use crate::{multiplexer::ChannelMsg, receiver::ReceiveError};
 
-/// Closed reason for channel receive buffer.
-enum ChannelReceiverBufferCloseReason {
-    /// Remote endpoint dropped sender.
-    Closed,
-    /// Multiplexer was dropped.
-    Dropped,
-}
-
 /// Internal state of channel receiver buffer.
 struct ChannelReceiverBufferState<Content> {
     buffer: VecDeque<Content>,
-    enqueuer_close_reason: Option<ChannelReceiverBufferCloseReason>,
-    dequeuer_dropped: bool,
+    enqueuer_closed: bool,
     item_enqueued: Option<oneshot::Sender<()>>,
     item_dequeued: Option<oneshot::Sender<()>>,
 }
@@ -34,6 +27,9 @@ where
     resume_length: usize,
     pause_length: usize,
     block_length: usize,
+    dequeuer_dropped_rx: mpsc::Receiver<()>,
+    dequeuer_dropped: bool,
+    _enqueuer_dropped_tx: mpsc::Sender<()>,
 }
 
 impl<Content> ChannelReceiverBufferEnqueuer<Content>
@@ -43,18 +39,24 @@ where
     /// Enqueues an item into the receive queue.
     /// Blocks when the block queue length has been reached.
     /// Returns true when the pause queue length has been reached from below.
-    pub async fn enqueue(&self, item: Content) -> bool {
-        let mut rx_opt = None;
+    pub async fn enqueue(&mut self, item: Content) -> bool {
+        let mut rx_opt: Option<oneshot::Receiver<()>> = None;
         loop {
             if let Some(rx) = rx_opt {
-                let _ = rx.await;
+                select! {
+                    _ = rx.fuse() => (),
+                    _ = self.dequeuer_dropped_rx.next() => {
+                        self.dequeuer_dropped = true;
+                    }
+                }
             }
 
-            let mut state = self.state.lock().await;
-            if state.dequeuer_dropped {
-                // Drop item when dequeuer has been dropped.
+            // Drop item when dequeuer has been dropped.
+            if self.dequeuer_dropped {
                 return false;
-            }
+            }            
+
+            let mut state = self.state.lock().await;
             if state.buffer.len() >= self.block_length {
                 let (tx, rx) = oneshot::channel();
                 state.item_dequeued = Some(tx);
@@ -80,7 +82,7 @@ where
     /// Indicates that the receive stream is finished.
     pub async fn close(self) {
         let mut state = self.state.lock().await;
-        state.enqueuer_close_reason = Some(ChannelReceiverBufferCloseReason::Closed);
+        state.enqueuer_closed = true;
         if let Some(tx) = state.item_enqueued.take() {
             let _ = tx.send(());
         }
@@ -92,15 +94,7 @@ where
     Content: Send,
 {
     fn drop(&mut self) {
-        on_thread(async {
-            let mut state = self.state.lock().await;
-            if state.enqueuer_close_reason.is_none() {
-                state.enqueuer_close_reason = Some(ChannelReceiverBufferCloseReason::Dropped);
-                if let Some(tx) = state.item_enqueued.take() {
-                    let _ = tx.send(());
-                }
-            }
-        });
+        // required for correct drop order
     }
 }
 
@@ -113,6 +107,9 @@ where
     resume_length: usize,
     resume_notify_tx: mpsc::Sender<ChannelMsg<Content>>,
     local_port: u32,
+    enqueuer_dropped_rx: mpsc::Receiver<()>,
+    enqueuer_dropped: bool,
+    _dequeuer_dropped_tx: mpsc::Sender<()>,    
 }
 
 impl<Content> ChannelReceiverBufferDequeuer<Content>
@@ -123,25 +120,28 @@ where
     /// Blocks until an item becomes available.
     /// Notifies the resume notify channel when the resume queue length has been reached from above.
     pub async fn dequeue(&mut self) -> Option<Result<Content, ReceiveError>> {
-        let mut rx_opt = None;
+        let mut rx_opt: Option<oneshot::Receiver<()>> = None;
         loop {
             if let Some(rx) = rx_opt {
-                let _ = rx.await;
+                select! {
+                    _ = rx.fuse() => (),
+                    _ = self.enqueuer_dropped_rx.next() => {
+                        self.enqueuer_dropped = true;
+                    }
+                }
             }
 
             let mut state = self.state.lock().await;
             if state.buffer.is_empty() {
-                match &state.enqueuer_close_reason {
-                    Some(ChannelReceiverBufferCloseReason::Closed) => return None,
-                    Some(ChannelReceiverBufferCloseReason::Dropped) => {
-                        return Some(Err(ReceiveError::MultiplexerError))
-                    }
-                    None => {
-                        let (tx, rx) = oneshot::channel();
-                        state.item_enqueued = Some(tx);
-                        rx_opt = Some(rx);
-                        continue;
-                    }
+                if state.enqueuer_closed {
+                    return None;
+                } else if self.enqueuer_dropped {
+                    return Some(Err(ReceiveError::MultiplexerError));
+                } else {
+                    let (tx, rx) = oneshot::channel();
+                    state.item_enqueued = Some(tx);
+                    rx_opt = Some(rx);
+                    continue;
                 }
             }
 
@@ -167,13 +167,7 @@ where
     Content: Send,
 {
     fn drop(&mut self) {
-        on_thread(async {
-            let mut state = self.state.lock().await;
-            state.dequeuer_dropped = true;
-            if let Some(tx) = state.item_dequeued.take() {
-                let _ = tx.send(());
-            }
-        });
+        // required for correct drop order
     }
 }
 
@@ -204,23 +198,30 @@ where
 
         let state = Arc::new(Mutex::new(ChannelReceiverBufferState {
             buffer: VecDeque::new(),
-            enqueuer_close_reason: None,
-            dequeuer_dropped: false,
+            enqueuer_closed: false,
             item_enqueued: None,
             item_dequeued: None,
         }));
 
+        let (enqueuer_dropped_tx, enqueuer_dropped_rx) = mpsc::channel(1);
+        let (dequeuer_dropped_tx, dequeuer_dropped_rx) = mpsc::channel(1);
         let enqueuer = ChannelReceiverBufferEnqueuer {
             state: state.clone(),
             resume_length: self.resume_length,
             pause_length: self.pause_length,
             block_length: self.block_length,
+            dequeuer_dropped: false,
+            dequeuer_dropped_rx,
+            _enqueuer_dropped_tx: enqueuer_dropped_tx
         };
         let dequeuer = ChannelReceiverBufferDequeuer {
             state: state.clone(),
             resume_length: self.resume_length,
             resume_notify_tx: self.resume_notify_tx,
             local_port: self.local_port,
+            enqueuer_dropped: false,
+            enqueuer_dropped_rx,
+            _dequeuer_dropped_tx: dequeuer_dropped_tx
         };
         (enqueuer, dequeuer)
     }
