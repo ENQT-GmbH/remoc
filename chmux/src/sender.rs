@@ -1,9 +1,9 @@
 use futures::{
     channel::{mpsc, oneshot},
-    ready,
+    lock::Mutex,
     sink::{Sink, SinkExt},
     task::{Context, Poll},
-    Future,
+    Future, FutureExt,
 };
 use pin_project::{pin_project, pinned_drop};
 use serde::Serialize;
@@ -11,7 +11,7 @@ use std::{
     error::Error,
     fmt,
     pin::Pin,
-    sync::{Arc, Mutex, Weak},
+    sync::{Arc, Weak},
 };
 
 use crate::{codec::Serializer, multiplexer::ChannelMsg, send_lock::ChannelSendLockRequester};
@@ -139,17 +139,14 @@ where
 ///
 /// It will also resolve when the channel is closed or the channel multiplexer
 /// is shutdown.
-#[pin_project]
 pub struct HangupNotify {
-    #[pin]
-    rx: oneshot::Receiver<()>,
+    fut: Pin<Box<dyn Future<Output = ()> + Send>>,
 }
 
 impl Future for HangupNotify {
     type Output = ();
-    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let _ = ready!(self.project().rx.poll(cx));
-        Poll::Ready(())
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        self.fut.as_mut().poll(cx)
     }
 }
 
@@ -187,13 +184,21 @@ where
     ///
     /// It will resolve immediately when the remote endpoint has already hung up.
     pub fn hangup_notify(&self) -> HangupNotify {
-        let (tx, rx) = oneshot::channel();
-        if let Some(hangup_notify) = self.hangup_notify.upgrade() {
-            if let Some(notifiers) = hangup_notify.lock().unwrap().as_mut() {
-                notifiers.push(tx);
+        let hangup_notify = self.hangup_notify.clone();
+        let fut = async move {
+            let (tx, rx) = oneshot::channel();
+            if let Some(hangup_notify) = hangup_notify.upgrade() {
+                if let Some(notifiers) = hangup_notify.lock().await.as_mut() {
+                    notifiers.push(tx);
+                } else {
+                    drop(tx);
+                }
+            } else {
+                drop(tx);
             }
-        }
-        HangupNotify { rx }
+            let _ = rx.await;
+        };
+        HangupNotify { fut: fut.boxed() }
     }
 }
 

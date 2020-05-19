@@ -1,6 +1,10 @@
-use futures::future::FutureExt;
-use futures::stream::StreamExt;
-use futures::{channel::mpsc, channel::oneshot, lock::Mutex, select};
+use futures::{
+    channel::{mpsc, oneshot},
+    future::FutureExt,
+    lock::Mutex,
+    select,
+    stream::StreamExt,
+};
 use std::sync::Arc;
 
 use crate::sender::SendError;

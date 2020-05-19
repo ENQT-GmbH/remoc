@@ -1,5 +1,6 @@
 use futures::{
     channel::{mpsc, oneshot},
+    lock::Mutex,
     sink::{Sink, SinkExt},
     stream::{self, Stream, StreamExt},
 };
@@ -10,7 +11,7 @@ use std::{
     fmt,
     marker::PhantomData,
     pin::Pin,
-    sync::{Arc, Mutex, Weak},
+    sync::{Arc, Weak},
     time::{Duration, Instant},
 };
 
@@ -806,7 +807,7 @@ where
                             tx_lock.close(gracefully).await;
 
                             // Send hangup notifications.
-                            let notifies = hangup_notify.lock().unwrap().take().unwrap();
+                            let notifies = hangup_notify.lock().await.take().unwrap();
                             for tx in notifies {
                                 let _ = tx.send(());
                             }

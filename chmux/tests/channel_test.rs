@@ -1,4 +1,9 @@
-use futures::{channel::mpsc, channel::oneshot, executor, prelude::*, stream::StreamExt};
+use futures::{
+    channel::{mpsc, oneshot},
+    executor,
+    prelude::*,
+    stream::StreamExt,
+};
 use std::io;
 
 use chmux::{

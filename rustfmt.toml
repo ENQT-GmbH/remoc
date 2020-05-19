@@ -5,4 +5,4 @@ fn_args_layout = "compressed"
 
 #wrap_comments = true
 #comment_width = 100
-#merge_imports=true
+merge_imports=true
