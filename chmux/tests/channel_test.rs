@@ -1,4 +1,4 @@
-use futures::{channel::mpsc, executor, prelude::*, stream::StreamExt};
+use futures::{channel::mpsc, channel::oneshot, executor, prelude::*, stream::StreamExt};
 use std::io;
 
 use chmux::{
@@ -22,22 +22,26 @@ fn raw_test() {
     let content_codec = JsonContentCodec::new();
     let transport_codec = JsonTransportCodec::new();
 
-    let (a_mux, a_client, _a_server) =
+    let (a_mux, a_client, a_server) =
         chmux::Multiplexer::new(&mux_cfg, &content_codec, &transport_codec, a_tx, a_rx);
-    let (b_mux, _b_client, mut b_server) =
+    let (b_mux, b_client, mut b_server) =
         chmux::Multiplexer::new(&mux_cfg, &content_codec, &transport_codec, b_tx, b_rx);
 
+    let (a_mux_done_tx, a_mux_done_rx) = oneshot::channel();
     pool.spawn_ok(async move {
         println!("A mux start");
         a_mux.run().await.unwrap();
-        println!("A mux terminated");
+        let _ = a_mux_done_tx.send(());
     });
+
+    let (b_mux_done_tx, b_mux_done_rx) = oneshot::channel();
     pool.spawn_ok(async move {
         println!("B mux start");
         b_mux.run().await.unwrap();
-        println!("B mux terminated");
+        let _ = b_mux_done_tx.send(());
     });
 
+    let (server_done_tx, server_done_rx) = oneshot::channel();
     pool.spawn_ok(async move {
         println!("B server start");
         loop {
@@ -70,6 +74,8 @@ fn raw_test() {
             }
         }
         println!("B Server quit");
+        drop(b_client);
+        let _ = server_done_tx.send(());
     });
 
     executor::block_on(async move {
@@ -94,6 +100,19 @@ fn raw_test() {
             }
         }
         println!("A client receiver closed");
+
+        drop(tx);
+        drop(rx);
+        drop(a_client);
+
+        println!("Waiting for server");
+        server_done_rx.await.unwrap();
+
+        drop(a_server);
+
+        println!("Waiting for muxes");
+        a_mux_done_rx.await.unwrap();
+        b_mux_done_rx.await.unwrap();
     });
 }
 
@@ -112,22 +131,26 @@ fn hangup_test() {
     let content_codec = JsonContentCodec::new();
     let transport_codec = JsonTransportCodec::new();
 
-    let (a_mux, a_client, _a_server) =
+    let (a_mux, a_client, a_server) =
         chmux::Multiplexer::new(&mux_cfg, &content_codec, &transport_codec, a_tx, a_rx);
-    let (b_mux, _b_client, mut b_server) =
+    let (b_mux, b_client, mut b_server) =
         chmux::Multiplexer::new(&mux_cfg, &content_codec, &transport_codec, b_tx, b_rx);
 
+    let (a_mux_done_tx, a_mux_done_rx) = oneshot::channel();
     pool.spawn_ok(async move {
         println!("A mux start");
         a_mux.run().await.unwrap();
-        println!("A mux terminated");
+        let _ = a_mux_done_tx.send(());
     });
+
+    let (b_mux_done_tx, b_mux_done_rx) = oneshot::channel();
     pool.spawn_ok(async move {
         println!("B mux start");
         b_mux.run().await.unwrap();
-        println!("B mux terminated");
+        let _ = b_mux_done_tx.send(());
     });
 
+    let (server_done_tx, server_done_rx) = oneshot::channel();
     pool.spawn_ok(async move {
         println!("B server start");
         loop {
@@ -165,6 +188,8 @@ fn hangup_test() {
             }
         }
         println!("B Server quit");
+        drop(b_client);
+        let _ = server_done_tx.send(());
     });
 
     executor::block_on(async move {
@@ -207,5 +232,18 @@ fn hangup_test() {
         }
 
         println!("A client receiver closed");
+
+        drop(tx);
+        drop(rx);
+        drop(a_client);
+
+        println!("Waiting for server close");
+        server_done_rx.await.unwrap();
+
+        drop(a_server);
+
+        println!("Waiting for muxes");
+        a_mux_done_rx.await.unwrap();
+        b_mux_done_rx.await.unwrap();
     });
 }

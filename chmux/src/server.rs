@@ -103,6 +103,7 @@ where
 /// Multiplexer server.
 ///
 /// Provides a stream of remote service requests.
+/// The stream ends, when the remote `Client` is dropped.
 #[pin_project(PinnedDrop)]
 pub struct Server<Service, Content, Codec>
 where
