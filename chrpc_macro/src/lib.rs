@@ -143,7 +143,7 @@ impl Service {
                 ) -> Result<Self, ::chmux::ServerError>
                 where
                     Content: ::serde::Serialize + ::serde::de::DeserializeOwned + Send + 'static,
-                    Codec: ::chmux::CodecFactory<Content> + 'static
+                    Codec: ::chmux::ContentCodecFactory<Content> + 'static
                 {
                     #[allow(unused_imports)] use ::futures::future::FutureExt;
                     #[allow(unused_imports)] use ::futures::sink::SinkExt;
@@ -221,7 +221,7 @@ impl Service {
             impl<Content, Codec> #client_trait_ident for #client_inner_ident <Content, Codec>
             where
                 Content: Send + 'static,
-                Codec: ::chmux::CodecFactory<Content> + Send + Sync + 'static,
+                Codec: ::chmux::ContentCodecFactory<Content> + Send + Sync + 'static,
             {
                 #method_impls
             }
@@ -236,7 +236,7 @@ impl Service {
                 pub fn bind<Content, Codec>(client: ::chmux::Client<#enum_ident, Content, Codec>) -> Self
                 where
                     Content: Send + 'static,
-                    Codec: ::chmux::CodecFactory<Content> + Send + Sync + 'static,
+                    Codec: ::chmux::ContentCodecFactory<Content> + Send + Sync + 'static,
                 {
                     Self {
                         inner: Box::new(#client_inner_ident {client})
@@ -778,6 +778,9 @@ impl ServiceMethod {
 /// a `chmux::Server`.
 /// All methods in the service trait definition must be async.
 /// The server trait implementation must use `[async_trait::async_trait]` attribute.
+///
+/// The chmux messages are of type `MultiplexMsg<Content>` where `Content` is
+/// the name of the trait suffixed with `Service`.
 ///
 /// Additionally a client proxy struct named using the same name suffixed with `Client`
 /// is generated.

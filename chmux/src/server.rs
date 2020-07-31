@@ -9,7 +9,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use std::{error::Error, fmt, pin::Pin};
 
 use crate::{
-    codec::{CodecFactory, Deserializer},
+    codec::{ContentCodecFactory, Deserializer},
     multiplexer::{ChannelData, ChannelMsg},
     receiver::Receiver,
     sender::Sender,
@@ -59,7 +59,7 @@ where
 impl<Content, Codec> RemoteConnectToServiceRequest<Content, Codec>
 where
     Content: Serialize + DeserializeOwned + Send + 'static,
-    Codec: CodecFactory<Content>,
+    Codec: ContentCodecFactory<Content>,
 {
     pub(crate) fn new(
         channel_data: ChannelData<Content>, codec_factory: &Codec,
@@ -123,7 +123,7 @@ impl<Service, Content, Codec> Server<Service, Content, Codec>
 where
     Service: DeserializeOwned + 'static,
     Content: Serialize + DeserializeOwned + Send,
-    Codec: CodecFactory<Content>,
+    Codec: ContentCodecFactory<Content>,
 {
     pub(crate) fn new(
         serve_rx: mpsc::Receiver<(Content, RemoteConnectToServiceRequest<Content, Codec>)>,

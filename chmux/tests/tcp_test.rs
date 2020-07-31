@@ -9,7 +9,7 @@ use tokio_util::codec::{length_delimited::LengthDelimitedCodec, FramedRead, Fram
 
 use chmux::{
     self,
-    codecs::json::{JsonContentCodec, JsonTransportCodec},
+    codec::json::{JsonContentCodec, JsonTransportCodec},
 };
 
 fn tcp_server() {

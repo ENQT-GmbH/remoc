@@ -11,7 +11,7 @@ mod unix {
 
     use chmux::{
         self,
-        codecs::json::{JsonContentCodec, JsonTransportCodec},
+        codec::json::{JsonContentCodec, JsonTransportCodec},
     };
 
     fn uds_server() {

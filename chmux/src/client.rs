@@ -7,7 +7,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use std::{clone::Clone, error::Error, fmt, marker::PhantomData};
 
 use crate::{
-    codec::CodecFactory,
+    codec::ContentCodecFactory,
     receiver::{RawReceiver, Receiver},
     sender::{RawSender, Sender},
 };
@@ -84,7 +84,7 @@ impl<Service, Content, Codec> Client<Service, Content, Codec>
 where
     Service: Serialize + 'static,
     Content: Send + 'static,
-    Codec: CodecFactory<Content>,
+    Codec: ContentCodecFactory<Content>,
 {
     pub(crate) fn new(
         connect_tx: mpsc::Sender<ConnectToRemoteServiceRequest<Content>>, codec_factory: &Codec,
@@ -134,7 +134,7 @@ impl<Service, Content, Codec> Clone for Client<Service, Content, Codec>
 where
     Service: Serialize + 'static,
     Content: Send + 'static,
-    Codec: CodecFactory<Content>,
+    Codec: ContentCodecFactory<Content>,
 {
     fn clone(&self) -> Self {
         Self::new(self.connect_tx.clone(), &self.codec_factory)

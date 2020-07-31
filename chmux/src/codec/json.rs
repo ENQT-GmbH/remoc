@@ -5,8 +5,16 @@ use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{from_slice, from_value, to_value, to_vec, Value};
 use std::{error::Error, marker::PhantomData};
 
-use crate::codec::{CodecFactory, Deserializer, Serializer};
+use crate::{
+    codec::{ContentCodecFactory, Deserializer, Serializer, TransportCodecFactory},
+    MultiplexMsg,
+};
 
+// ============================================================================
+// JSON content codec
+// ============================================================================
+
+/// Serializes message content into JSON format
 pub struct JsonContentSerializer<Item> {
     _ghost_item: PhantomData<fn() -> Item>,
 }
@@ -20,6 +28,7 @@ where
     }
 }
 
+/// Deserializes message content from JSON format.
 pub struct JsonContentDeserializer<Item> {
     _ghost_item: PhantomData<fn() -> Item>,
 }
@@ -33,16 +42,18 @@ where
     }
 }
 
+/// JSON codec for message content.
 #[derive(Clone)]
 pub struct JsonContentCodec {}
 
 impl JsonContentCodec {
+    /// Creates a new JSON codec for messages content.
     pub fn new() -> JsonContentCodec {
         JsonContentCodec {}
     }
 }
 
-impl CodecFactory<Value> for JsonContentCodec {
+impl ContentCodecFactory<Value> for JsonContentCodec {
     fn serializer<Item: Serialize + 'static>(&self) -> Box<dyn Serializer<Item, Value>> {
         Box::new(JsonContentSerializer { _ghost_item: PhantomData })
     }
@@ -52,6 +63,11 @@ impl CodecFactory<Value> for JsonContentCodec {
     }
 }
 
+// ============================================================================
+// JSON transport codec
+// ============================================================================
+
+/// Serializes messages into JSON format for transportation.
 pub struct JsonTransportSerializer<Item> {
     _ghost_item: PhantomData<fn() -> Item>,
 }
@@ -74,6 +90,7 @@ where
     }
 }
 
+/// Deserializes JSON data received from transportation into messages.
 pub struct JsonTransportDeserializer<Item> {
     _ghost_item: PhantomData<fn() -> Item>,
 }
@@ -96,31 +113,33 @@ where
     }
 }
 
+/// JSON codec for message transport.
 #[derive(Clone)]
 pub struct JsonTransportCodec {}
 
 impl JsonTransportCodec {
+    /// Creates a new JSON codec for messages transport.
     pub fn new() -> JsonTransportCodec {
         JsonTransportCodec {}
     }
 }
 
-impl CodecFactory<Vec<u8>> for JsonTransportCodec {
-    fn serializer<Item: Serialize + 'static>(&self) -> Box<dyn Serializer<Item, Vec<u8>>> {
+impl TransportCodecFactory<Value, Vec<u8>> for JsonTransportCodec {
+    fn serializer(&self) -> Box<dyn Serializer<MultiplexMsg<Value>, Vec<u8>>> {
         Box::new(JsonTransportSerializer { _ghost_item: PhantomData })
     }
 
-    fn deserializer<Item: DeserializeOwned + 'static>(&self) -> Box<dyn Deserializer<Item, Vec<u8>>> {
+    fn deserializer(&self) -> Box<dyn Deserializer<MultiplexMsg<Value>, Vec<u8>>> {
         Box::new(JsonTransportDeserializer { _ghost_item: PhantomData })
     }
 }
 
-impl CodecFactory<Bytes> for JsonTransportCodec {
-    fn serializer<Item: Serialize + 'static>(&self) -> Box<dyn Serializer<Item, Bytes>> {
+impl TransportCodecFactory<Value, Bytes> for JsonTransportCodec {
+    fn serializer(&self) -> Box<dyn Serializer<MultiplexMsg<Value>, Bytes>> {
         Box::new(JsonTransportSerializer { _ghost_item: PhantomData })
     }
 
-    fn deserializer<Item: DeserializeOwned + 'static>(&self) -> Box<dyn Deserializer<Item, Bytes>> {
+    fn deserializer(&self) -> Box<dyn Deserializer<MultiplexMsg<Value>, Bytes>> {
         Box::new(JsonTransportDeserializer { _ghost_item: PhantomData })
     }
 }

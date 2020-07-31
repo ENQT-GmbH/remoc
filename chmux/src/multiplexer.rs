@@ -17,7 +17,7 @@ use std::{
 
 use crate::{
     client::{Client, ConnectToRemoteServiceRequest, ConnectToRemoteServiceResponse},
-    codec::{CodecFactory, Serializer},
+    codec::{ContentCodecFactory, Serializer, TransportCodecFactory},
     number_allocator::{NumberAllocator, NumberAllocatorExhaustedError},
     receive_buffer::{ChannelReceiverBufferCfg, ChannelReceiverBufferDequeuer, ChannelReceiverBufferEnqueuer},
     receiver::RawReceiver,
@@ -259,8 +259,6 @@ where
     ports: HashMap<u32, PortState<Content>>,
     /// Port number allocator.
     port_pool: NumberAllocator,
-    /// Channel to send requests from user parts of sender/receiver to event loop.
-    //channel_tx: mpsc::Sender<ChannelMsg<Content>>,
     /// Receiver of event loop.
     event_rx: SelectAll<Pin<Box<dyn Stream<Item = LoopEvent<Content>> + Send>>>,
     /// Serializer applied for transport.
@@ -308,9 +306,9 @@ impl<
     > Multiplexer<Content, ContentCodec, TransportType, TransportCodec, TransportSink, TransportStream>
 where
     Content: Serialize + DeserializeOwned + Send + 'static,
-    ContentCodec: CodecFactory<Content>,
+    ContentCodec: ContentCodecFactory<Content>,
     TransportType: Send + 'static,
-    TransportCodec: CodecFactory<TransportType>,
+    TransportCodec: TransportCodecFactory<Content, TransportType>,
     TransportSink: Sink<TransportType, Error = TransportSinkError> + Send + 'static,
     TransportStream: Stream<Item = Result<TransportType, TransportStreamError>> + Send + 'static,
     TransportSinkError: Error + Send + 'static,

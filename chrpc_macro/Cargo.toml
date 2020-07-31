@@ -1,7 +1,12 @@
 [package]
 name = "chrpc_macro"
+<<<<<<< HEAD
 version = "0.1.0"
 authors = ["ENQT GmbH <su@enqt.de>"]
+=======
+version = "0.2.0"
+authors = ["Sebastian Urban <surban@surban.net>"]
+>>>>>>> e047c6f... Identity codec
 edition = "2018"
 description = "Procedural macro for chrpc. Do not use directly."
 

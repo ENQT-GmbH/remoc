@@ -8,7 +8,7 @@ use std::io;
 
 use chmux::{
     self,
-    codecs::json::{JsonContentCodec, JsonTransportCodec},
+    codec::json::{JsonContentCodec, JsonTransportCodec},
 };
 
 #[test]

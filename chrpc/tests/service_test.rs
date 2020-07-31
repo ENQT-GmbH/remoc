@@ -1,8 +1,3 @@
-use chmux::{
-    self,
-    codecs::json::{JsonContentCodec, JsonTransportCodec},
-};
-use chrpc::service;
 use futures::{sink::SinkExt, stream::StreamExt};
 use std::net::Ipv4Addr;
 use tokio::{
@@ -10,6 +5,12 @@ use tokio::{
     net::{TcpListener, TcpStream},
 };
 use tokio_util::codec::{length_delimited::LengthDelimitedCodec, FramedRead, FramedWrite};
+
+use chmux::{
+    self,
+    codec::json::{JsonContentCodec, JsonTransportCodec},
+};
+use chrpc::service;
 
 #[service]
 pub trait TestTrait {
