@@ -243,7 +243,7 @@ where
 }
 
 /// Channel multiplexer.
-pub struct Multiplexer<Content, ContentCodec, TransportType, TransportCodec, TransportSink, TransportStream>
+pub struct Multiplexer<'a, Content, ContentCodec, TransportType, TransportCodec, TransportSink, TransportStream>
 where
     Content: Send,
 {
@@ -260,7 +260,7 @@ where
     /// Port number allocator.
     port_pool: NumberAllocator,
     /// Receiver of event loop.
-    event_rx: SelectAll<Pin<Box<dyn Stream<Item = LoopEvent<Content>> + Send>>>,
+    event_rx: SelectAll<Pin<Box<dyn Stream<Item = LoopEvent<Content>> + Send + 'a>>>,
     /// Serializer applied for transport.
     transport_serializer: Box<dyn Serializer<MultiplexMsg<Content>, TransportType>>,
     /// All user clients have been dropped.
@@ -284,8 +284,8 @@ where
 /// Buffer size of internal communication channels.
 const INTERNAL_CHANNEL_BUFFER: usize = 10;
 
-impl<Content, ContentCodec, TransportType, TransportCodec, TransportSink, TransportStream> fmt::Debug
-    for Multiplexer<Content, ContentCodec, TransportType, TransportCodec, TransportSink, TransportStream>
+impl<'a, Content, ContentCodec, TransportType, TransportCodec, TransportSink, TransportStream> fmt::Debug
+    for Multiplexer<'a, Content, ContentCodec, TransportType, TransportCodec, TransportSink, TransportStream>
 where
     Content: Send,
 {
@@ -295,6 +295,7 @@ where
 }
 
 impl<
+        'a,
         Content,
         ContentCodec,
         TransportType,
@@ -303,14 +304,14 @@ impl<
         TransportStream,
         TransportSinkError,
         TransportStreamError,
-    > Multiplexer<Content, ContentCodec, TransportType, TransportCodec, TransportSink, TransportStream>
+    > Multiplexer<'a, Content, ContentCodec, TransportType, TransportCodec, TransportSink, TransportStream>
 where
     Content: Serialize + DeserializeOwned + Send + 'static,
     ContentCodec: ContentCodecFactory<Content>,
     TransportType: Send + 'static,
     TransportCodec: TransportCodecFactory<Content, TransportType>,
-    TransportSink: Sink<TransportType, Error = TransportSinkError> + Send + 'static,
-    TransportStream: Stream<Item = Result<TransportType, TransportStreamError>> + Send + 'static,
+    TransportSink: Sink<TransportType, Error = TransportSinkError> + Send,
+    TransportStream: Stream<Item = Result<TransportType, TransportStreamError>> + Send + 'a,
     TransportSinkError: Error + Send + 'static,
     TransportStreamError: Error + Send + 'static,
 {
@@ -323,7 +324,7 @@ where
         cfg: &Cfg, content_codec: &ContentCodec, transport_codec: &TransportCodec, transport_tx: TransportSink,
         transport_rx: TransportStream,
     ) -> (
-        Multiplexer<Content, ContentCodec, TransportType, TransportCodec, TransportSink, TransportStream>,
+        Multiplexer<'a, Content, ContentCodec, TransportType, TransportCodec, TransportSink, TransportStream>,
         Client<Service, Content, ContentCodec>,
         Server<Service, Content, ContentCodec>,
     )
@@ -943,8 +944,8 @@ where
     }
 }
 
-impl<Content, ContentCodec, TransportType, TransportCodec, TransportSink, TransportStream> Drop
-    for Multiplexer<Content, ContentCodec, TransportType, TransportCodec, TransportSink, TransportStream>
+impl<'a, Content, ContentCodec, TransportType, TransportCodec, TransportSink, TransportStream> Drop
+    for Multiplexer<'a, Content, ContentCodec, TransportType, TransportCodec, TransportSink, TransportStream>
 where
     Content: Send,
 {
