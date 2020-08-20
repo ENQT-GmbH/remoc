@@ -6,6 +6,9 @@
 //! A server method and a client proxy will be generated.
 //!
 
+#[cfg(feature = "socket")]
+pub mod socket;
+
 use futures::{
     sink::Sink,
     stream::{Stream, StreamExt},
