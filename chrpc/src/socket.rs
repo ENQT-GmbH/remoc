@@ -2,7 +2,7 @@
 
 use bytes::Bytes;
 use futures::{pin_mut, stream::StreamExt, Future};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Serialize};
 use std::{
     error, io,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
@@ -11,15 +11,10 @@ use std::{
 use tokio::{
     io::split,
     net::{TcpListener, TcpStream, ToSocketAddrs},
-    sync::{oneshot, watch},
-    time::delay_for,
 };
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
-use chmux::{
-    codec::json::{JsonContentCodec, JsonTransportCodec},
-    ContentCodecFactory, Multiplexer, ServerError, TransportCodecFactory,
-};
+use chmux::{ContentCodecFactory, Multiplexer, TransportCodecFactory};
 
 const TCP_KEEPALIVE_TIME: u64 = 10;
 
