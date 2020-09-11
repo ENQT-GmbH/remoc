@@ -15,6 +15,7 @@ mod server;
 mod timeout;
 
 pub mod codec;
+pub mod serde_map;
 
 pub use channel::Channel;
 pub use client::{Client, ConnectError};
