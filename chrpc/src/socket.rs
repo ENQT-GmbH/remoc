@@ -34,7 +34,7 @@ where
     let _ = socket.set_keepalive(Some(Duration::from_secs(TCP_KEEPALIVE_TIME)));
 
     let local_addr = socket.local_addr().unwrap_or(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0).into());
-    let remote_addr = socket.local_addr().unwrap_or(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0).into());
+    let remote_addr = socket.peer_addr().unwrap_or(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0).into());
     log::info!("Connected from {} to {}", &local_addr, &remote_addr);
 
     let (socket_rx, socket_tx) = split(socket);
