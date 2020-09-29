@@ -23,8 +23,8 @@ impl<Item> Serializer<Item, Value> for JsonContentSerializer<Item>
 where
     Item: Serialize,
 {
-    fn serialize(&self, item: Item) -> Result<Value, Box<dyn Error + Send + 'static>> {
-        to_value(item).map_err(|err| Box::new(err) as Box<dyn Error + Send + 'static>)
+    fn serialize(&self, item: Item) -> Result<Value, Box<dyn Error + Send + Sync + 'static>> {
+        to_value(item).map_err(|err| Box::new(err) as Box<dyn Error + Send + Sync + 'static>)
     }
 }
 
@@ -37,8 +37,8 @@ impl<Item> Deserializer<Item, Value> for JsonContentDeserializer<Item>
 where
     Item: DeserializeOwned,
 {
-    fn deserialize(&self, data: Value) -> Result<Item, Box<dyn Error + Send + 'static>> {
-        from_value(data).map_err(|err| Box::new(err) as Box<dyn Error + Send + 'static>)
+    fn deserialize(&self, data: Value) -> Result<Item, Box<dyn Error + Send + Sync + 'static>> {
+        from_value(data).map_err(|err| Box::new(err) as Box<dyn Error + Send + Sync + 'static>)
     }
 }
 
@@ -76,8 +76,8 @@ impl<Item> Serializer<Item, Vec<u8>> for JsonTransportSerializer<Item>
 where
     Item: Serialize,
 {
-    fn serialize(&self, item: Item) -> Result<Vec<u8>, Box<dyn Error + Send + 'static>> {
-        to_vec(&item).map_err(|err| Box::new(err) as Box<dyn Error + Send + 'static>)
+    fn serialize(&self, item: Item) -> Result<Vec<u8>, Box<dyn Error + Send + Sync + 'static>> {
+        to_vec(&item).map_err(|err| Box::new(err) as Box<dyn Error + Send + Sync + 'static>)
     }
 }
 
@@ -85,8 +85,8 @@ impl<Item> Serializer<Item, Bytes> for JsonTransportSerializer<Item>
 where
     Item: Serialize,
 {
-    fn serialize(&self, item: Item) -> Result<Bytes, Box<dyn Error + Send + 'static>> {
-        to_vec(&item).map(Bytes::from).map_err(|err| Box::new(err) as Box<dyn Error + Send + 'static>)
+    fn serialize(&self, item: Item) -> Result<Bytes, Box<dyn Error + Send + Sync + 'static>> {
+        to_vec(&item).map(Bytes::from).map_err(|err| Box::new(err) as Box<dyn Error + Send + Sync + 'static>)
     }
 }
 
@@ -99,8 +99,8 @@ impl<Item> Deserializer<Item, Vec<u8>> for JsonTransportDeserializer<Item>
 where
     Item: DeserializeOwned,
 {
-    fn deserialize(&self, data: Vec<u8>) -> Result<Item, Box<dyn Error + Send + 'static>> {
-        from_slice(&data).map_err(|err| Box::new(err) as Box<dyn Error + Send + 'static>)
+    fn deserialize(&self, data: Vec<u8>) -> Result<Item, Box<dyn Error + Send + Sync + 'static>> {
+        from_slice(&data).map_err(|err| Box::new(err) as Box<dyn Error + Send + Sync + 'static>)
     }
 }
 
@@ -108,8 +108,8 @@ impl<Item> Deserializer<Item, Bytes> for JsonTransportDeserializer<Item>
 where
     Item: DeserializeOwned,
 {
-    fn deserialize(&self, data: Bytes) -> Result<Item, Box<dyn Error + Send + 'static>> {
-        from_slice(&data).map_err(|err| Box::new(err) as Box<dyn Error + Send + 'static>)
+    fn deserialize(&self, data: Bytes) -> Result<Item, Box<dyn Error + Send + Sync + 'static>> {
+        from_slice(&data).map_err(|err| Box::new(err) as Box<dyn Error + Send + Sync + 'static>)
     }
 }
 

@@ -17,7 +17,7 @@ impl<Item> Serializer<Item, Item> for IdTransportSerializer<Item>
 where
     Item: Serialize,
 {
-    fn serialize(&self, item: Item) -> Result<Item, Box<dyn Error + Send + 'static>> {
+    fn serialize(&self, item: Item) -> Result<Item, Box<dyn Error + Send + Sync + 'static>> {
         Ok(item)
     }
 }
@@ -31,7 +31,7 @@ impl<Item> Deserializer<Item, Item> for IdTransportDeserializer<Item>
 where
     Item: DeserializeOwned,
 {
-    fn deserialize(&self, data: Item) -> Result<Item, Box<dyn Error + Send + 'static>> {
+    fn deserialize(&self, data: Item) -> Result<Item, Box<dyn Error + Send + Sync + 'static>> {
         Ok(data)
     }
 }

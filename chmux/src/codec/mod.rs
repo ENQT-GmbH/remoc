@@ -11,7 +11,7 @@ where
     Item: Serialize,
 {
     /// Serializes the specified item into the data format.
-    fn serialize(&self, item: Item) -> Result<Data, Box<dyn Error + Send + 'static>>;
+    fn serialize(&self, item: Item) -> Result<Data, Box<dyn Error + Send + Sync + 'static>>;
 }
 
 /// Deserializes items from a data format.
@@ -20,7 +20,7 @@ where
     Item: DeserializeOwned,
 {
     /// Deserializes the specified data into an item.
-    fn deserialize(&self, data: Data) -> Result<Item, Box<dyn Error + Send + 'static>>;
+    fn deserialize(&self, data: Data) -> Result<Item, Box<dyn Error + Send + Sync + 'static>>;
 }
 
 /// Creates `Serializer`s  and `Deserializer`s for converting any item type into the

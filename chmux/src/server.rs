@@ -19,7 +19,7 @@ use crate::{
 #[derive(Debug)]
 pub enum ServerError {
     /// Error deserializing the service request.
-    DeserializationError(Box<dyn Error + Send + 'static>),
+    DeserializationError(Box<dyn Error + Send + Sync + 'static>),
 }
 
 impl fmt::Display for ServerError {

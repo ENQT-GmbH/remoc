@@ -20,7 +20,7 @@ pub enum ConnectError {
     /// A multiplexer error has occured or it has been terminated.
     MultiplexerError,
     /// Error serializing the service request.
-    SerializationError(Box<dyn Error + Send + 'static>),
+    SerializationError(Box<dyn Error + Send + Sync + 'static>),
 }
 
 impl fmt::Display for ConnectError {

@@ -27,7 +27,7 @@ pub enum SendError {
     /// The multiplexer encountered an error or was terminated.
     MultiplexerError,
     /// A serialization error occured.
-    SerializationError(Box<dyn Error + Send + 'static>),
+    SerializationError(Box<dyn Error + Send + Sync + 'static>),
 }
 
 impl SendError {

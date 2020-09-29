@@ -20,7 +20,7 @@ pub enum ReceiveError {
     /// The multiplexer encountered an error or was terminated.
     MultiplexerError,
     /// A deserialization error occured.
-    DeserializationError(Box<dyn Error + Send + 'static>),
+    DeserializationError(Box<dyn Error + Send + Sync + 'static>),
 }
 
 impl ReceiveError {

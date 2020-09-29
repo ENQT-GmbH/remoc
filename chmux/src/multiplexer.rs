@@ -32,9 +32,9 @@ use stream::SelectAll;
 #[derive(Debug)]
 pub enum MultiplexError {
     /// An error was encountered while sending data to the transport sink.
-    TransportSinkError(Box<dyn Error + Send + 'static>),
+    TransportSinkError(Box<dyn Error + Send + Sync + 'static>),
     /// An error was encountered while receiving data from the transport stream.
-    TransportStreamError(Box<dyn Error + Send + 'static>),
+    TransportStreamError(Box<dyn Error + Send + Sync + 'static>),
     /// The transport stream was closed while multiplex channels were active or the
     /// multiplex client was not dropped.
     TransportStreamClosed,
@@ -43,9 +43,9 @@ pub enum MultiplexError {
     /// The multiplexer ports were exhausted.
     PortsExhausted,
     /// Error serializing protocol message.
-    SerializationError(Box<dyn Error + Send + 'static>),
+    SerializationError(Box<dyn Error + Send + Sync + 'static>),
     /// Error deserializing protocol message.
-    DeserializationError(Box<dyn Error + Send + 'static>),
+    DeserializationError(Box<dyn Error + Send + Sync + 'static>),
     /// No messages where received over the configured connection timeout.
     ConnectionTimeout,
 }
@@ -312,8 +312,8 @@ where
     TransportCodec: TransportCodecFactory<Content, TransportType>,
     TransportSink: Sink<TransportType, Error = TransportSinkError> + Send,
     TransportStream: Stream<Item = Result<TransportType, TransportStreamError>> + Send + 'a,
-    TransportSinkError: Error + Send + 'static,
-    TransportStreamError: Error + Send + 'static,
+    TransportSinkError: Error + Send + Sync + 'static,
+    TransportStreamError: Error + Send + Sync + 'static,
 {
     /// Creates a new multiplexer.
     ///
