@@ -30,9 +30,9 @@ pub enum CallError {
     /// A multiplexer error has occured or it has been terminated.
     MultiplexerError,
     /// Error serializing the service request.
-    SerializationError(Box<dyn Error + Send + 'static>),
+    SerializationError(Box<dyn Error + Send + Sync + 'static>),
     /// A deserialization error occured.
-    DeserializationError(Box<dyn Error + Send + 'static>),
+    DeserializationError(Box<dyn Error + Send + Sync + 'static>),
 }
 
 impl fmt::Display for CallError {
