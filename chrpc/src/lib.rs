@@ -6,6 +6,8 @@
 //! A server method and a client proxy will be generated.
 //!
 
+#[cfg(feature = "local")]
+pub mod local;
 #[cfg(feature = "socket")]
 pub mod socket;
 

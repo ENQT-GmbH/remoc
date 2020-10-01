@@ -1,6 +1,6 @@
 [package]
 name = "chrpc"
-version = "0.2.3"
+version = "0.2.4"
 authors = ["ENQT GmbH <su@enqt.de>"]
 edition = "2018"
 description = "Streaming remote procedure calls (RPC) over chmux."
@@ -9,8 +9,9 @@ keywords = ["rpc", "chmux"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["socket"]
+default = ["socket", "local"]
 socket = ["tokio-util", "bytes", "chmux/json_codec", "chmux/bincode_codec"]
+local = ["chmux/json_codec"]
 
 [dependencies]
 chmux = { path="../chmux" }
