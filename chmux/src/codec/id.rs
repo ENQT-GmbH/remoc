@@ -8,6 +8,10 @@ use crate::{
     MultiplexMsg, TransportCodecFactory,
 };
 
+// ============================================================================
+// Id transport codec
+// ============================================================================
+
 /// Passes messages as-is to transport.
 pub struct IdTransportSerializer<Item> {
     _ghost_item: PhantomData<fn() -> Item>,
@@ -42,8 +46,8 @@ pub struct IdTransportCodec {}
 
 impl IdTransportCodec {
     /// Creates a new identity codec for messages transport.
-    pub fn new() -> IdTransportCodec {
-        IdTransportCodec {}
+    pub fn new() -> Self {
+        Self {}
     }
 }
 

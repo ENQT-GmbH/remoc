@@ -48,8 +48,8 @@ pub struct JsonContentCodec {}
 
 impl JsonContentCodec {
     /// Creates a new JSON codec for messages content.
-    pub fn new() -> JsonContentCodec {
-        JsonContentCodec {}
+    pub fn new() -> Self {
+        Self {}
     }
 }
 
@@ -119,8 +119,8 @@ pub struct JsonTransportCodec {}
 
 impl JsonTransportCodec {
     /// Creates a new JSON codec for messages transport.
-    pub fn new() -> JsonTransportCodec {
-        JsonTransportCodec {}
+    pub fn new() -> Self {
+        Self {}
     }
 }
 

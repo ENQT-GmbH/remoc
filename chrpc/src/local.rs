@@ -1,8 +1,8 @@
 //! Process-local communication.
 
-use futures::{Future, FutureExt, channel::mpsc, pin_mut, stream::StreamExt};
+use futures::{channel::mpsc, pin_mut, stream::StreamExt, Future, FutureExt};
 use serde::{de::DeserializeOwned, Serialize};
-use std::{convert::Infallible, error};
+use std::convert::Infallible;
 
 use chmux::{codec::id::IdTransportCodec, ContentCodecFactory, MultiplexMsg};
 
@@ -70,7 +70,8 @@ where
 pub async fn mpsc_server<Service, Content, ContentCodec, ServerFut, ServerFutOutput>(
     ch: MpscDuplexChannel<Content>, content_codec: ContentCodec,
     run_server: impl Fn(chmux::Server<Service, Content, ContentCodec>) -> ServerFut + Send + Clone + 'static,
-) -> ServerFutOutput where
+) -> ServerFutOutput
+where
     Service: Serialize + DeserializeOwned + 'static,
     Content: Serialize + DeserializeOwned + Send + 'static,
     ContentCodec: ContentCodecFactory<Content> + 'static,
