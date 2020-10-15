@@ -15,7 +15,7 @@ bincode_codec = ["bincode", "bytes"]
 
 [dependencies]
 futures = "0.3"
-pin-project = "0.4"
+pin-project = "1"
 rand = "0.7"
 log = "0.4"
 async-trait = "0.1"
@@ -28,4 +28,4 @@ bytes = {version="0.5", optional=true}
 futures = { version="0.3", features = ["thread-pool"] }
 tokio = { version="0.2", features = ["tcp", "uds", "io-util", "rt-core"] }
 tokio-util = { version="0.3", features = ["codec"] }
-env_logger = "0.7"
+env_logger = "0.8"
