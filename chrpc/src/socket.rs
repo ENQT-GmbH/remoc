@@ -1,15 +1,20 @@
-//! Utility functions for establishing RPC connections over TCP sockets.
+//! Utility functions for establishing RPC connections over sockets.
 
 use bytes::Bytes;
-use futures::{pin_mut, stream::StreamExt, Future};
+use futures::{stream::StreamExt, Future};
+use pin_project::pin_project;
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
     error, io,
+    mem::MaybeUninit,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
     time::Duration,
 };
 use tokio::{
-    io::split,
+    io::{split, AsyncRead, AsyncWrite},
     net::{TcpListener, TcpStream, ToSocketAddrs},
 };
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
@@ -18,11 +23,135 @@ use chmux::{ContentCodecFactory, Multiplexer, TransportCodecFactory};
 
 const TCP_KEEPALIVE_TIME: u64 = 10;
 
+/// Combines an object implementing `AsyncRead` and an object implementing
+/// `AsyncWrite` into an object that implements both `AsyncRead` and
+/// `AsyncWrite`.
+#[pin_project]
+pub struct AsyncReadWrite<R, W> {
+    #[pin]
+    reader: R,
+    #[pin]
+    writer: W,
+}
+
+impl<R, W> AsyncReadWrite<R, W> {
+    /// Combine reader and writer into one object.
+    pub fn new(reader: R, writer: W) -> Self {
+        Self { reader, writer }
+    }
+
+    /// Extract original reader and writer.
+    pub fn split(self) -> (R, W) {
+        let Self { reader, writer } = self;
+        (reader, writer)
+    }
+}
+
+impl<R: AsyncRead, W> AsyncRead for AsyncReadWrite<R, W> {
+    fn poll_read(self: Pin<&mut Self>, cx: &mut Context, buf: &mut [u8]) -> Poll<io::Result<usize>> {
+        self.project().reader.poll_read(cx, buf)
+    }
+
+    unsafe fn prepare_uninitialized_buffer(&self, buf: &mut [MaybeUninit<u8>]) -> bool {
+        self.reader.prepare_uninitialized_buffer(buf)
+    }
+
+    fn poll_read_buf<B: bytes::BufMut>(
+        self: Pin<&mut Self>, cx: &mut Context, buf: &mut B,
+    ) -> Poll<io::Result<usize>>
+    where
+        Self: Sized,
+    {
+        self.project().reader.poll_read_buf(cx, buf)
+    }
+}
+
+impl<R, W: AsyncWrite> AsyncWrite for AsyncReadWrite<R, W> {
+    fn poll_write_buf<B: bytes::Buf>(
+        self: Pin<&mut Self>, cx: &mut Context, buf: &mut B,
+    ) -> Poll<Result<usize, io::Error>>
+    where
+        Self: Sized,
+    {
+        self.project().writer.poll_write_buf(cx, buf)
+    }
+
+    fn poll_write(self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<usize, io::Error>> {
+        self.project().writer.poll_write(cx, buf)
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), io::Error>> {
+        self.project().writer.poll_flush(cx)
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), io::Error>> {
+        self.project().writer.poll_shutdown(cx)
+    }
+}
+
+/// Connects to an RPC server listening on a socket implementing `AsyncRead` and `AsyncWrite`.
+///
+/// Use `<RPCClient>::bind(client(...).await)` to obtain an RPC client.
+pub async fn client<Socket, Service, Content, ContentCodec, TransportCodec>(
+    socket: Socket, content_codec: ContentCodec, transport_codec: TransportCodec, mux_cfg: chmux::Cfg,
+) -> chmux::Client<Service, Content, ContentCodec>
+where
+    Socket: AsyncRead + AsyncWrite + Send + 'static,
+    Service: Serialize + DeserializeOwned + 'static,
+    Content: Serialize + DeserializeOwned + Send + 'static,
+    ContentCodec: ContentCodecFactory<Content> + 'static,
+    TransportCodec: TransportCodecFactory<Content, Bytes> + 'static,
+{
+    let (socket_rx, socket_tx) = split(socket);
+    let framed_tx = FramedWrite::new(socket_tx, LengthDelimitedCodec::new());
+    let framed_rx = FramedRead::new(socket_rx, LengthDelimitedCodec::new());
+    let framed_rx = framed_rx.map(|data| data.map(|b| b.freeze()));
+
+    let (mux, client, _) =
+        chmux::Multiplexer::new(&mux_cfg, &content_codec, &transport_codec, framed_tx, framed_rx);
+    tokio::spawn(async move {
+        if let Err(err) = mux.run().await {
+            log::warn!("Client chmux failed: {}", &err);
+        }
+    });
+
+    client
+}
+
+/// Provides an RPC server listening on a socket implementing `AsyncRead` and `AsyncWrite`.
+///
+/// Use `<RPCServer>::serve(server(...).await)` to run an RPC server.
+pub async fn server<Socket, Service, Content, ContentCodec, TransportCodec>(
+    socket: Socket, content_codec: ContentCodec, transport_codec: TransportCodec, mux_cfg: chmux::Cfg,
+) -> chmux::Server<Service, Content, ContentCodec>
+where
+    Socket: AsyncRead + AsyncWrite + Send + 'static,
+    Service: Serialize + DeserializeOwned + 'static,
+    Content: Serialize + DeserializeOwned + Send + 'static,
+    ContentCodec: ContentCodecFactory<Content> + 'static,
+    TransportCodec: TransportCodecFactory<Content, Bytes> + 'static,
+{
+    let (socket_rx, socket_tx) = split(socket);
+    let framed_tx = FramedWrite::new(socket_tx, LengthDelimitedCodec::new());
+    let framed_rx = FramedRead::new(socket_rx, LengthDelimitedCodec::new());
+    let framed_rx = framed_rx.map(|data| data.map(|b| b.freeze()));
+
+    let (mux, _, server) = Multiplexer::new(&mux_cfg, &content_codec, &transport_codec, framed_tx, framed_rx);
+    tokio::spawn(async move {
+        if let Err(err) = mux.run().await {
+            log::warn!("Server chmux failed: {}", &err);
+        }
+    });
+
+    server
+}
+
 /// Connects to an RPC server listening on a TCP socket.
 ///
 /// Use `<RPCClient>::bind(tcp_client(...).await?)` to obtain an RPC client.
 pub async fn tcp_client<Service, Content, ContentCodec, TransportCodec>(
     server_addr: impl ToSocketAddrs, content_codec: ContentCodec, transport_codec: TransportCodec,
+    mux_cfg: chmux::Cfg,
 ) -> io::Result<chmux::Client<Service, Content, ContentCodec>>
 where
     Service: Serialize + DeserializeOwned + 'static,
@@ -37,32 +166,19 @@ where
     let remote_addr = socket.peer_addr().unwrap_or(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0).into());
     log::info!("Connected from {} to {}", &local_addr, &remote_addr);
 
-    let (socket_rx, socket_tx) = split(socket);
-    let framed_tx = FramedWrite::new(socket_tx, LengthDelimitedCodec::new());
-    let framed_rx = FramedRead::new(socket_rx, LengthDelimitedCodec::new());
-    let framed_rx = framed_rx.map(|data| data.map(|b| b.freeze()));
-
-    let mux_cfg = chmux::Cfg::default();
-    let (mux, client, _) =
-        chmux::Multiplexer::new(&mux_cfg, &content_codec, &transport_codec, framed_tx, framed_rx);
-    tokio::spawn(async move {
-        if let Err(err) = mux.run().await {
-            log::warn!("Client chmux for {} from {} failed: {}", &remote_addr, &local_addr, &err);
-        }
-    });
-
-    Ok(client)
+    Ok(client(socket, content_codec, transport_codec, mux_cfg).await)
 }
 
 /// Listens on the specified TCP socket and runs an RPC server for each incoming connection.
 ///
-/// Uses the default chmux configuration.
 /// If `multiple` is `false` only a single connection is accepted at a time.
 /// `run_server` takes the local address, remote address and server mux as arguments.
 pub async fn tcp_server<Service, Content, ContentCodec, TransportCodec, ServerFut, ServerFutOk, ServerFutErr>(
     bind_addr: impl ToSocketAddrs, multiple: bool, content_codec: ContentCodec, transport_codec: TransportCodec,
+    mux_cfg: chmux::Cfg,
     run_server: impl Fn(SocketAddr, SocketAddr, chmux::Server<Service, Content, ContentCodec>) -> ServerFut
         + Send
+        + Sync
         + Clone
         + 'static,
 ) -> io::Result<()>
@@ -82,34 +198,121 @@ where
             let conn_content_codec = content_codec.clone();
             let conn_transport_codec = transport_codec.clone();
             let conn_run_server = run_server.clone();
+            let conn_mux_cfg = mux_cfg.clone();
 
             let conn_task = async move {
                 log::info!("Accepted connection for {} from {}", &local_addr, &remote_addr);
                 let _ = socket.set_keepalive(Some(Duration::from_secs(TCP_KEEPALIVE_TIME)));
 
-                let (socket_rx, socket_tx) = split(socket);
-                let framed_tx = FramedWrite::new(socket_tx, LengthDelimitedCodec::new());
-                let framed_rx = FramedRead::new(socket_rx, LengthDelimitedCodec::new());
-                let framed_rx = framed_rx.map(|data| data.map(|b| b.freeze()));
+                let server_mux = server(socket, conn_content_codec, conn_transport_codec, conn_mux_cfg).await;
+                let result = conn_run_server(local_addr.clone(), remote_addr.clone(), server_mux).await;
+                if let Err(err) = result {
+                    log::warn!("RPC server for {} from {} failed: {}", &local_addr, &remote_addr, &err);
+                }
 
-                let mux_cfg = chmux::Cfg::default();
-                let (mux, _, server_mux) =
-                    Multiplexer::new(&mux_cfg, &conn_content_codec, &conn_transport_codec, framed_tx, framed_rx);
-                let mux_task = mux.run();
-                let rpc_task = conn_run_server(local_addr.clone(), remote_addr.clone(), server_mux);
+                log::info!("Closed connection for {} from {}", &local_addr, &remote_addr);
+            };
 
-                pin_mut!(mux_task, rpc_task);
-                tokio::select! {
-                    mux_result = &mut mux_task => {
-                        if let Err(err) = mux_result {
-                            log::warn!("Server chmux for {} from {} failed: {}", &local_addr, &remote_addr, &err);
-                        }
+            if multiple {
+                tokio::spawn(conn_task);
+            } else {
+                conn_task.await;
+            }
+        }
+    }
+}
+
+#[cfg(feature = "socket_tls")]
+/// Connects to an RPC server listening on a TCP socket with TLS encryption.
+///
+/// Use `<RPCClient>::bind(tcp_tls_client(...).await?)` to obtain an RPC client.
+pub async fn tcp_tls_client<Service, Content, ContentCodec, TransportCodec>(
+    server_addr: impl ToSocketAddrs, dns_name: &str, content_codec: ContentCodec,
+    transport_codec: TransportCodec, mux_cfg: chmux::Cfg, tls_cfg: Arc<tokio_rustls::rustls::ClientConfig>,
+) -> io::Result<chmux::Client<Service, Content, ContentCodec>>
+where
+    Service: Serialize + DeserializeOwned + 'static,
+    Content: Serialize + DeserializeOwned + Send + 'static,
+    ContentCodec: ContentCodecFactory<Content> + 'static,
+    TransportCodec: TransportCodecFactory<Content, Bytes> + 'static,
+{
+    use tokio_rustls::{webpki::DNSNameRef, TlsConnector};
+
+    let dns_name = DNSNameRef::try_from_ascii_str(dns_name)
+        .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
+
+    let socket = TcpStream::connect(server_addr).await?;
+    let _ = socket.set_keepalive(Some(Duration::from_secs(TCP_KEEPALIVE_TIME)));
+    let local_addr = socket.local_addr().unwrap_or(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0).into());
+    let remote_addr = socket.peer_addr().unwrap_or(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0).into());
+    log::info!("Connected from {} to {}", &local_addr, &remote_addr);
+
+    let connector = TlsConnector::from(tls_cfg);
+    let socket = connector.connect(dns_name, socket).await?;
+
+    Ok(client(socket, content_codec, transport_codec, mux_cfg).await)
+}
+
+#[cfg(feature = "socket_tls")]
+/// Listens on the specified TCP socket and runs an RPC server with TLS encryption for each incoming connection.
+///
+/// If `multiple` is `false` only a single connection is accepted at a time.
+/// `run_server` takes the local address, remote address and server mux as arguments.
+pub async fn tcp_tls_server<
+    Service,
+    Content,
+    ContentCodec,
+    TransportCodec,
+    ServerFut,
+    ServerFutOk,
+    ServerFutErr,
+>(
+    bind_addr: impl ToSocketAddrs, multiple: bool, content_codec: ContentCodec, transport_codec: TransportCodec,
+    mux_cfg: chmux::Cfg, tls_cfg: Arc<tokio_rustls::rustls::ServerConfig>,
+    run_server: impl Fn(SocketAddr, SocketAddr, chmux::Server<Service, Content, ContentCodec>) -> ServerFut
+        + Send
+        + Sync
+        + Clone
+        + 'static,
+) -> io::Result<()>
+where
+    Service: Serialize + DeserializeOwned + 'static,
+    Content: Serialize + DeserializeOwned + Send + 'static,
+    ContentCodec: ContentCodecFactory<Content> + 'static,
+    TransportCodec: TransportCodecFactory<Content, Bytes> + 'static,
+    ServerFut: Future<Output = Result<ServerFutOk, ServerFutErr>> + Send,
+    ServerFutErr: error::Error,
+{
+    use tokio_rustls::TlsAcceptor;
+
+    let mut listener = TcpListener::bind(bind_addr).await?;
+
+    loop {
+        if let Ok((socket, remote_addr)) = listener.accept().await {
+            let local_addr = socket.local_addr().unwrap_or(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0).into());
+            let conn_content_codec = content_codec.clone();
+            let conn_transport_codec = transport_codec.clone();
+            let conn_run_server = run_server.clone();
+            let conn_mux_cfg = mux_cfg.clone();
+            let conn_tls_cfg = tls_cfg.clone();
+
+            let conn_task = async move {
+                log::info!("Accepted connection for {} from {}", &local_addr, &remote_addr);
+                let _ = socket.set_keepalive(Some(Duration::from_secs(TCP_KEEPALIVE_TIME)));
+
+                let acceptor = TlsAcceptor::from(conn_tls_cfg);
+                let socket = match acceptor.accept(socket).await {
+                    Ok(socket) => socket,
+                    Err(err) => {
+                        log::warn!("TLS connection for {} from {} failed: {}", &local_addr, &remote_addr, &err);
+                        return;
                     }
-                    rpc_result = &mut rpc_task => {
-                        if let Err(err) = rpc_result {
-                            log::warn!("RPC server for {} from {} failed: {}", &local_addr, &remote_addr, &err);
-                        }
-                    }
+                };
+
+                let server_mux = server(socket, conn_content_codec, conn_transport_codec, conn_mux_cfg).await;
+                let result = conn_run_server(local_addr.clone(), remote_addr.clone(), server_mux).await;
+                if let Err(err) = result {
+                    log::warn!("RPC server for {} from {} failed: {}", &local_addr, &remote_addr, &err);
                 }
 
                 log::info!("Closed connection for {} from {}", &local_addr, &remote_addr);
