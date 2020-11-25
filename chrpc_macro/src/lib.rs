@@ -625,6 +625,7 @@ impl ServiceMethod {
         } else {
             quote! {
                 let ret = ret_fut.await;
+                #reply
             }
         };
 
