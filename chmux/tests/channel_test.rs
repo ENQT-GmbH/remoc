@@ -28,9 +28,9 @@ fn raw_test() {
     let transport_codec = JsonTransportCodec::new();
 
     let (a_mux, a_client, a_server) =
-        chmux::Multiplexer::new(&mux_cfg, &content_codec, &transport_codec, a_tx, a_rx);
+        chmux::Multiplexer::new::<u64, u64>(&mux_cfg, &content_codec, &transport_codec, a_tx, a_rx);
     let (b_mux, b_client, mut b_server) =
-        chmux::Multiplexer::new(&mux_cfg, &content_codec, &transport_codec, b_tx, b_rx);
+        chmux::Multiplexer::new::<u64, u64>(&mux_cfg, &content_codec, &transport_codec, b_tx, b_rx);
 
     let (a_mux_done_tx, a_mux_done_rx) = oneshot::channel();
     pool.spawn_ok(async move {
@@ -137,9 +137,9 @@ fn hangup_test() {
     let transport_codec = JsonTransportCodec::new();
 
     let (a_mux, a_client, a_server) =
-        chmux::Multiplexer::new(&mux_cfg, &content_codec, &transport_codec, a_tx, a_rx);
+        chmux::Multiplexer::new::<i32, i32>(&mux_cfg, &content_codec, &transport_codec, a_tx, a_rx);
     let (b_mux, b_client, mut b_server) =
-        chmux::Multiplexer::new(&mux_cfg, &content_codec, &transport_codec, b_tx, b_rx);
+        chmux::Multiplexer::new::<u64, u64>(&mux_cfg, &content_codec, &transport_codec, b_tx, b_rx);
 
     let (a_mux_done_tx, a_mux_done_rx) = oneshot::channel();
     pool.spawn_ok(async move {

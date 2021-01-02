@@ -320,16 +320,17 @@ where
     /// See the `codecs` module for provided transport and content codecs.
     ///
     /// After creation use the `run` method of the multiplexer to launch the dispatch task.
-    pub fn new<Service>(
+    pub fn new<ClientService, ServerService>(
         cfg: &Cfg, content_codec: &ContentCodec, transport_codec: &TransportCodec, transport_tx: TransportSink,
         transport_rx: TransportStream,
     ) -> (
         Multiplexer<'a, Content, ContentCodec, TransportType, TransportCodec, TransportSink, TransportStream>,
-        Client<Service, Content, ContentCodec>,
-        Server<Service, Content, ContentCodec>,
+        Client<ClientService, Content, ContentCodec>,
+        Server<ServerService, Content, ContentCodec>,
     )
     where
-        Service: Serialize + DeserializeOwned + 'static,
+        ClientService: Serialize + DeserializeOwned + 'static,
+        ServerService: Serialize + DeserializeOwned + 'static,
     {
         // Check configuration.
         assert!(cfg.channel_rx_queue_length >= 2, "Channel receive queue length must be at least 2.");

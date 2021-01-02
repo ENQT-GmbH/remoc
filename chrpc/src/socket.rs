@@ -89,6 +89,35 @@ impl<R, W: AsyncWrite> AsyncWrite for AsyncReadWrite<R, W> {
     }
 }
 
+/// Connects to an RPC server listening on a socket and at the same time
+/// provide an RPC server implementing `AsyncRead` and `AsyncWrite`.
+pub async fn client_server<Socket, ClientService, ServerService, Content, ContentCodec, TransportCodec>(
+    socket: Socket, content_codec: ContentCodec, transport_codec: TransportCodec, mux_cfg: chmux::Cfg,
+) -> (chmux::Client<ClientService, Content, ContentCodec>, chmux::Server<ServerService, Content, ContentCodec>)
+where
+    Socket: AsyncRead + AsyncWrite + Send + 'static,
+    ClientService: Serialize + DeserializeOwned + 'static,
+    ServerService: Serialize + DeserializeOwned + 'static,
+    Content: Serialize + DeserializeOwned + Send + 'static,
+    ContentCodec: ContentCodecFactory<Content> + 'static,
+    TransportCodec: TransportCodecFactory<Content, Bytes> + 'static,
+{
+    let (socket_rx, socket_tx) = split(socket);
+    let framed_tx = FramedWrite::new(socket_tx, LengthDelimitedCodec::new());
+    let framed_rx = FramedRead::new(socket_rx, LengthDelimitedCodec::new());
+    let framed_rx = framed_rx.map(|data| data.map(|b| b.freeze()));
+
+    let (mux, client, server) =
+        chmux::Multiplexer::new(&mux_cfg, &content_codec, &transport_codec, framed_tx, framed_rx);
+    tokio::spawn(async move {
+        if let Err(err) = mux.run().await {
+            log::warn!("Client and server chmux failed: {}", &err);
+        }
+    });
+
+    (client, server)
+}
+
 /// Connects to an RPC server listening on a socket implementing `AsyncRead` and `AsyncWrite`.
 ///
 /// Use `<RPCClient>::bind(client(...).await)` to obtain an RPC client.
@@ -108,7 +137,7 @@ where
     let framed_rx = framed_rx.map(|data| data.map(|b| b.freeze()));
 
     let (mux, client, _) =
-        chmux::Multiplexer::new(&mux_cfg, &content_codec, &transport_codec, framed_tx, framed_rx);
+        chmux::Multiplexer::new::<_, ()>(&mux_cfg, &content_codec, &transport_codec, framed_tx, framed_rx);
     tokio::spawn(async move {
         if let Err(err) = mux.run().await {
             log::warn!("Client chmux failed: {}", &err);
@@ -136,7 +165,8 @@ where
     let framed_rx = FramedRead::new(socket_rx, LengthDelimitedCodec::new());
     let framed_rx = framed_rx.map(|data| data.map(|b| b.freeze()));
 
-    let (mux, _, server) = Multiplexer::new(&mux_cfg, &content_codec, &transport_codec, framed_tx, framed_rx);
+    let (mux, _, server) =
+        Multiplexer::new::<(), _>(&mux_cfg, &content_codec, &transport_codec, framed_tx, framed_rx);
     tokio::spawn(async move {
         if let Err(err) = mux.run().await {
             log::warn!("Server chmux failed: {}", &err);

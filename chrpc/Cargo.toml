@@ -1,6 +1,6 @@
 [package]
 name = "chrpc"
-version = "0.3.2"
+version = "0.3.3"
 authors = ["ENQT GmbH <su@enqt.de>"]
 edition = "2018"
 description = "Streaming remote procedure calls (RPC) over chmux."

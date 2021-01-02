@@ -28,7 +28,7 @@ fn tcp_server() {
         let transport_codec = JsonTransportCodec::new();
 
         let (mux, _, server) =
-            chmux::Multiplexer::new(&mux_cfg, &content_codec, &transport_codec, framed_tx, framed_rx);
+            chmux::Multiplexer::new::<(), _>(&mux_cfg, &content_codec, &transport_codec, framed_tx, framed_rx);
         let mut server: chmux::Server<String, _, _> = server;
 
         let mux_run = tokio::spawn(async move { mux.run().await.unwrap() });
@@ -82,7 +82,7 @@ fn tcp_client() {
         let transport_codec = JsonTransportCodec::new();
 
         let (mux, client, _) =
-            chmux::Multiplexer::new(&mux_cfg, &content_codec, &transport_codec, framed_tx, framed_rx);
+            chmux::Multiplexer::new::<_, ()>(&mux_cfg, &content_codec, &transport_codec, framed_tx, framed_rx);
         let mux_run = tokio::spawn(async move { mux.run().await.unwrap() });
 
         {

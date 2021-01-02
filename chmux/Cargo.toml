@@ -1,6 +1,6 @@
 [package]
 name = "chmux"
-version = "0.2.1"
+version = "0.2.2"
 authors = ["ENQT GmbH <su@enqt.de>"]
 edition = "2018"
 description = "Multiplexes multiple channels over a single transport (anything that implements Sink and Stream)."

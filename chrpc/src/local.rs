@@ -54,7 +54,7 @@ where
 
     let transport_codec = IdTransportCodec::new();
 
-    let (mux, client, _) = chmux::Multiplexer::new(&mux_cfg(), &content_codec, &transport_codec, tx, rx);
+    let (mux, client, _) = chmux::Multiplexer::new::<_, ()>(&mux_cfg(), &content_codec, &transport_codec, tx, rx);
     tokio::spawn(async move {
         if let Err(err) = mux.run().await {
             log::warn!("Client chmux failed: {}", &err);
@@ -82,7 +82,8 @@ where
 
     let transport_codec = IdTransportCodec::new();
 
-    let (mux, _, server_mux) = chmux::Multiplexer::new(&mux_cfg(), &content_codec, &transport_codec, tx, rx);
+    let (mux, _, server_mux) =
+        chmux::Multiplexer::new::<(), _>(&mux_cfg(), &content_codec, &transport_codec, tx, rx);
     let mux_task = mux.run().fuse();
     let rpc_task = run_server(server_mux);
 
