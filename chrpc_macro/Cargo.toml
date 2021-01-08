@@ -1,6 +1,6 @@
 [package]
 name = "chrpc_macro"
-version = "0.2.1"
+version = "0.2.2"
 authors = ["ENQT GmbH <su@enqt.de>"]
 edition = "2018"
 description = "Procedural macro for chrpc. Do not use directly."

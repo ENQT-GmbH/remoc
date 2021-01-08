@@ -140,7 +140,7 @@ impl Service {
                 async fn serve<Content, Codec>(
                     self,
                     mut server: ::chmux::Server<#enum_ident, Content, Codec>,
-                ) -> Result<Self, ::chmux::ServerError>
+                ) -> ::std::result::Result<Self, ::chmux::ServerError>
                 where
                     Content: ::serde::Serialize + ::serde::de::DeserializeOwned + Send + 'static,
                     Codec: ::chmux::ContentCodecFactory<Content> + 'static
@@ -687,17 +687,17 @@ impl ServiceMethod {
         // Method return type.
         let return_ty = match (&self.response, &self.receiver) {
             (Response::Sender(sender), Some(receiver)) => quote! {
-                Result<(::chrpc::Sender<'a, #receiver>, ::chrpc::Receiver<'a, #sender>),
+                ::std::result::Result<(::chrpc::Sender<'a, #receiver>, ::chrpc::Receiver<'a, #sender>),
                     ::chmux::ConnectError>
             },
             (Response::Sender(sender), None) => quote! {
-                Result<::chrpc::Receiver<'a, #sender>, ::chmux::ConnectError>
+                ::std::result::Result<::chrpc::Receiver<'a, #sender>, ::chmux::ConnectError>
             },
             (Response::Single(ret), Some(receiver)) => quote! {
-                Result<::chrpc::SendingCall<'a, #receiver, #ret>, ::chmux::ConnectError>
+                ::std::result::Result<::chrpc::SendingCall<'a, #receiver, #ret>, ::chmux::ConnectError>
             },
             (Response::Single(ret), None) => quote! {
-                Result<#ret, ::chrpc::CallError>
+                ::std::result::Result<#ret, ::chrpc::CallError>
             },
         };
 
