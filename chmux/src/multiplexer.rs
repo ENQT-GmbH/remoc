@@ -559,11 +559,6 @@ where
                                 let msg = MultiplexMsg::Resume { port: *remote_port };
                                 self.transport_send(msg).await?;
                             }
-                        } else {
-                            panic!(
-                                "ChannelMsg ReceiveBufferReachedResumeLength for already finished port {}.",
-                                &local_port
-                            );
                         }
                     } else {
                         panic!(
