@@ -42,3 +42,17 @@ macro_rules! term {
         }
     };
 }
+
+/// Ignore errors due to connection terminated.
+///
+/// Argument must be of type `Result<(), SendError>`.
+#[macro_export]
+macro_rules! ignore_term {
+    ($exp:expr) => {
+        match $exp {
+            Ok(()) => Ok(()),
+            Err(err) if err.is_terminated() => Ok(()),
+            Err(err) => Err(err),
+        }
+    };
+}
