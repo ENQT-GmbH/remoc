@@ -89,14 +89,19 @@ pub struct Cfg {
     pub connection_timeout: Option<Duration>,
 }
 
+impl Cfg {
+    /// Default multiplexer configuration.
+    pub const DEFAULT: Self = Self {
+        channel_rx_queue_length: 100,
+        service_request_queue_length: 10,
+        ping_interval: Some(Duration::from_secs(30)),
+        connection_timeout: Some(Duration::from_secs(60)),
+    };
+}
+
 impl Default for Cfg {
-    fn default() -> Cfg {
-        Cfg {
-            channel_rx_queue_length: 100,
-            service_request_queue_length: 10,
-            ping_interval: Some(Duration::from_secs(30)),
-            connection_timeout: Some(Duration::from_secs(60)),
-        }
+    fn default() -> Self {
+        Self::DEFAULT
     }
 }
 
