@@ -1,0 +1,12 @@
+{
+    "cSpell.languageSettings": [
+        {
+            "languageId": "rust",
+            "includeRegExpList": [
+                "CStyleComment"
+            ],
+        }
+    ],
+    "cSpell.words": [
+    ]
+}

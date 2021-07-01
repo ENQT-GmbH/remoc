@@ -4,24 +4,36 @@ use bytes::Bytes;
 use futures::{stream::StreamExt, Future};
 use pin_project::pin_project;
 use serde::{de::DeserializeOwned, Serialize};
+use socket2::TcpKeepalive;
 use std::{
     error, io,
-    mem::MaybeUninit,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
+    os::unix::io::{AsRawFd, FromRawFd, IntoRawFd},
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
     time::Duration,
 };
 use tokio::{
-    io::{split, AsyncRead, AsyncWrite},
+    io::{split, AsyncRead, AsyncWrite, ReadBuf},
     net::{TcpListener, TcpStream, ToSocketAddrs},
 };
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
 use chmux::{ContentCodecFactory, Multiplexer, TransportCodecFactory};
 
-const TCP_KEEPALIVE_TIME: u64 = 10;
+/// TCP keep alive time in seconds.
+const TCP_KEEPALIVE_TIME: Duration = Duration::from_secs(10);
+
+/// Configure TCP keep alive time on socket.
+fn configure_tcp_keepalive(socket: &TcpStream) -> io::Result<()> {
+    let fd = socket.as_raw_fd();
+    let socket = unsafe { socket2::Socket::from_raw_fd(fd) };
+    let keepalive = TcpKeepalive::new().with_time(TCP_KEEPALIVE_TIME);
+    let result = socket.set_tcp_keepalive(&keepalive);
+    socket.into_raw_fd();
+    result
+}
 
 /// Combines an object implementing `AsyncRead` and an object implementing
 /// `AsyncWrite` into an object that implements both `AsyncRead` and
@@ -48,34 +60,12 @@ impl<R, W> AsyncReadWrite<R, W> {
 }
 
 impl<R: AsyncRead, W> AsyncRead for AsyncReadWrite<R, W> {
-    fn poll_read(self: Pin<&mut Self>, cx: &mut Context, buf: &mut [u8]) -> Poll<io::Result<usize>> {
+    fn poll_read(self: Pin<&mut Self>, cx: &mut Context, buf: &mut ReadBuf) -> Poll<io::Result<()>> {
         self.project().reader.poll_read(cx, buf)
-    }
-
-    unsafe fn prepare_uninitialized_buffer(&self, buf: &mut [MaybeUninit<u8>]) -> bool {
-        self.reader.prepare_uninitialized_buffer(buf)
-    }
-
-    fn poll_read_buf<B: bytes::BufMut>(
-        self: Pin<&mut Self>, cx: &mut Context, buf: &mut B,
-    ) -> Poll<io::Result<usize>>
-    where
-        Self: Sized,
-    {
-        self.project().reader.poll_read_buf(cx, buf)
     }
 }
 
 impl<R, W: AsyncWrite> AsyncWrite for AsyncReadWrite<R, W> {
-    fn poll_write_buf<B: bytes::Buf>(
-        self: Pin<&mut Self>, cx: &mut Context, buf: &mut B,
-    ) -> Poll<Result<usize, io::Error>>
-    where
-        Self: Sized,
-    {
-        self.project().writer.poll_write_buf(cx, buf)
-    }
-
     fn poll_write(self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<Result<usize, io::Error>> {
         self.project().writer.poll_write(cx, buf)
     }
@@ -86,6 +76,10 @@ impl<R, W: AsyncWrite> AsyncWrite for AsyncReadWrite<R, W> {
 
     fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), io::Error>> {
         self.project().writer.poll_shutdown(cx)
+    }
+
+    fn is_write_vectored(&self) -> bool {
+        self.writer.is_write_vectored()
     }
 }
 
@@ -190,7 +184,7 @@ where
     TransportCodec: TransportCodecFactory<Content, Bytes> + 'static,
 {
     let socket = TcpStream::connect(server_addr).await?;
-    let _ = socket.set_keepalive(Some(Duration::from_secs(TCP_KEEPALIVE_TIME)));
+    let _ = configure_tcp_keepalive(&socket);
 
     let local_addr = socket.local_addr().unwrap_or(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0).into());
     let remote_addr = socket.peer_addr().unwrap_or(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0).into());
@@ -220,7 +214,7 @@ where
     ServerFut: Future<Output = Result<ServerFutOk, ServerFutErr>> + Send,
     ServerFutErr: error::Error,
 {
-    let mut listener = TcpListener::bind(bind_addr).await?;
+    let listener = TcpListener::bind(bind_addr).await?;
 
     loop {
         if let Ok((socket, remote_addr)) = listener.accept().await {
@@ -232,7 +226,7 @@ where
 
             let conn_task = async move {
                 log::info!("Accepted connection for {} from {}", &local_addr, &remote_addr);
-                let _ = socket.set_keepalive(Some(Duration::from_secs(TCP_KEEPALIVE_TIME)));
+                let _ = configure_tcp_keepalive(&socket);
 
                 let server_mux = server(socket, conn_content_codec, conn_transport_codec, conn_mux_cfg).await;
                 let result = conn_run_server(local_addr.clone(), remote_addr.clone(), server_mux).await;
@@ -272,7 +266,7 @@ where
         .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
 
     let socket = TcpStream::connect(server_addr).await?;
-    let _ = socket.set_keepalive(Some(Duration::from_secs(TCP_KEEPALIVE_TIME)));
+    let _ = configure_tcp_keepalive(&socket);
     let local_addr = socket.local_addr().unwrap_or(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0).into());
     let remote_addr = socket.peer_addr().unwrap_or(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0).into());
     log::info!("Connected from {} to {}", &local_addr, &remote_addr);
@@ -315,7 +309,7 @@ where
 {
     use tokio_rustls::TlsAcceptor;
 
-    let mut listener = TcpListener::bind(bind_addr).await?;
+    let listener = TcpListener::bind(bind_addr).await?;
 
     loop {
         if let Ok((socket, remote_addr)) = listener.accept().await {
@@ -328,7 +322,7 @@ where
 
             let conn_task = async move {
                 log::info!("Accepted connection for {} from {}", &local_addr, &remote_addr);
-                let _ = socket.set_keepalive(Some(Duration::from_secs(TCP_KEEPALIVE_TIME)));
+                let _ = configure_tcp_keepalive(&socket);
 
                 let acceptor = TlsAcceptor::from(conn_tls_cfg);
                 let socket = match acceptor.accept(socket).await {

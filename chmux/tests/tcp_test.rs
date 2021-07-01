@@ -13,9 +13,9 @@ use chmux::{
 };
 
 fn tcp_server() {
-    let mut rt = Runtime::new().unwrap();
+    let rt = Runtime::new().unwrap();
     rt.block_on(async {
-        let mut listener = TcpListener::bind((Ipv4Addr::new(127, 0, 0, 1), 9876)).await.unwrap();
+        let listener = TcpListener::bind((Ipv4Addr::new(127, 0, 0, 1), 9876)).await.unwrap();
 
         let (socket, _) = listener.accept().await.unwrap();
         let (socket_rx, socket_tx) = split(socket);
@@ -68,7 +68,7 @@ fn tcp_server() {
 }
 
 fn tcp_client() {
-    let mut rt = Runtime::new().unwrap();
+    let rt = Runtime::new().unwrap();
     rt.block_on(async {
         let socket = TcpStream::connect((Ipv4Addr::new(127, 0, 0, 1), 9876)).await.unwrap();
 

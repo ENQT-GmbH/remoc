@@ -61,7 +61,7 @@ impl TestTrait for TestObj {
 
 async fn server_part() {
     println!("Server waiting for TCP connection...");
-    let mut listener = TcpListener::bind((Ipv4Addr::new(127, 0, 0, 1), 9876)).await.unwrap();
+    let listener = TcpListener::bind((Ipv4Addr::new(127, 0, 0, 1), 9876)).await.unwrap();
     let (socket, _) = listener.accept().await.unwrap();
     let (socket_rx, socket_tx) = split(socket);
     let framed_tx = FramedWrite::new(socket_tx, LengthDelimitedCodec::new());

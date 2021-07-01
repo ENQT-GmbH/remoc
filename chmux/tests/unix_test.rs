@@ -15,10 +15,10 @@ mod unix {
     };
 
     fn uds_server() {
-        let mut rt = Runtime::new().unwrap();
+        let rt = Runtime::new().unwrap();
         rt.block_on(async {
             let _ = fs::remove_file("/tmp/chmux_test");
-            let mut listener = UnixListener::bind("/tmp/chmux_test").unwrap();
+            let listener = UnixListener::bind("/tmp/chmux_test").unwrap();
 
             let (socket, _) = listener.accept().await.unwrap();
             let (socket_rx, socket_tx) = split(socket);
@@ -77,7 +77,7 @@ mod unix {
     }
 
     fn uds_client() {
-        let mut rt = Runtime::new().unwrap();
+        let rt = Runtime::new().unwrap();
         rt.block_on(async {
             let socket = UnixStream::connect("/tmp/chmux_test").await.unwrap();
 
