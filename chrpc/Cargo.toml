@@ -20,7 +20,7 @@ chrpc_macro = { path="../chrpc_macro" }
 async-trait = "0.1"
 serde = {version="1.0", features=["derive"]}
 futures = "0.3"
-tokio = { version="0.2", features = ["rt-core", "macros", "sync"] }
+tokio = { version="0.2", features = ["rt-core", "macros", "sync", "net", "io-util"] }
 tokio-util = { version="0.3", features = ["codec"], optional = true }
 tokio-rustls = { version="0.14", optional = true}
 pin-project = "1.0"
