@@ -1,19 +1,18 @@
-use std::pin::Pin;
-use std::fmt;
-use std::error::Error;
 use futures::sink::Sink;
 use futures::stream::{Stream, StreamExt};
-use futures::task::Poll;
 use futures::task::Context;
+use futures::task::Poll;
 use pin_project::pin_project;
-use std::marker::PhantomData;
 use pin_project::pinned_drop;
+use std::error::Error;
+use std::fmt;
+use std::marker::PhantomData;
+use std::pin::Pin;
 
-use serde::{Serialize, de::DeserializeOwned};
-use chmux::{SendError, ReceiveError, ConnectError};
+use chmux::{ConnectError, ReceiveError, SendError};
+use serde::{de::DeserializeOwned, Serialize};
 
 pub use chrpc_macro::service;
-
 
 /// An error occured during an RPC call.
 #[derive(Debug)]
@@ -23,9 +22,9 @@ pub enum CallError {
     /// A multiplexer error has occured or it has been terminated.
     MultiplexerError,
     /// Error serializing the service request.
-    SerializationError(Box<dyn Error + Send + 'static>),  
+    SerializationError(Box<dyn Error + Send + 'static>),
     /// A deserialization error occured.
-    DeserializationError(Box<dyn Error + Send + 'static>), 
+    DeserializationError(Box<dyn Error + Send + 'static>),
 }
 
 impl fmt::Display for CallError {
@@ -33,7 +32,7 @@ impl fmt::Display for CallError {
         match self {
             Self::Rejected => write!(f, "Connection has been rejected by server."),
             Self::MultiplexerError => write!(f, "A multiplexer error has occured or it has been terminated."),
-            Self::SerializationError(err) => write!(f, "A serialization error occured: {}", err),            
+            Self::SerializationError(err) => write!(f, "A serialization error occured: {}", err),
             Self::DeserializationError(err) => write!(f, "A deserialization error occured: {}", err),
         }
     }
@@ -46,7 +45,7 @@ impl From<ConnectError> for CallError {
         match err {
             ConnectError::MultiplexerError => Self::MultiplexerError,
             ConnectError::Rejected => Self::Rejected,
-            ConnectError::SerializationError (err) => Self::SerializationError(err)
+            ConnectError::SerializationError(err) => Self::SerializationError(err),
         }
     }
 }
@@ -55,15 +54,14 @@ impl From<ReceiveError> for CallError {
     fn from(err: ReceiveError) -> Self {
         match err {
             ReceiveError::MultiplexerError => Self::MultiplexerError,
-            ReceiveError::DeserializationError (err) => Self::DeserializationError(err)
+            ReceiveError::DeserializationError(err) => Self::DeserializationError(err),
         }
     }
 }
 
 /// RPC sender.
 #[pin_project(PinnedDrop)]
-pub struct Sender<'a, T> 
-{
+pub struct Sender<'a, T> {
     #[pin]
     sender: chmux::Sender<T>,
     _ghost: PhantomData<&'a ()>,
@@ -76,7 +74,7 @@ impl<'a, T> PinnedDrop for Sender<'a, T> {
     }
 }
 
-impl<'a, T> Sink<T> for Sender<'a, T> 
+impl<'a, T> Sink<T> for Sender<'a, T>
 where
     T: Serialize,
 {
@@ -92,18 +90,16 @@ where
     }
     fn poll_close(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
         self.project().sender.poll_close(cx)
-    }    
+    }
 }
 
 impl<'a, T> Sender<'a, T>
 where
-    T: Serialize, {
+    T: Serialize,
+{
     #[doc(hidden)]
     pub fn new(sender: chmux::Sender<T>) -> Self {
-        Self {
-            sender,
-            _ghost: PhantomData
-        }
+        Self { sender, _ghost: PhantomData }
     }
 }
 
@@ -122,22 +118,23 @@ impl<'a, T> PinnedDrop for Receiver<'a, T> {
     }
 }
 
-impl<'a, T> Stream for Receiver<'a, T> 
-where T: DeserializeOwned {
+impl<'a, T> Stream for Receiver<'a, T>
+where
+    T: DeserializeOwned,
+{
     type Item = Result<T, ReceiveError>;
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
         self.project().receiver.poll_next(cx)
     }
 }
 
-impl<'a, T> Receiver<'a, T> 
-where T: DeserializeOwned {
+impl<'a, T> Receiver<'a, T>
+where
+    T: DeserializeOwned,
+{
     #[doc(hidden)]
     pub fn new(receiver: chmux::Receiver<T>) -> Self {
-        Self {
-            receiver,
-            _ghost: PhantomData,
-        }
+        Self { receiver, _ghost: PhantomData }
     }
 
     /// Prevents the remote endpoint from sending new messages into this channel while
@@ -148,12 +145,12 @@ where T: DeserializeOwned {
 }
 
 /// A sink that sends items to an RPC method.
-/// 
+///
 /// It can be closed, returning the value of the RPC method.
 pub struct SendingCall<'a, S, T> {
     sender: Option<Pin<Box<chmux::Sender<S>>>>,
     receiver: Pin<Box<chmux::Receiver<T>>>,
-    _ghost: PhantomData<&'a ()>
+    _ghost: PhantomData<&'a ()>,
 }
 
 impl<'a, S, T> Drop for SendingCall<'a, S, T> {
@@ -162,8 +159,10 @@ impl<'a, S, T> Drop for SendingCall<'a, S, T> {
     }
 }
 
-impl<'a, S, T> Sink<S> for SendingCall<'a, S, T> 
-where S: Serialize, T: DeserializeOwned
+impl<'a, S, T> Sink<S> for SendingCall<'a, S, T>
+where
+    S: Serialize,
+    T: DeserializeOwned,
 {
     type Error = SendError;
     fn poll_ready(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
@@ -177,29 +176,26 @@ where S: Serialize, T: DeserializeOwned
     }
     fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
         self.sender.as_mut().unwrap().as_mut().poll_close(cx)
-    }    
+    }
 }
 
-impl<'a, S, T> SendingCall<'a, S, T> 
-where S: Serialize, T: DeserializeOwned
+impl<'a, S, T> SendingCall<'a, S, T>
+where
+    S: Serialize,
+    T: DeserializeOwned,
 {
     #[doc(hidden)]
     pub fn new(sender: chmux::Sender<S>, receiver: chmux::Receiver<T>) -> Self {
-        Self {
-            sender: Some(Box::pin(sender)),
-            receiver: Box::pin(receiver),
-            _ghost: PhantomData
-        }
+        Self { sender: Some(Box::pin(sender)), receiver: Box::pin(receiver), _ghost: PhantomData }
     }
-    
-    /// Closes the sink and returns a Future resolving to the return value of the 
+
+    /// Closes the sink and returns a Future resolving to the return value of the
     /// RPC method.    
     pub async fn finish(mut self) -> Result<T, chmux::ReceiveError> {
         self.sender = None;
         match self.receiver.next().await {
             Some(ret) => ret,
-            None => Err(chmux::ReceiveError::MultiplexerError)
+            None => Err(chmux::ReceiveError::MultiplexerError),
         }
     }
 }
-

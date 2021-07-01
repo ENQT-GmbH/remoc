@@ -1,0 +1,10 @@
+[workspace]
+resolver = "2"
+members = [
+    "chmux",
+    "chrpc",
+    "chrpc_macro",
+]
+
+
+

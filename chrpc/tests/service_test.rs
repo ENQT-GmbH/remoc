@@ -1,9 +1,9 @@
-use std::net::Ipv4Addr;
 use chmux;
 use chmux::codecs::json::{JsonContentCodec, JsonTransportCodec};
 use chrpc::service;
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
+use std::net::Ipv4Addr;
 use tokio::io::split;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_util::codec::length_delimited::LengthDelimitedCodec;
@@ -17,14 +17,12 @@ pub trait TestTrait {
 }
 
 struct TestObj {
-    value: u32
+    value: u32,
 }
 
 impl TestObj {
     pub fn new() -> TestObj {
-        TestObj {
-            value: 123
-        }
+        TestObj { value: 123 }
     }
 }
 
@@ -38,7 +36,9 @@ impl TestTrait for TestObj {
         param1.len()
     }
 
-    async fn method_three(&mut self, param1: f32, param2: f64, value: u32, mut rx: chmux::Receiver<u16>) -> String {
+    async fn method_three(
+        &mut self, param1: f32, param2: f64, value: u32, mut rx: chmux::Receiver<u16>,
+    ) -> String {
         self.value = value;
         let mut data = format!("param1={}, param2={}, value={}\n", param1, param2, value);
         println!("server: method_three: {}", &data);
@@ -47,8 +47,8 @@ impl TestTrait for TestObj {
                 Some(Ok(x)) => {
                     data.push_str(&format!("rx: {}\n", x));
                     println!("server: method_three: rx: {}", x);
-                },
-                _ => break
+                }
+                _ => break,
             }
         }
         println!("server: method_three finished: {}", &data);
@@ -110,16 +110,16 @@ async fn client_part() {
     loop {
         match rx_one.next().await {
             Some(msg) => println!("rx_one: {}", msg.unwrap()),
-            None => break
+            None => break,
         }
     }
-    
+
     println!("Calling method_two...");
     let res_two = obj_client.method_two("1234567".to_string()).await.unwrap();
     println!("Method two: {}", res_two);
 
     println!("Dropping rx_one...");
-    drop(rx_one);    
+    drop(rx_one);
 
     println!("Calling method three...");
     let mut tx_three = obj_client.method_three(11.1, 22.22, 32).await.unwrap();
@@ -141,7 +141,7 @@ async fn client_part() {
 
     println!("Waiting for client mux to terminate...");
     mux_run.await.unwrap();
-    println!("client mux ended.");    
+    println!("client mux ended.");
 }
 
 #[tokio::test]

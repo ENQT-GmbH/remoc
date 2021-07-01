@@ -4,17 +4,14 @@ use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote, ToTokens, TokenStreamExt};
 use syn::{
-    braced,
-    parenthesized,
+    braced, parenthesized,
     parse::{Parse, ParseStream},
     parse_macro_input, parse_str,
     punctuated::Punctuated,
+    spanned::Spanned,
     token::Comma,
-    Attribute, FnArg, Ident, Pat, PatType, ReturnType, Token, Type,
-    Visibility, PathArguments, GenericArgument,
-    spanned::Spanned
+    Attribute, FnArg, GenericArgument, Ident, Pat, PatType, PathArguments, ReturnType, Token, Type, Visibility,
 };
-
 
 /// The unit type.
 fn unit_type() -> Type {
@@ -61,7 +58,6 @@ struct Service {
     methods: Vec<ServiceMethod>,
 }
 
-
 impl Parse for Service {
     /// Parses a service trait.
     fn parse(input: ParseStream) -> syn::Result<Self> {
@@ -81,15 +77,9 @@ impl Parse for Service {
             methods.push(content.parse()?);
         }
 
-        Ok(Self {
-            attrs,
-            vis,
-            ident,
-            methods,
-        })
+        Ok(Self { attrs, vis, ident, methods })
     }
 }
-
 
 impl Service {
     /// Identifier of service enum.
@@ -99,7 +89,7 @@ impl Service {
 
     /// Service enum definition.
     fn service_enum(&self) -> TokenStream2 {
-        let Self {vis, ..} = self;
+        let Self { vis, .. } = self;
         let enum_ident = self.service_enum_ident();
 
         let mut defs = quote! {};
@@ -109,17 +99,17 @@ impl Service {
 
         quote! {
             #[derive(::serde::Serialize, ::serde::Deserialize)]
-            #vis enum #enum_ident { 
-                #defs 
+            #vis enum #enum_ident {
+                #defs
             }
         }
     }
 
     /// Server trait definition.
     fn server_trait(&self) -> TokenStream2 {
-        let Self {vis, ident, ..} = self;
+        let Self { vis, ident, .. } = self;
         let enum_ident = self.service_enum_ident();
-        
+
         // Attributes.
         let mut attrs = quote! {};
         for attr in &self.attrs {
@@ -132,26 +122,26 @@ impl Service {
         for m in &self.methods {
             defs.append_all(m.server_trait_method());
             dispatch_match.append_all(m.server_dispatch(&enum_ident));
-        }           
+        }
 
         quote! {
-            #attrs 
-            #[async_trait::async_trait] 
-            #vis trait #ident : Sized + Send + Sync + 'static { 
-                #defs 
+            #attrs
+            #[async_trait::async_trait]
+            #vis trait #ident : Sized + Send + Sync + 'static {
+                #defs
 
                 #[doc="Binds an RPC server to a chmux server."]
                 async fn serve<Content, Codec>(
-                    self, 
+                    self,
                     mut server: ::chmux::Server<#enum_ident, Content, Codec>,
-                ) -> Result<Self, ::chmux::ServerError> 
+                ) -> Result<Self, ::chmux::ServerError>
                 where
                     Content: ::serde::Serialize + ::serde::de::DeserializeOwned + Send + 'static,
                     Codec: ::chmux::CodecFactory<Content> + 'static
                 {
                     use ::futures::future::FutureExt;
                     use ::futures::sink::SinkExt;
-                    use ::futures::stream::StreamExt;                    
+                    use ::futures::stream::StreamExt;
                     let this = ::std::sync::Arc::new(::tokio::sync::RwLock::new(Some(self)));
                     loop {
                         match server.next().await {
@@ -168,14 +158,14 @@ impl Service {
                             }
                         }
                     }
-                }                
+                }
             }
         }
     }
 
     /// The client proxy.
     fn client_part(&self) -> TokenStream2 {
-        let Self {vis, ident, ..} = self;
+        let Self { vis, ident, .. } = self;
         let enum_ident = self.service_enum_ident();
         let client_trait_ident = format_ident!("{}ClientDispatch", ident);
         let client_inner_ident = format_ident!("{}ClientInner", ident);
@@ -211,7 +201,7 @@ impl Service {
             }
 
             #[doc(hidden)]
-            struct #client_inner_ident <Content, Codec> 
+            struct #client_inner_ident <Content, Codec>
             where
                 Content: Send,
             {
@@ -263,27 +253,26 @@ impl Service {
     }
 }
 
-
 /// Argument type of a service method.
 #[derive(Debug)]
 enum ServiceMethodArgType {
     /// chmux::Sender<_>
-    Sender (Type),
+    Sender(Type),
     /// chmux::Receiver<_>
-    Receiver (Type),
+    Receiver(Type),
     /// other type
-    Other (Type),    
+    Other(Type),
 }
 
 impl ServiceMethodArgType {
-    /// Parses a type of the form `(chmux::)Name<TY>` and returns the type `TY`, 
+    /// Parses a type of the form `(chmux::)Name<TY>` and returns the type `TY`,
     /// if it matches the pattern.
     fn parse_chmux_type(ty: &Type, name: &str) -> Option<Type> {
         if let Type::Path(path) = ty {
             let segments = &path.path.segments;
             let last;
             if segments.len() > 2 {
-                return None; 
+                return None;
             } else if segments.len() == 2 {
                 if segments[0].ident.to_string() != "chmux" {
                     return None;
@@ -301,7 +290,7 @@ impl ServiceMethodArgType {
                     return None;
                 }
                 if let GenericArgument::Type(generic_ty) = &ty_args.args[0] {
-                    return Some(generic_ty.clone())
+                    return Some(generic_ty.clone());
                 } else {
                     return None;
                 }
@@ -316,35 +305,33 @@ impl ServiceMethodArgType {
     /// Parse type.
     fn parse(ty: &Type) -> Self {
         if let Some(ty) = Self::parse_chmux_type(ty, "Sender") {
-            Self::Sender (ty)
+            Self::Sender(ty)
         } else if let Some(ty) = Self::parse_chmux_type(ty, "Receiver") {
-            Self::Receiver (ty)
+            Self::Receiver(ty)
         } else {
             Self::Other(ty.clone())
         }
     }
 }
 
-
 /// Response delivery method and type.
 #[derive(Debug)]
 enum Response {
     /// Response is streamed by a sender.
-    Sender (Type),
+    Sender(Type),
     /// Single response of specified type is returned.
-    Single (Type)
+    Single(Type),
 }
 
 impl Response {
     /// Return type.
     fn ty(&self) -> &Type {
         match self {
-            Self::Sender (ty) => ty,
-            Self::Single (ty) => ty,
+            Self::Sender(ty) => ty,
+            Self::Single(ty) => ty,
         }
     }
 }
-
 
 /// Self reference of method.
 #[derive(Debug)]
@@ -367,16 +354,12 @@ struct NamedArg {
 impl NamedArg {
     /// Create a `NamedArg` from a `PatType`.
     fn extract(pat_type: &PatType) -> syn::Result<Self> {
-        let ident = 
-            if let Pat::Ident(pat_ident) = &*pat_type.pat {
-                pat_ident.ident.clone()
-            } else {
-                return Err(syn::Error::new(pat_type.pat.span(), "expected identifier"));
-            };
-        Ok(Self {
-            ident,
-            ty: (*pat_type.ty).clone()
-        })
+        let ident = if let Pat::Ident(pat_ident) = &*pat_type.pat {
+            pat_ident.ident.clone()
+        } else {
+            return Err(syn::Error::new(pat_type.pat.span(), "expected identifier"));
+        };
+        Ok(Self { ident, ty: (*pat_type.ty).clone() })
     }
 }
 
@@ -396,23 +379,21 @@ struct ServiceMethod {
     /// Response delivery method and type.
     response: Response,
     /// Whether method should be cancelled, if client sends hangup message.
-    cancel: bool,    
+    cancel: bool,
 }
-
 
 impl Parse for ServiceMethod {
     /// Parses a method within the service trait.
     fn parse(input: ParseStream) -> syn::Result<Self> {
-
         // Parse method definition.
         let mut attrs = input.call(Attribute::parse_outer)?;
         input.parse::<Token![async]>()?;
         input.parse::<Token![fn]>()?;
-        let ident: Ident = input.parse()?;  
+        let ident: Ident = input.parse()?;
         if ident.to_string() == "serve" || ident.to_string() == "bind" {
             return Err(input.error("Service method must not be named 'serve' or 'bind'."));
         }
-       
+
         // Check for no_cancel attribute.
         let mut cancel = true;
         attrs.retain(|attr| {
@@ -435,40 +416,43 @@ impl Parse for ServiceMethod {
         input.parse::<Token![;]>()?;
 
         // Extract request, sender and receiver arguments.
-        let mut self_ref = None;        
+        let mut self_ref = None;
         let mut request = Vec::new();
         let mut sender = None;
-        let mut receiver = None;        
+        let mut receiver = None;
         for arg in args {
             match arg {
                 // &self or &mut self receiver
                 FnArg::Receiver(recv) => {
-                    self_ref = Some(
-                        if recv.reference.is_some() {
-                            if recv.mutability.is_some() {
-                                SelfRef::MutRef
-                            } else {
-                                SelfRef::Ref
-                            }
+                    self_ref = Some(if recv.reference.is_some() {
+                        if recv.mutability.is_some() {
+                            SelfRef::MutRef
                         } else {
-                            return Err(input.error("Service method must use &self or &mut self receiver."));
+                            SelfRef::Ref
                         }
-                    );
-                }    
+                    } else {
+                        return Err(input.error("Service method must use &self or &mut self receiver."));
+                    });
+                }
                 // other argument
                 FnArg::Typed(pat_type) => {
                     let arg = NamedArg::extract(&pat_type)?;
                     match ServiceMethodArgType::parse(&arg.ty) {
-                        ServiceMethodArgType::Other(_) if sender.is_none() && receiver.is_none() => 
-                            request.push(arg),                        
-                        ServiceMethodArgType::Sender(sty) if sender.is_none() && receiver.is_none() => 
-                            sender = Some(sty),
-                        ServiceMethodArgType::Receiver(rty) if receiver.is_none() => 
-                            receiver = Some(rty),     
-                        _ => return Err(input.error("Service method must have zero or more request arguments, \
+                        ServiceMethodArgType::Other(_) if sender.is_none() && receiver.is_none() => {
+                            request.push(arg)
+                        }
+                        ServiceMethodArgType::Sender(sty) if sender.is_none() && receiver.is_none() => {
+                            sender = Some(sty)
+                        }
+                        ServiceMethodArgType::Receiver(rty) if receiver.is_none() => receiver = Some(rty),
+                        _ => {
+                            return Err(input.error(
+                                "Service method must have zero or more request arguments, \
                                                      optionally followed by a chmux::Sender<_>, \
-                                                     optionally followed by a chmux::Receiver<_>.")),  
-                    }        
+                                                     optionally followed by a chmux::Receiver<_>.",
+                            ))
+                        }
+                    }
                 }
             }
         }
@@ -476,27 +460,22 @@ impl Parse for ServiceMethod {
 
         // Determine response method and type.
         let response = match (ret, sender) {
-            (ReturnType::Default, None) => Response::Single(unit_type()),            
+            (ReturnType::Default, None) => Response::Single(unit_type()),
             (ReturnType::Default, Some(sender)) => Response::Sender(sender),
-            (ReturnType::Type(_, return_ty), None) => Response::Single(*return_ty),            
-            _ => return Err(input.error("Service method must not simultaneously return a value and \
-                                         have a chmux::Sender<_> argument to stream its response."))
+            (ReturnType::Type(_, return_ty), None) => Response::Single(*return_ty),
+            _ => {
+                return Err(input.error(
+                    "Service method must not simultaneously return a value and \
+                                         have a chmux::Sender<_> argument to stream its response.",
+                ))
+            }
         };
 
-        Ok(Self {
-            attrs,
-            ident,
-            self_ref,
-            request,
-            receiver,
-            response,
-            cancel
-        })
+        Ok(Self { attrs, ident, self_ref, request, receiver, response, cancel })
     }
 }
 
 impl ServiceMethod {
-
     /// Method definition within server trait.
     fn server_trait_method(&self) -> TokenStream2 {
         let Self { ident, .. } = self;
@@ -515,12 +494,12 @@ impl ServiceMethod {
         args.append_all(self_ref);
 
         // Request arguments.
-        for NamedArg {ident, ty} in &self.request {
+        for NamedArg { ident, ty } in &self.request {
             args.append_all(quote! { #ident : #ty , });
         }
 
         // Optional sender.
-        if let Response::Sender (sender) = &self.response {
+        if let Response::Sender(sender) = &self.response {
             args.append_all(quote! {rpc_tx: ::chmux::Sender<#sender>, });
         }
 
@@ -528,14 +507,13 @@ impl ServiceMethod {
         if let Some(receiver) = &self.receiver {
             args.append_all(quote! {rpx_rx: ::chmux::Receiver<#receiver>, });
         }
-        
+
         // Optional return type.
-        let ret =
-            if let Response::Single (ret_ty) = &self.response {
-                quote! { -> #ret_ty}
-            } else {
-                quote! {}
-            };
+        let ret = if let Response::Single(ret_ty) = &self.response {
+            quote! { -> #ret_ty}
+        } else {
+            quote! {}
+        };
 
         quote! {
             #attrs async fn #ident ( #args ) #ret;
@@ -546,10 +524,10 @@ impl ServiceMethod {
     fn service_enum_entry(&self) -> TokenStream2 {
         let ident = to_pascal_case(&self.ident);
 
-        let mut entries = quote!{};
-        for NamedArg {ident, ty} in &self.request {
+        let mut entries = quote! {};
+        for NamedArg { ident, ty } in &self.request {
             entries.append_all(quote! { #ident : #ty , });
-        }        
+        }
 
         quote! { #ident {#entries}, }
     }
@@ -560,32 +538,32 @@ impl ServiceMethod {
         let enum_entry_ident = to_pascal_case(&ident);
 
         // Build match selector and call argument list.
-        let mut entries = quote!{};
+        let mut entries = quote! {};
         let mut args = quote! {};
-        for (i, NamedArg {ident, ..}) in self.request.iter().enumerate() {
+        for (i, NamedArg { ident, .. }) in self.request.iter().enumerate() {
             let arg_ident = format_ident!("arg{}", i);
             entries.append_all(quote! { #ident: #arg_ident , });
             args.append_all(quote! { #arg_ident , });
-        }       
-        if let Response::Sender (_) = &self.response {
+        }
+        if let Response::Sender(_) = &self.response {
             args.append_all(quote! { tx, });
         }
-        if let Some (_) = &self.receiver {
+        if let Some(_) = &self.receiver {
             args.append_all(quote! { rx, });
         }
 
         // Build accept call.
         let tx_type = match &self.response {
-            Response::Sender (ty) => ty,
-            Response::Single (ty) => ty,
+            Response::Sender(ty) => ty,
+            Response::Single(ty) => ty,
         };
         let unit_type = unit_type();
         let (rx_type, rx_ident) = match &self.receiver {
-            Some (ty) => (ty, quote! {rx}),
+            Some(ty) => (ty, quote! {rx}),
             None => (&unit_type, quote! {_}),
         };
         let tx_rx = quote! {
-            let (tx, #rx_ident): (::chmux::Sender<#tx_type>, ::chmux::Receiver<#rx_type>) = req.accept().await;            
+            let (tx, #rx_ident): (::chmux::Sender<#tx_type>, ::chmux::Receiver<#rx_type>) = req.accept().await;
         };
 
         // Request hangup notification, if desired.
@@ -604,21 +582,21 @@ impl ServiceMethod {
             SelfRef::MutRef => quote! {
                 let mut this_write = this.write().await;
                 let this_obj = this_write.as_mut().unwrap();
-            }
+            },
         };
 
         // Obtain Future for method call.
         let fut = quote! {
             let mut ret_fut = this_obj.#ident(#args).fuse();
         };
-   
+
         // Send reply.
         let reply = match &self.response {
-            Response::Single (_) => quote! {
+            Response::Single(_) => quote! {
                 ::futures::pin_mut!(tx);
                 let _ = tx.send(ret).await;
             },
-            Response::Sender (_) => quote! {},            
+            Response::Sender(_) => quote! {},
         };
 
         // Future execution.
@@ -641,7 +619,7 @@ impl ServiceMethod {
             #hangup
             #obj
             #fut
-            #exec        
+            #exec
         };
 
         // Spawning of task for immutable method.
@@ -661,18 +639,18 @@ impl ServiceMethod {
     /// Argument definitions with types.
     fn arg_defs(&self) -> TokenStream2 {
         let mut arg_defs = quote! {};
-        for NamedArg {ident, ty} in &self.request {
+        for NamedArg { ident, ty } in &self.request {
             arg_defs.append_all(quote! {#ident : #ty ,});
-        }        
+        }
         arg_defs
     }
 
     /// Comma-seperated argument list.
     fn arg_list(&self) -> TokenStream2 {
         let mut arg_list = quote! {};
-        for NamedArg {ident, ..} in &self.request {
+        for NamedArg { ident, .. } in &self.request {
             arg_list.append_all(quote! {#ident, });
-        }        
+        }
         arg_list
     }
 
@@ -691,19 +669,19 @@ impl ServiceMethod {
 
         // Method return type.
         let return_ty = match (&self.response, &self.receiver) {
-            (Response::Sender (sender), Some (receiver)) => quote! {
+            (Response::Sender(sender), Some(receiver)) => quote! {
                 Result<(::chrpc::Sender<'a, #receiver>, ::chrpc::Receiver<'a, #sender>),
                     ::chmux::ConnectError>
             },
-            (Response::Sender (sender), None) => quote! {
+            (Response::Sender(sender), None) => quote! {
                 Result<::chrpc::Receiver<'a, #sender>, ::chmux::ConnectError>
             },
-            (Response::Single (ret), Some (receiver)) => quote! {
+            (Response::Single(ret), Some(receiver)) => quote! {
                 Result<::chrpc::SendingCall<'a, #receiver, #ret>, ::chmux::ConnectError>
             },
-            (Response::Single (ret), None) => quote! {
+            (Response::Single(ret), None) => quote! {
                 Result<#ret, ::chrpc::CallError>
-            }
+            },
         };
 
         quote! {
@@ -725,27 +703,27 @@ impl ServiceMethod {
         // Server receiver type, i.e. client sender type.
         let unit_type = unit_type();
         let receive_ty = match &self.receiver {
-            Some (ty) => ty,
+            Some(ty) => ty,
             None => &unit_type,
         };
 
         // Processing statements.
         let processing = match (&self.response, &self.receiver) {
-            (Response::Sender (_), Some (_)) => quote! {
+            (Response::Sender(_), Some(_)) => quote! {
                 Ok((::chrpc::Sender::new(tx), ::chrpc::Receiver::new(rx)))
             },
-            (Response::Sender (_), None) => quote! {
+            (Response::Sender(_), None) => quote! {
                 Ok(::chrpc::Receiver::new(rx))
             },
-            (Response::Single (_), Some (_)) => quote! {
+            (Response::Single(_), Some(_)) => quote! {
                 Ok(::chrpc::SendingCall::new(tx, rx))
             },
-            (Response::Single (_), None) => quote! {
+            (Response::Single(_), None) => quote! {
                 ::std::mem::drop(tx);
                 let ret = rx.next().await.ok_or(::chmux::ReceiveError::MultiplexerError)??;
                 Ok(ret)
-            }                
-        };        
+            },
+        };
 
         quote! {
             #method_header {
@@ -778,17 +756,17 @@ impl ServiceMethod {
 }
 
 /// Denotes a trait defining an RPC server.
-/// 
+///
 /// It adds the provided method `serve` to the trait, which serves the object using
 /// a `chmux::Server`.
 /// All methods in the service trait definition must be async.
 /// The server trait implementation must use `[async_trait::async_trait]` attribute.
-/// 
+///
 /// Additionally a client proxy struct named using the same name suffixed with `Client`
-/// is generated. 
+/// is generated.
 /// It is constructed using the method `bind` from a `chmux::Client`.
 #[proc_macro_attribute]
-pub fn service(_attr: TokenStream, input: TokenStream) -> TokenStream {   
+pub fn service(_attr: TokenStream, input: TokenStream) -> TokenStream {
     let service = parse_macro_input!(input as Service);
 
     let server_trait = service.server_trait();
