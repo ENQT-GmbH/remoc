@@ -9,9 +9,9 @@ keywords = ["multiplex", "transport", "mux", "multiple", "channels", "channel"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["json_codec", "bincode_codec"]
-json_codec = ["serde_json", "bytes"]
-bincode_codec = ["bincode", "bytes"]
+default = ["json-codec", "bincode-codec"]
+json-codec = ["serde_json", "bytes"]
+bincode-codec = ["bincode", "bytes"]
 
 [dependencies]
 futures = "0.3"

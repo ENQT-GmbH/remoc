@@ -45,8 +45,8 @@ pub trait TransportCodecFactory<Content: Serialize + DeserializeOwned + 'static,
 
 pub mod id;
 
-#[cfg(feature = "json_codec")]
+#[cfg(feature = "json-codec")]
 pub mod json;
 
-#[cfg(feature = "bincode_codec")]
+#[cfg(feature = "bincode-codec")]
 pub mod bincode;

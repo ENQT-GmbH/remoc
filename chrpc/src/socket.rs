@@ -246,7 +246,7 @@ where
     }
 }
 
-#[cfg(feature = "socket_tls")]
+#[cfg(feature = "socket-tls")]
 /// Connects to an RPC server listening on a TCP socket with TLS encryption.
 ///
 /// Use `<RPCClient>::bind(tcp_tls_client(...).await?)` to obtain an RPC client.
@@ -277,7 +277,7 @@ where
     Ok(client(socket, content_codec, transport_codec, mux_cfg).await)
 }
 
-#[cfg(feature = "socket_tls")]
+#[cfg(feature = "socket-tls")]
 /// Listens on the specified TCP socket and runs an RPC server with TLS encryption for each incoming connection.
 ///
 /// If `multiple` is `false` only a single connection is accepted at a time.

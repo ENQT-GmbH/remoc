@@ -9,10 +9,10 @@ keywords = ["rpc", "chmux"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["socket", "socket_tls", "local"]
-socket = ["tokio-util", "bytes", "chmux/json_codec", "chmux/bincode_codec"]
-socket_tls = ["socket", "tokio-rustls"]
-local = ["chmux/json_codec"]
+default = ["socket", "socket-tls", "local"]
+socket = ["tokio-util", "bytes", "chmux/json-codec", "chmux/bincode-codec"]
+socket-tls = ["socket", "tokio-rustls"]
+local = ["chmux/json-codec"]
 
 [dependencies]
 chmux = { version = "0.8.0", path="../chmux" }
