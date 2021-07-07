@@ -109,23 +109,58 @@ impl Default for Cfg {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum MultiplexMsg<Content> {
     /// Open connection to service on specified client port.
-    RequestService { service: Content, client_port: u32 },
+    RequestService {
+        /// Requested service.
+        service: Content,
+        /// Requesting client port.
+        client_port: u32,
+    },
     /// Connection accepted.
-    Accepted { client_port: u32, server_port: u32 },
+    Accepted {
+        /// Requesting client port.
+        client_port: u32,
+        /// Assigned server port.
+        server_port: u32,
+    },
     /// Connection to service refused.
-    Rejected { client_port: u32 },
+    Rejected {
+        /// Requesting client port.
+        client_port: u32,
+    },
     /// Pause sending data from specified port.
-    Pause { port: u32 },
+    Pause {
+        /// Port of side that receives this message.
+        port: u32,
+    },
     /// Resume sending data from specified port.
-    Resume { port: u32 },
+    Resume {
+        /// Port of side that receives this message.
+        port: u32,
+    },
     /// No more data will be sent to specifed remote port.
-    Finish { port: u32 },
+    Finish {
+        /// Port of side that receives this message.
+        port: u32,
+    },
     /// Acknowledgement that Finish has been received for the specified remote port.
-    FinishAck { port: u32 },
+    FinishAck {
+        /// Port of side that receives this message.
+        port: u32,
+    },
     /// Not interested on receiving any more data from specified remote port.
-    Hangup { port: u32, gracefully: bool },
+    Hangup {
+        /// Port of side that receives this message.
+        port: u32,
+        /// If true, already sent messages will still be processed by this side.
+        gracefully: bool,
+    },
     /// Data for specified port.
-    Data { port: u32, content: Content },
+    Data {
+        /// Port of side that receives this message.
+        port: u32,
+        /// Data.
+        content: Content,
+    },
     /// Ping to keep connection alive when there is no data to send.
     Ping,
     /// All clients have been dropped, therefore no more service requests will occur.

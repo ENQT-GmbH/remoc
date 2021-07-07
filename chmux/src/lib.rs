@@ -3,6 +3,8 @@
 //! Multiplexes multiple channels over a single channel (or anything that implements Sink and Stream).
 //!
 
+#![warn(missing_docs)]
+
 mod channel;
 mod client;
 mod multiplexer;
