@@ -44,7 +44,7 @@ where
         loop {
             if let Some(rx) = rx_opt {
                 select! {
-                    _ = rx.fuse() => (),
+                    _ = rx.fuse() => {},
                     _ = self.dequeuer_dropped_rx.next() => {
                         self.dequeuer_dropped = true;
                     }
@@ -124,7 +124,7 @@ where
         loop {
             if let Some(rx) = rx_opt {
                 select! {
-                    _ = rx.fuse() => (),
+                    _ = rx.fuse() => {},
                     _ = self.enqueuer_dropped_rx.next() => {
                         self.enqueuer_dropped = true;
                     }
@@ -215,7 +215,7 @@ where
             _enqueuer_dropped_tx: enqueuer_dropped_tx,
         };
         let dequeuer = ChannelReceiverBufferDequeuer {
-            state: state.clone(),
+            state,
             resume_length: self.resume_length,
             resume_notify_tx: self.resume_notify_tx,
             local_port: self.local_port,

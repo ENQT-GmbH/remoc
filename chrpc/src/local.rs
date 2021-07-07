@@ -28,6 +28,7 @@ pub struct MpscDuplexChannelPair<Content> {
 
 impl<Content> MpscDuplexChannelPair<Content> {
     /// Creates a new duplex channel pair.
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         let (server_tx, client_rx) = mpsc::channel(mux_cfg().channel_rx_queue_length);
         let (client_tx, server_rx) = mpsc::channel(mux_cfg().channel_rx_queue_length);
@@ -50,7 +51,7 @@ where
     ContentCodec: ContentCodecFactory<Content> + 'static,
 {
     let MpscDuplexChannel { tx, rx } = ch;
-    let rx = rx.map(|msg| Ok::<_, Infallible>(msg));
+    let rx = rx.map(Ok::<_, Infallible>);
 
     let transport_codec = IdTransportCodec::new();
 
@@ -78,7 +79,7 @@ where
     ServerFut: Future<Output = ServerFutOutput> + Send,
 {
     let MpscDuplexChannel { tx, rx } = ch;
-    let rx = rx.map(|msg| Ok::<_, Infallible>(msg));
+    let rx = rx.map(Ok::<_, Infallible>);
 
     let transport_codec = IdTransportCodec::new();
 

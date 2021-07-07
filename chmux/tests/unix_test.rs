@@ -41,33 +41,22 @@ mod unix {
 
             let mux_run = tokio::spawn(async move { mux.run().await.unwrap() });
 
-            loop {
-                match server.next().await {
-                    Some((service, req)) => {
-                        let service = service.unwrap();
-                        println!("Server accepting service request {}", &service);
-                        let (mut tx, mut rx): (chmux::Sender<String>, chmux::Receiver<String>) =
-                            req.accept().await;
-                        println!("Server accepted service request.");
+            while let Some((service, req)) = server.next().await {
+                let service = service.unwrap();
+                println!("Server accepting service request {}", &service);
+                let (mut tx, mut rx): (chmux::Sender<String>, chmux::Receiver<String>) = req.accept().await;
+                println!("Server accepted service request.");
 
-                        tx.send("Hi from server".to_string()).await.unwrap();
-                        println!("Server sent Hi message");
+                tx.send("Hi from server".to_string()).await.unwrap();
+                println!("Server sent Hi message");
 
-                        println!("Server dropping sender");
-                        drop(tx);
-                        println!("Server dropped sender");
+                println!("Server dropping sender");
+                drop(tx);
+                println!("Server dropped sender");
 
-                        loop {
-                            match rx.next().await {
-                                Some(msg) => {
-                                    let msg = msg.unwrap();
-                                    println!("Server received: {}", &msg);
-                                }
-                                None => break,
-                            }
-                        }
-                    }
-                    None => break,
+                while let Some(msg) = rx.next().await {
+                    let msg = msg.unwrap();
+                    println!("Server received: {}", &msg);
                 }
             }
 
@@ -113,14 +102,9 @@ mod unix {
                 drop(tx);
                 println!("Client dropped sender");
 
-                loop {
-                    match rx.next().await {
-                        Some(msg) => {
-                            let msg: String = msg.unwrap();
-                            println!("Client received: {}", &msg);
-                        }
-                        None => break,
-                    }
+                while let Some(msg) = rx.next().await {
+                    let msg: String = msg.unwrap();
+                    println!("Client received: {}", &msg);
                 }
 
                 println!("Client closing connection...");

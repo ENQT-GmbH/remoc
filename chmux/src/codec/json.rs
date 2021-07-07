@@ -53,6 +53,12 @@ impl JsonContentCodec {
     }
 }
 
+impl Default for JsonContentCodec {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ContentCodecFactory<Value> for JsonContentCodec {
     fn serializer<Item: Serialize + 'static>(&self) -> Box<dyn Serializer<Item, Value>> {
         Box::new(JsonContentSerializer { _ghost_item: PhantomData })
@@ -121,6 +127,12 @@ impl JsonTransportCodec {
     /// Creates a new JSON codec for messages transport.
     pub fn new() -> Self {
         Self {}
+    }
+}
+
+impl Default for JsonTransportCodec {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

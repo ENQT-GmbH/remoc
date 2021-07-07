@@ -78,7 +78,7 @@ pub struct Sender<'a, T> {
 }
 
 #[pinned_drop]
-impl<'a, T> PinnedDrop for Sender<'a, T> {
+impl<T> PinnedDrop for Sender<'_, T> {
     fn drop(self: Pin<&mut Self>) {
         // Drop implementation must be present to make reference guard work.
     }
@@ -122,7 +122,7 @@ pub struct Receiver<'a, T> {
 }
 
 #[pinned_drop]
-impl<'a, T> PinnedDrop for Receiver<'a, T> {
+impl<T> PinnedDrop for Receiver<'_, T> {
     fn drop(self: Pin<&mut Self>) {
         // Drop implementation must be present to make reference guard work.
     }

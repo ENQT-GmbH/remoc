@@ -68,6 +68,12 @@ impl BincodeContentCodec {
     }
 }
 
+impl Default for BincodeContentCodec {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ContentCodecFactory<Vec<u8>> for BincodeContentCodec {
     fn serializer<Item: Serialize + 'static>(&self) -> Box<dyn Serializer<Item, Vec<u8>>> {
         Box::new(BincodeContentSerializer { config: self.config.clone(), _ghost_item: PhantomData })
@@ -154,6 +160,12 @@ impl BincodeTransportCodec {
     #[allow(deprecated)]
     pub fn with_config(config: Config) -> Self {
         Self { config: Arc::new(config) }
+    }
+}
+
+impl Default for BincodeTransportCodec {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

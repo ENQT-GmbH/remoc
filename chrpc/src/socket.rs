@@ -186,8 +186,8 @@ where
     let socket = TcpStream::connect(server_addr).await?;
     let _ = configure_tcp_keepalive(&socket);
 
-    let local_addr = socket.local_addr().unwrap_or(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0).into());
-    let remote_addr = socket.peer_addr().unwrap_or(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0).into());
+    let local_addr = socket.local_addr().unwrap_or_else(|_| SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0).into());
+    let remote_addr = socket.peer_addr().unwrap_or_else(|_| SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0).into());
     log::info!("Connected from {} to {}", &local_addr, &remote_addr);
 
     Ok(client(socket, content_codec, transport_codec, mux_cfg).await)
@@ -218,7 +218,8 @@ where
 
     loop {
         if let Ok((socket, remote_addr)) = listener.accept().await {
-            let local_addr = socket.local_addr().unwrap_or(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0).into());
+            let local_addr =
+                socket.local_addr().unwrap_or_else(|_| SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0).into());
             let conn_content_codec = content_codec.clone();
             let conn_transport_codec = transport_codec.clone();
             let conn_run_server = run_server.clone();
@@ -229,7 +230,7 @@ where
                 let _ = configure_tcp_keepalive(&socket);
 
                 let server_mux = server(socket, conn_content_codec, conn_transport_codec, conn_mux_cfg).await;
-                let result = conn_run_server(local_addr.clone(), remote_addr.clone(), server_mux).await;
+                let result = conn_run_server(local_addr, remote_addr, server_mux).await;
                 if let Err(err) = result {
                     log::warn!("RPC server for {} from {} failed: {}", &local_addr, &remote_addr, &err);
                 }
@@ -267,8 +268,8 @@ where
 
     let socket = TcpStream::connect(server_addr).await?;
     let _ = configure_tcp_keepalive(&socket);
-    let local_addr = socket.local_addr().unwrap_or(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0).into());
-    let remote_addr = socket.peer_addr().unwrap_or(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0).into());
+    let local_addr = socket.local_addr().unwrap_or_else(|_| SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0).into());
+    let remote_addr = socket.peer_addr().unwrap_or_else(|_| SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0).into());
     log::info!("Connected from {} to {}", &local_addr, &remote_addr);
 
     let connector = TlsConnector::from(tls_cfg);
@@ -313,7 +314,8 @@ where
 
     loop {
         if let Ok((socket, remote_addr)) = listener.accept().await {
-            let local_addr = socket.local_addr().unwrap_or(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0).into());
+            let local_addr =
+                socket.local_addr().unwrap_or_else(|_| SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0).into());
             let conn_content_codec = content_codec.clone();
             let conn_transport_codec = transport_codec.clone();
             let conn_run_server = run_server.clone();
@@ -334,7 +336,7 @@ where
                 };
 
                 let server_mux = server(socket, conn_content_codec, conn_transport_codec, conn_mux_cfg).await;
-                let result = conn_run_server(local_addr.clone(), remote_addr.clone(), server_mux).await;
+                let result = conn_run_server(local_addr, remote_addr, server_mux).await;
                 if let Err(err) = result {
                     log::warn!("RPC server for {} from {} failed: {}", &local_addr, &remote_addr, &err);
                 }

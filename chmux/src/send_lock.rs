@@ -74,7 +74,7 @@ impl ChannelSendLockRequester {
         loop {
             if let Some(rx) = rx_opt {
                 select! {
-                    _ = rx.fuse() => (),
+                    _ = rx.fuse() => {},
                     _ = self.authority_dropped_rx.next() => {
                         self.authority_dropped = true;
                     }
@@ -106,7 +106,6 @@ pub fn channel_send_lock() -> (ChannelSendLockAuthority, ChannelSendLockRequeste
     let state = Arc::new(Mutex::new(ChannelSendLockState { send_allowed: true, closed: None, notify_tx: None }));
     let authority =
         ChannelSendLockAuthority { state: state.clone(), _authority_dropped_tx: authority_dropped_tx };
-    let requester =
-        ChannelSendLockRequester { state: state.clone(), authority_dropped: false, authority_dropped_rx };
+    let requester = ChannelSendLockRequester { state, authority_dropped: false, authority_dropped_rx };
     (authority, requester)
 }

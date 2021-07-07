@@ -325,6 +325,7 @@ where
     /// See the `codecs` module for provided transport and content codecs.
     ///
     /// After creation use the `run` method of the multiplexer to launch the dispatch task.
+    #[allow(clippy::type_complexity)]
     pub fn new<ClientService, ServerService>(
         cfg: &Cfg, content_codec: &ContentCodec, transport_codec: &TransportCodec, transport_tx: TransportSink,
         transport_rx: TransportStream,
@@ -369,7 +370,7 @@ where
         let connect_rx = connect_rx
             .map(LoopEvent::ConnectToRemoteServiceRequest)
             .chain(stream::once(async { LoopEvent::ClientDropped }));
-        let server_drop_rx = server_drop_rx.chain(stream::once(async { () })).map(|()| LoopEvent::ServerDropped);
+        let server_drop_rx = server_drop_rx.chain(stream::once(async {})).map(|()| LoopEvent::ServerDropped);
         let send_ping_timeout_rx = send_ping_timeout_rx.map(|()| LoopEvent::SendPingTimeout);
         let connection_timeout_rx = connection_timeout_rx.map(|()| LoopEvent::ConnectionTimeout);
         let event_rx = stream::select_all(vec![
@@ -863,9 +864,9 @@ where
                 // Process all clients dropped.
                 Some(LoopEvent::ReceiveMsg(Ok(MultiplexMsg::AllClientsDropped))) => {
                     if self.serve_tx.is_none() {
-                        return Err(MultiplexError::ProtocolError(format!(
-                            "Received all clients dropped notification more than once."
-                        )));
+                        return Err(MultiplexError::ProtocolError(
+                            "Received all clients dropped notification more than once.".to_string(),
+                        ));
                     }
                     self.serve_tx = None;
                     if self.should_terminate() {

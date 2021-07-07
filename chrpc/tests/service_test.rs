@@ -45,14 +45,9 @@ impl TestTrait for TestObj {
         self.value = value;
         let mut data = format!("param1={}, param2={}, value={}\n", param1, param2, value);
         println!("server: method_three: {}", &data);
-        loop {
-            match rx.next().await {
-                Some(Ok(x)) => {
-                    data.push_str(&format!("rx: {}\n", x));
-                    println!("server: method_three: rx: {}", x);
-                }
-                _ => break,
-            }
+        while let Some(Ok(x)) = rx.next().await {
+            data.push_str(&format!("rx: {}\n", x));
+            println!("server: method_three: rx: {}", x);
         }
         println!("server: method_three finished: {}", &data);
         data
@@ -110,11 +105,8 @@ async fn client_part() {
 
     println!("Calling method_one..");
     let mut rx_one = obj_client.method_one(111, 222).await.unwrap();
-    loop {
-        match rx_one.next().await {
-            Some(msg) => println!("rx_one: {}", msg.unwrap()),
-            None => break,
-        }
+    while let Some(msg) = rx_one.next().await {
+        println!("rx_one: {}", msg.unwrap());
     }
 
     println!("Calling method_two...");

@@ -51,6 +51,12 @@ impl IdTransportCodec {
     }
 }
 
+impl Default for IdTransportCodec {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<Content: Serialize + DeserializeOwned + 'static> TransportCodecFactory<Content, MultiplexMsg<Content>>
     for IdTransportCodec
 {

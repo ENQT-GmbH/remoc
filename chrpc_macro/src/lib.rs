@@ -278,19 +278,18 @@ impl ServiceMethodArgType {
     fn parse_chmux_type(ty: &Type, name: &str) -> Option<Type> {
         if let Type::Path(path) = ty {
             let segments = &path.path.segments;
-            let last;
-            if segments.len() > 2 {
-                return None;
-            } else if segments.len() == 2 {
-                if segments[0].ident.to_string() != "chmux" {
-                    return None;
+            let last = match segments.len() {
+                n if n > 2 => return None,
+                2 => {
+                    if segments[0].ident != "chmux" {
+                        return None;
+                    }
+                    &segments[1]
                 }
-                last = &segments[1];
-            } else {
-                last = &segments[0];
-            }
+                _ => &segments[0],
+            };
 
-            if last.ident.to_string() != name {
+            if last.ident != name {
                 return None;
             }
             if let PathArguments::AngleBracketed(ty_args) = &last.arguments {
@@ -298,15 +297,15 @@ impl ServiceMethodArgType {
                     return None;
                 }
                 if let GenericArgument::Type(generic_ty) = &ty_args.args[0] {
-                    return Some(generic_ty.clone());
+                    Some(generic_ty.clone())
                 } else {
-                    return None;
+                    None
                 }
             } else {
-                return None;
+                None
             }
         } else {
-            return None;
+            None
         }
     }
 
@@ -398,7 +397,7 @@ impl Parse for ServiceMethod {
         input.parse::<Token![async]>()?;
         input.parse::<Token![fn]>()?;
         let ident: Ident = input.parse()?;
-        if ident.to_string() == "serve" || ident.to_string() == "bind" {
+        if ident == "serve" || ident == "bind" {
             return Err(input.error("Service method must not be named 'serve' or 'bind'."));
         }
 
@@ -406,7 +405,7 @@ impl Parse for ServiceMethod {
         let mut cancel = true;
         attrs.retain(|attr| {
             if let Some(attr) = attr.path.get_ident() {
-                if attr.to_string() == "no_cancel" {
+                if *attr == "no_cancel" {
                     cancel = false;
                     return false;
                 }
@@ -464,7 +463,7 @@ impl Parse for ServiceMethod {
                 }
             }
         }
-        let self_ref = self_ref.ok_or(input.error("Service method must have self argument"))?;
+        let self_ref = self_ref.ok_or_else(|| input.error("Service method must have self argument"))?;
 
         // Determine response method and type.
         let response = match (ret, sender) {
@@ -556,7 +555,7 @@ impl ServiceMethod {
         if let Response::Sender(_) = &self.response {
             args.append_all(quote! { tx, });
         }
-        if let Some(_) = &self.receiver {
+        if self.receiver.is_some() {
             args.append_all(quote! { rx, });
         }
 

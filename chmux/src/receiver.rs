@@ -192,7 +192,7 @@ where
             Some(Ok(content)) => {
                 Some(this.deserialzer.deserialize(content).map_err(ReceiveError::DeserializationError))
             }
-            Some(Err(err)) => Some(Err(ReceiveError::from(err))),
+            Some(Err(err)) => Some(Err(err)),
             None => None,
         };
         Poll::Ready(item)

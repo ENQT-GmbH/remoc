@@ -20,8 +20,8 @@ fn raw_test() {
     let (a_tx, b_rx) = mpsc::channel::<Vec<u8>>(queue_length);
     let (b_tx, a_rx) = mpsc::channel::<Vec<u8>>(queue_length);
 
-    let a_rx = a_rx.map(|v| Ok::<_, io::Error>(v));
-    let b_rx = b_rx.map(|v| Ok::<_, io::Error>(v));
+    let a_rx = a_rx.map(Ok::<_, io::Error>);
+    let b_rx = b_rx.map(Ok::<_, io::Error>);
 
     let mux_cfg = chmux::Cfg::default();
     let content_codec = JsonContentCodec::new();
@@ -49,35 +49,25 @@ fn raw_test() {
     let (server_done_tx, server_done_rx) = oneshot::channel();
     pool.spawn_ok(async move {
         println!("B server start");
-        loop {
-            match b_server.next().await {
-                Some((service, req)) => {
-                    let service: u64 = service.unwrap();
-                    println!("Server connection request: {}", &service);
-                    if service == 123 {
-                        let (mut tx, mut rx): (chmux::Sender<String>, chmux::Receiver<String>) =
-                            req.accept().await;
-                        tx.send("Hi".to_string()).await.unwrap();
-                        println!("Server sent hi");
-                        tx.send("Hi2".to_string()).await.unwrap();
-                        println!("Server sent hi2");
+        while let Some((service, req)) = b_server.next().await {
+            let service: u64 = service.unwrap();
+            println!("Server connection request: {}", &service);
+            if service == 123 {
+                let (mut tx, mut rx): (chmux::Sender<String>, chmux::Receiver<String>) = req.accept().await;
+                tx.send("Hi".to_string()).await.unwrap();
+                println!("Server sent hi");
+                tx.send("Hi2".to_string()).await.unwrap();
+                println!("Server sent hi2");
 
-                        drop(tx);
-                        println!("Server dropped transmitter");
-                        loop {
-                            match rx.next().await {
-                                Some(msg) => {
-                                    println!("Server received: {}", msg.unwrap());
-                                }
-                                None => break,
-                            }
-                        }
-                    }
-                    println!("Server closed connection");
+                drop(tx);
+                println!("Server dropped transmitter");
+                while let Some(msg) = rx.next().await {
+                    println!("Server received: {}", msg.unwrap());
                 }
-                None => break,
             }
+            println!("Server closed connection");
         }
+
         println!("B Server quit");
         drop(b_client);
         let _ = server_done_tx.send(());
@@ -129,8 +119,8 @@ fn hangup_test() {
     let (a_tx, b_rx) = mpsc::channel::<Vec<u8>>(queue_length);
     let (b_tx, a_rx) = mpsc::channel::<Vec<u8>>(queue_length);
 
-    let a_rx = a_rx.map(|v| Ok::<_, io::Error>(v));
-    let b_rx = b_rx.map(|v| Ok::<_, io::Error>(v));
+    let a_rx = a_rx.map(Ok::<_, io::Error>);
+    let b_rx = b_rx.map(Ok::<_, io::Error>);
 
     let mux_cfg = chmux::Cfg::default();
     let content_codec = JsonContentCodec::new();
@@ -158,39 +148,33 @@ fn hangup_test() {
     let (server_done_tx, server_done_rx) = oneshot::channel();
     pool.spawn_ok(async move {
         println!("B server start");
-        loop {
-            match b_server.next().await {
-                Some((service, req)) => {
-                    let service: u64 = service.unwrap();
-                    println!("Server connection request: {}", &service);
-                    if service == 123 {
-                        let (mut tx, mut rx): (chmux::Sender<String>, chmux::Receiver<usize>) =
-                            req.accept().await;
-                        loop {
-                            match rx.next().await {
-                                Some(Ok(msg)) => {
-                                    println!("Server received: {}", msg);
-                                    if msg == 100 {
-                                        break;
-                                    }
-                                }
-                                Some(Err(err)) => {
-                                    println!("Server receive error: {:?}", err);
-                                    break;
-                                }
-                                None => break,
+        while let Some((service, req)) = b_server.next().await {
+            let service: u64 = service.unwrap();
+            println!("Server connection request: {}", &service);
+            if service == 123 {
+                let (mut tx, mut rx): (chmux::Sender<String>, chmux::Receiver<usize>) = req.accept().await;
+                loop {
+                    match rx.next().await {
+                        Some(Ok(msg)) => {
+                            println!("Server received: {}", msg);
+                            if msg == 100 {
+                                break;
                             }
                         }
-                        println!("Server dropping receiver");
-                        drop(rx);
-
-                        tx.send("Server 1 msg".to_string()).await.unwrap();
-                        tx.send("Server 2nd message".to_string()).await.unwrap();
+                        Some(Err(err)) => {
+                            println!("Server receive error: {:?}", err);
+                            break;
+                        }
+                        None => break,
                     }
-                    println!("Server closed connection");
                 }
-                None => break,
+                println!("Server dropping receiver");
+                drop(rx);
+
+                tx.send("Server 1 msg".to_string()).await.unwrap();
+                tx.send("Server 2nd message".to_string()).await.unwrap();
             }
+            println!("Server closed connection");
         }
         println!("B Server quit");
         drop(b_client);
