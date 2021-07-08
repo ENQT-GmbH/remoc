@@ -7,27 +7,33 @@ use pin_project::pin_project;
 use serde::{de::DeserializeOwned, Serialize};
 use std::pin::Pin;
 
-use crate::{receiver::Receiver, sender::Sender};
+use crate::{receiver::ReceiverStream, sender::SenderSink};
 
-/// A bi-directional communication channel, implementing `Sink` and `Stream`.
-///
-/// Can be split into separate `Sender` and `Receiver`.
+/// A bi-directional communication channel, implementing [Sink] and [Stream].
 #[pin_project]
-pub struct Channel<SinkItem, StreamItem> {
+pub struct Channel<SinkItem, StreamItem>
+where
+    SinkItem: Serialize + 'static,
+{
     #[pin]
-    pub(crate) sender: Sender<SinkItem>,
+    sender: SenderSink<SinkItem>,
     #[pin]
-    pub(crate) receiver: Receiver<StreamItem>,
+    receiver: ReceiverStream<StreamItem>,
 }
 
-impl<SinkItem, StreamItem> Channel<SinkItem, StreamItem> {
-    /// Creates a bi-directional channel by combining a `Sender` and `Receiver`.
-    pub fn new(sender: Sender<SinkItem>, receiver: Receiver<StreamItem>) -> Channel<SinkItem, StreamItem> {
+impl<SinkItem, StreamItem> Channel<SinkItem, StreamItem>
+where
+    SinkItem: Serialize,
+{
+    /// Creates a bi-directional channel by combining a [SenderSink] and [ReceiverStream].
+    pub fn new(
+        sender: SenderSink<SinkItem>, receiver: ReceiverStream<StreamItem>,
+    ) -> Channel<SinkItem, StreamItem> {
         Channel { sender, receiver }
     }
 
-    /// Splits the channel into a `Sender` and `Receiver`.
-    pub fn split(self) -> (Sender<SinkItem>, Receiver<StreamItem>) {
+    /// Splits the channel into a [SenderSink] and [ReceiverStream].
+    pub fn split(self) -> (SenderSink<SinkItem>, ReceiverStream<StreamItem>) {
         let Channel { sender, receiver } = self;
         (sender, receiver)
     }
@@ -37,7 +43,7 @@ impl<SinkItem, StreamItem> Sink<SinkItem> for Channel<SinkItem, StreamItem>
 where
     SinkItem: Serialize,
 {
-    type Error = <Sender<SinkItem> as Sink<SinkItem>>::Error;
+    type Error = <SenderSink<SinkItem> as Sink<SinkItem>>::Error;
     fn poll_ready(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
         self.project().sender.poll_ready(cx)
     }
@@ -54,9 +60,10 @@ where
 
 impl<SinkItem, StreamItem> Stream for Channel<SinkItem, StreamItem>
 where
+    SinkItem: Serialize,
     StreamItem: DeserializeOwned,
 {
-    type Item = <Receiver<StreamItem> as Stream>::Item;
+    type Item = <ReceiverStream<StreamItem> as Stream>::Item;
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
         self.project().receiver.poll_next(cx)
     }

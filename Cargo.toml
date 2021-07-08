@@ -4,6 +4,7 @@ members = [
     "chmux",
     "chrpc",
     "chrpc_macro",
+    "chser",
 ]
 
 

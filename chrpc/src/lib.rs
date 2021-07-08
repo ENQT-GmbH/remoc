@@ -65,7 +65,7 @@ impl From<ConnectError> for CallError {
 impl From<ReceiveError> for CallError {
     fn from(err: ReceiveError) -> Self {
         match err {
-            ReceiveError::MultiplexerError => Self::MultiplexerError,
+            ReceiveError::Multiplexer => Self::MultiplexerError,
             ReceiveError::DeserializationError(err) => Self::DeserializationError(err),
         }
     }
@@ -207,7 +207,7 @@ where
         self.sender = None;
         match self.receiver.next().await {
             Some(ret) => ret,
-            None => Err(chmux::ReceiveError::MultiplexerError),
+            None => Err(chmux::ReceiveError::Multiplexer),
         }
     }
 }

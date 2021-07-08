@@ -20,7 +20,7 @@ use tokio::{
 };
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
-use chmux::{ContentCodecFactory, Multiplexer, TransportCodecFactory};
+use chmux::{CodecFactory, Multiplexer, TransportCodecFactory};
 
 /// TCP keep alive time in seconds.
 const TCP_KEEPALIVE_TIME: Duration = Duration::from_secs(10);
@@ -87,13 +87,16 @@ impl<R, W: AsyncWrite> AsyncWrite for AsyncReadWrite<R, W> {
 /// provide an RPC server implementing `AsyncRead` and `AsyncWrite`.
 pub async fn client_server<Socket, ClientService, ServerService, Content, ContentCodec, TransportCodec>(
     socket: Socket, content_codec: ContentCodec, transport_codec: TransportCodec, mux_cfg: chmux::Cfg,
-) -> (chmux::Client<ClientService, Content, ContentCodec>, chmux::Server<ServerService, Content, ContentCodec>)
+) -> (
+    chmux::RawClient<ClientService, Content, ContentCodec>,
+    chmux::RawListener<ServerService, Content, ContentCodec>,
+)
 where
     Socket: AsyncRead + AsyncWrite + Send + 'static,
     ClientService: Serialize + DeserializeOwned + 'static,
     ServerService: Serialize + DeserializeOwned + 'static,
     Content: Serialize + DeserializeOwned + Send + 'static,
-    ContentCodec: ContentCodecFactory<Content> + 'static,
+    ContentCodec: CodecFactory<Content> + 'static,
     TransportCodec: TransportCodecFactory<Content, Bytes> + 'static,
 {
     let (socket_rx, socket_tx) = split(socket);
@@ -117,12 +120,12 @@ where
 /// Use `<RPCClient>::bind(client(...).await)` to obtain an RPC client.
 pub async fn client<Socket, Service, Content, ContentCodec, TransportCodec>(
     socket: Socket, content_codec: ContentCodec, transport_codec: TransportCodec, mux_cfg: chmux::Cfg,
-) -> chmux::Client<Service, Content, ContentCodec>
+) -> chmux::RawClient<Service, Content, ContentCodec>
 where
     Socket: AsyncRead + AsyncWrite + Send + 'static,
     Service: Serialize + DeserializeOwned + 'static,
     Content: Serialize + DeserializeOwned + Send + 'static,
-    ContentCodec: ContentCodecFactory<Content> + 'static,
+    ContentCodec: CodecFactory<Content> + 'static,
     TransportCodec: TransportCodecFactory<Content, Bytes> + 'static,
 {
     let (socket_rx, socket_tx) = split(socket);
@@ -146,12 +149,12 @@ where
 /// Use `<RPCServer>::serve(server(...).await)` to run an RPC server.
 pub async fn server<Socket, Service, Content, ContentCodec, TransportCodec>(
     socket: Socket, content_codec: ContentCodec, transport_codec: TransportCodec, mux_cfg: chmux::Cfg,
-) -> chmux::Server<Service, Content, ContentCodec>
+) -> chmux::RawListener<Service, Content, ContentCodec>
 where
     Socket: AsyncRead + AsyncWrite + Send + 'static,
     Service: Serialize + DeserializeOwned + 'static,
     Content: Serialize + DeserializeOwned + Send + 'static,
-    ContentCodec: ContentCodecFactory<Content> + 'static,
+    ContentCodec: CodecFactory<Content> + 'static,
     TransportCodec: TransportCodecFactory<Content, Bytes> + 'static,
 {
     let (socket_rx, socket_tx) = split(socket);
@@ -176,11 +179,11 @@ where
 pub async fn tcp_client<Service, Content, ContentCodec, TransportCodec>(
     server_addr: impl ToSocketAddrs, content_codec: ContentCodec, transport_codec: TransportCodec,
     mux_cfg: chmux::Cfg,
-) -> io::Result<chmux::Client<Service, Content, ContentCodec>>
+) -> io::Result<chmux::RawClient<Service, Content, ContentCodec>>
 where
     Service: Serialize + DeserializeOwned + 'static,
     Content: Serialize + DeserializeOwned + Send + 'static,
-    ContentCodec: ContentCodecFactory<Content> + 'static,
+    ContentCodec: CodecFactory<Content> + 'static,
     TransportCodec: TransportCodecFactory<Content, Bytes> + 'static,
 {
     let socket = TcpStream::connect(server_addr).await?;
@@ -200,7 +203,7 @@ where
 pub async fn tcp_server<Service, Content, ContentCodec, TransportCodec, ServerFut, ServerFutOk, ServerFutErr>(
     bind_addr: impl ToSocketAddrs, multiple: bool, content_codec: ContentCodec, transport_codec: TransportCodec,
     mux_cfg: chmux::Cfg,
-    run_server: impl Fn(SocketAddr, SocketAddr, chmux::Server<Service, Content, ContentCodec>) -> ServerFut
+    run_server: impl Fn(SocketAddr, SocketAddr, chmux::RawListener<Service, Content, ContentCodec>) -> ServerFut
         + Send
         + Sync
         + Clone
@@ -209,7 +212,7 @@ pub async fn tcp_server<Service, Content, ContentCodec, TransportCodec, ServerFu
 where
     Service: Serialize + DeserializeOwned + 'static,
     Content: Serialize + DeserializeOwned + Send + 'static,
-    ContentCodec: ContentCodecFactory<Content> + 'static,
+    ContentCodec: CodecFactory<Content> + 'static,
     TransportCodec: TransportCodecFactory<Content, Bytes> + 'static,
     ServerFut: Future<Output = Result<ServerFutOk, ServerFutErr>> + Send,
     ServerFutErr: error::Error,
@@ -254,11 +257,11 @@ where
 pub async fn tcp_tls_client<Service, Content, ContentCodec, TransportCodec>(
     server_addr: impl ToSocketAddrs, dns_name: &str, content_codec: ContentCodec,
     transport_codec: TransportCodec, mux_cfg: chmux::Cfg, tls_cfg: Arc<tokio_rustls::rustls::ClientConfig>,
-) -> io::Result<chmux::Client<Service, Content, ContentCodec>>
+) -> io::Result<chmux::RawClient<Service, Content, ContentCodec>>
 where
     Service: Serialize + DeserializeOwned + 'static,
     Content: Serialize + DeserializeOwned + Send + 'static,
-    ContentCodec: ContentCodecFactory<Content> + 'static,
+    ContentCodec: CodecFactory<Content> + 'static,
     TransportCodec: TransportCodecFactory<Content, Bytes> + 'static,
 {
     use tokio_rustls::{webpki::DNSNameRef, TlsConnector};
@@ -294,7 +297,7 @@ pub async fn tcp_tls_server<
 >(
     bind_addr: impl ToSocketAddrs, multiple: bool, content_codec: ContentCodec, transport_codec: TransportCodec,
     mux_cfg: chmux::Cfg, tls_cfg: Arc<tokio_rustls::rustls::ServerConfig>,
-    run_server: impl Fn(SocketAddr, SocketAddr, chmux::Server<Service, Content, ContentCodec>) -> ServerFut
+    run_server: impl Fn(SocketAddr, SocketAddr, chmux::RawListener<Service, Content, ContentCodec>) -> ServerFut
         + Send
         + Sync
         + Clone
@@ -303,7 +306,7 @@ pub async fn tcp_tls_server<
 where
     Service: Serialize + DeserializeOwned + 'static,
     Content: Serialize + DeserializeOwned + Send + 'static,
-    ContentCodec: ContentCodecFactory<Content> + 'static,
+    ContentCodec: CodecFactory<Content> + 'static,
     TransportCodec: TransportCodecFactory<Content, Bytes> + 'static,
     ServerFut: Future<Output = Result<ServerFutOk, ServerFutErr>> + Send,
     ServerFutErr: error::Error,

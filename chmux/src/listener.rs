@@ -1,0 +1,321 @@
+use futures::{
+    future::BoxFuture,
+    ready,
+    stream::Stream,
+    task::{Context, Poll},
+    FutureExt,
+};
+use serde::{de::DeserializeOwned, Serialize};
+use std::{error::Error, fmt, pin::Pin, sync::Arc};
+use tokio::sync::{mpsc, oneshot, Mutex};
+
+use crate::{
+    codec::CodecFactory,
+    multiplexer::PortEvt,
+    port_allocator::{PortAllocator, PortNumber},
+    receiver::{RawReceiver, Receiver},
+    sender::{RawSender, Sender},
+};
+
+/// An multiplexer listener error.
+#[derive(Debug)]
+pub enum ListenerError {
+    /// A multiplexer error has occured or it has been terminated.
+    MultiplexerError,
+}
+
+impl fmt::Display for ListenerError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::MultiplexerError => write!(f, "multiplexer error"),
+        }
+    }
+}
+
+impl Error for ListenerError {}
+
+/// A connection request by the remote endpoint.
+///
+/// Dropping the request rejects it.
+pub(crate) struct RemoteConnectRequest {
+    remote_port: u32,
+    tx: mpsc::Sender<PortEvt>,
+    done_tx: Option<oneshot::Sender<()>>,
+}
+
+impl RemoteConnectRequest {
+    pub(crate) fn new(remote_port: u32, tx: mpsc::Sender<PortEvt>) -> Self {
+        let (done_tx, done_rx) = oneshot::channel();
+        let drop_tx = tx.clone();
+        tokio::spawn(async move {
+            if done_rx.await.is_err() {
+                let _ = drop_tx.send(PortEvt::Rejected { remote_port, no_ports: false }).await;
+            }
+        });
+
+        Self { remote_port, tx, done_tx: Some(done_tx) }
+    }
+
+    async fn accept(mut self, local_port: PortNumber) -> Result<(RawSender, RawReceiver), ListenerError> {
+        let (port_tx, port_rx) = oneshot::channel();
+        let _ = self.tx.send(PortEvt::Accepted { local_port, remote_port: self.remote_port, port_tx }).await;
+        let _ = self.done_tx.take().unwrap().send(());
+
+        port_rx.await.map_err(|_| ListenerError::MultiplexerError)
+    }
+
+    async fn reject(mut self, no_ports: bool) {
+        let _ = self.tx.send(PortEvt::Rejected { remote_port: self.remote_port, no_ports }).await;
+        let _ = self.done_tx.take().unwrap().send(());
+    }
+}
+
+impl Drop for RemoteConnectRequest {
+    fn drop(&mut self) {
+        // required for correct drop order
+    }
+}
+
+/// Remote connect message.
+pub(crate) enum RemoteConnectMsg {
+    /// Remote connect request.
+    Request(RemoteConnectRequest),
+    /// Client of remote endpoint has been dropped.
+    ClientDropped,
+}
+
+/// Raw multiplexer listener.
+pub struct RawListener {
+    wait_rx: mpsc::Receiver<RemoteConnectMsg>,
+    no_wait_rx: mpsc::Receiver<RemoteConnectMsg>,
+    port_allocator: PortAllocator,
+    closed: bool,
+}
+
+impl fmt::Debug for RawListener {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("RawListener").field("port_allocator", &self.port_allocator).finish()
+    }
+}
+
+impl RawListener {
+    pub(crate) fn new(
+        wait_rx: mpsc::Receiver<RemoteConnectMsg>, no_wait_rx: mpsc::Receiver<RemoteConnectMsg>,
+        port_allocator: PortAllocator,
+    ) -> Self {
+        Self { wait_rx, no_wait_rx, port_allocator, closed: false }
+    }
+
+    /// Accept a connection returning the raw sender and raw receiver for the opened port.
+    ///
+    /// Returns [None] when the client of the remote endpoint has been dropped and
+    /// no more connection requests can be made.
+    pub async fn accept(&mut self) -> Result<Option<(RawSender, RawReceiver)>, ListenerError> {
+        if self.closed {
+            return Ok(None);
+        }
+
+        loop {
+            tokio::select! {
+                local_port = self.port_allocator.allocate() => {
+                    let req_opt = tokio::select! {
+                        req_opt = self.wait_rx.recv() => req_opt,
+                        req_opt = self.no_wait_rx.recv() => req_opt,
+                    };
+
+                    match req_opt {
+                        Some(RemoteConnectMsg::Request(req)) => break Ok(Some(req.accept(local_port).await?)),
+                        Some(RemoteConnectMsg::ClientDropped) => {
+                            self.closed = true;
+                            break Ok(None);
+                        },
+                        None => break Err(ListenerError::MultiplexerError),
+                    }
+                },
+
+                no_wait_req_opt = self.no_wait_rx.recv() => {
+                    match no_wait_req_opt {
+                        Some(RemoteConnectMsg::Request(no_wait_req)) => {
+                            match self.port_allocator.try_allocate() {
+                                Some(local_port) => break Ok(Some(no_wait_req.accept(local_port).await?)),
+                                None => no_wait_req.reject(true).await,
+                            }
+                        },
+                        Some(RemoteConnectMsg::ClientDropped) => {
+                            self.closed = true;
+                            break Ok(None);
+                        },
+                        None => break Err(ListenerError::MultiplexerError),
+                    }
+                },
+            }
+        }
+    }
+
+    /// Convert this into a raw server stream.
+    pub fn into_stream(self) -> RawListenerStream {
+        RawListenerStream::new(self)
+    }
+}
+
+impl Drop for RawListener {
+    fn drop(&mut self) {
+        // required for correct drop order
+    }
+}
+
+/// A stream accepting connections and returning raw senders and raw receivers.
+///
+/// Ends when the client is dropped at the remote endpoint.
+pub struct RawListenerStream {
+    server: Arc<Mutex<RawListener>>,
+    #[allow(clippy::type_complexity)]
+    accept_fut: Option<BoxFuture<'static, Option<Result<(RawSender, RawReceiver), ListenerError>>>>,
+}
+
+impl RawListenerStream {
+    fn new(server: RawListener) -> Self {
+        Self { server: Arc::new(Mutex::new(server)), accept_fut: None }
+    }
+
+    async fn accept(server: Arc<Mutex<RawListener>>) -> Option<Result<(RawSender, RawReceiver), ListenerError>> {
+        let mut server = server.lock().await;
+        server.accept().await.transpose()
+    }
+
+    fn poll_next(&mut self, cx: &mut Context) -> Poll<Option<Result<(RawSender, RawReceiver), ListenerError>>> {
+        if self.accept_fut.is_none() {
+            self.accept_fut = Some(Self::accept(self.server.clone()).boxed());
+        }
+
+        let accept_fut = self.accept_fut.as_mut().unwrap();
+        let res = ready!(accept_fut.as_mut().poll(cx));
+
+        self.accept_fut = None;
+        Poll::Ready(res)
+    }
+}
+
+impl Stream for RawListenerStream {
+    type Item = Result<(RawSender, RawReceiver), ListenerError>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
+        Pin::into_inner(self).poll_next(cx)
+    }
+}
+
+/// Multiplexer listener.
+#[derive(Debug)]
+pub struct Listener<Codec>
+where
+    Codec: CodecFactory,
+{
+    raw: RawListener,
+    codec: Codec,
+}
+
+impl<Codec> Listener<Codec>
+where
+    Codec: CodecFactory,
+{
+    /// Creates a new listener.
+    pub fn new(raw: RawListener, codec: Codec) -> Self {
+        Self { raw, codec }
+    }
+
+    /// Convert this into a raw listener.
+    pub fn into_raw(self) -> RawListener {
+        self.raw
+    }
+
+    /// Accept a connection returning the sender and receiver for the opened port.
+    ///
+    /// Returns [None] when the client of the remote endpoint has been dropped and
+    /// no more connection requests can be made.
+    pub async fn accept<SendItem, ReceiveItem>(
+        &mut self,
+    ) -> Result<Option<(Sender<SendItem>, Receiver<ReceiveItem>)>, ListenerError>
+    where
+        SendItem: Serialize + 'static,
+        ReceiveItem: DeserializeOwned + 'static,
+    {
+        self.raw.accept().await.map(|res| {
+            res.map(|(raw_sender, raw_receiver)| {
+                (
+                    Sender::new(raw_sender, self.codec.serializer()),
+                    Receiver::new(raw_receiver, self.codec.deserializer()),
+                )
+            })
+        })
+    }
+
+    /// Convert this into a server stream.
+    pub fn into_stream<SendItem, ReceiveItem>(self) -> ListenerStream<Codec, SendItem, ReceiveItem>
+    where
+        SendItem: Serialize + 'static,
+        ReceiveItem: DeserializeOwned + 'static,
+    {
+        ListenerStream::new(self)
+    }
+}
+
+/// A stream accepting connections and returning senders raw receivers.
+///
+/// Ends when the client is dropped at the remote endpoint.
+pub struct ListenerStream<Codec, SendItem, ReceiveItem>
+where
+    Codec: CodecFactory,
+    SendItem: Serialize + 'static,
+    ReceiveItem: DeserializeOwned + 'static,
+{
+    server: Arc<Mutex<Listener<Codec>>>,
+    #[allow(clippy::type_complexity)]
+    accept_fut:
+        Option<BoxFuture<'static, Option<Result<(Sender<SendItem>, Receiver<ReceiveItem>), ListenerError>>>>,
+}
+
+impl<Codec, SendItem, ReceiveItem> ListenerStream<Codec, SendItem, ReceiveItem>
+where
+    Codec: CodecFactory,
+    SendItem: Serialize + 'static,
+    ReceiveItem: DeserializeOwned + 'static,
+{
+    fn new(server: Listener<Codec>) -> Self {
+        Self { server: Arc::new(Mutex::new(server)), accept_fut: None }
+    }
+
+    async fn accept(
+        server: Arc<Mutex<Listener<Codec>>>,
+    ) -> Option<Result<(Sender<SendItem>, Receiver<ReceiveItem>), ListenerError>> {
+        let mut server = server.lock().await;
+        server.accept().await.transpose()
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn poll_next(
+        &mut self, cx: &mut Context,
+    ) -> Poll<Option<Result<(Sender<SendItem>, Receiver<ReceiveItem>), ListenerError>>> {
+        if self.accept_fut.is_none() {
+            self.accept_fut = Some(Self::accept(self.server.clone()).boxed());
+        }
+
+        let accept_fut = self.accept_fut.as_mut().unwrap();
+        let res = ready!(accept_fut.as_mut().poll(cx));
+
+        self.accept_fut = None;
+        Poll::Ready(res)
+    }
+}
+
+impl<Codec, SendItem, ReceiveItem> Stream for ListenerStream<Codec, SendItem, ReceiveItem>
+where
+    Codec: CodecFactory,
+    SendItem: Serialize + 'static,
+    ReceiveItem: DeserializeOwned + 'static,
+{
+    type Item = Result<(Sender<SendItem>, Receiver<ReceiveItem>), ListenerError>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
+        Pin::into_inner(self).poll_next(cx)
+    }
+}

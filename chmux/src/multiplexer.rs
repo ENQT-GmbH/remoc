@@ -1,992 +1,1165 @@
+use bytes::Bytes;
 use futures::{
-    channel::{mpsc, oneshot},
-    lock::Mutex,
+    future, pin_mut,
     sink::{Sink, SinkExt},
-    stream::{self, Stream, StreamExt},
+    stream::{Stream, StreamExt},
+    Future, FutureExt,
 };
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use lazy_static::lazy_static;
 use std::{
     collections::HashMap,
     error::Error,
     fmt,
     marker::PhantomData,
     pin::Pin,
-    sync::{Arc, Weak},
-    time::{Duration, Instant},
+    sync::{
+        atomic::{AtomicBool, AtomicU16, Ordering},
+        Arc,
+    },
+    task::{Context, Poll},
+    time::Duration,
+};
+use tokio::{
+    sync::{mpsc, mpsc::Permit, oneshot, Mutex},
+    time::{sleep, timeout},
+    try_join,
 };
 
 use crate::{
-    client::{Client, ConnectToRemoteServiceRequest, ConnectToRemoteServiceResponse},
-    codec::{ContentCodecFactory, Serializer, TransportCodecFactory},
-    number_allocator::{NumberAllocator, NumberAllocatorExhaustedError},
-    receive_buffer::{ChannelReceiverBufferCfg, ChannelReceiverBufferDequeuer, ChannelReceiverBufferEnqueuer},
-    receiver::RawReceiver,
-    send_lock::{channel_send_lock, ChannelSendLockAuthority, ChannelSendLockRequester},
+    client::{Client, ConnectRequest, ConnectResponse, RawClient},
+    codec::CodecFactory,
+    credit::{
+        credit_monitor_pair, credit_send_pair, ChannelCreditMonitor, CreditProvider, GlobalCreditMonitor,
+        GlobalCredits,
+    },
+    listener::{Listener, RawListener, RemoteConnectMsg, RemoteConnectRequest},
+    msg::{Credit, MultiplexMsg},
+    port_allocator::{PortAllocator, PortNumber},
+    receiver::{PortReceiveMsg, RawReceiver, ReceivedData},
     sender::RawSender,
-    server::{RemoteConnectToServiceRequest, Server},
-    timeout::Timeout,
+    Cfg, MultiplexError, PROTOCOL_VERSION,
 };
-use stream::SelectAll;
 
-/// Channel multiplexer error.
-#[derive(Debug)]
-pub enum MultiplexError {
-    /// An error was encountered while sending data to the transport sink.
-    TransportSinkError(Box<dyn Error + Send + Sync + 'static>),
-    /// An error was encountered while receiving data from the transport stream.
-    TransportStreamError(Box<dyn Error + Send + Sync + 'static>),
-    /// The transport stream was closed while multiplex channels were active or the
-    /// multiplex client was not dropped.
-    TransportStreamClosed,
-    /// A multiplex protocol error occured.
-    ProtocolError(String),
-    /// The multiplexer ports were exhausted.
-    PortsExhausted,
-    /// Error serializing protocol message.
-    SerializationError(Box<dyn Error + Send + Sync + 'static>),
-    /// Error deserializing protocol message.
-    DeserializationError(Box<dyn Error + Send + Sync + 'static>),
-    /// No messages where received over the configured connection timeout.
-    ConnectionTimeout,
-}
-
-impl From<NumberAllocatorExhaustedError> for MultiplexError {
-    fn from(_err: NumberAllocatorExhaustedError) -> Self {
-        Self::PortsExhausted
-    }
-}
-
-impl fmt::Display for MultiplexError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::TransportSinkError(err) => write!(f, "Error sending multiplex message: {:?}", err),
-            Self::TransportStreamError(err) => write!(f, "Error receiving multiplex message: {:?}", err),
-            Self::TransportStreamClosed => write!(f, "Transport was closed."),
-            Self::ProtocolError(err) => write!(f, "Multiplex protocol error: {}", err),
-            Self::PortsExhausted => write!(f, "The maximum number of multiplex ports has been reached."),
-            Self::SerializationError(err) => write!(f, "Error serializing multiplex message: {:?}", err),
-            Self::DeserializationError(err) => write!(f, "Error deserializing multiplex message: {:?}", err),
-            Self::ConnectionTimeout => {
-                write!(f, "No messages where received over the configured connection timeout.")
-            }
-        }
-    }
-}
-
-impl Error for MultiplexError {}
-
-/// Multiplexer configuration.
-#[derive(Clone, Debug)]
-pub struct Cfg {
-    /// Receive queue length of each channel.
-    pub channel_rx_queue_length: usize,
-    /// Service request receive queue length.
-    pub service_request_queue_length: usize,
-    /// Interval at which pings are send, when no data is sent.
-    pub ping_interval: Option<Duration>,
-    /// Time after which connection is closed when not data or ping
-    /// is received.
-    pub connection_timeout: Option<Duration>,
-}
-
-impl Cfg {
-    /// Default multiplexer configuration.
-    pub const DEFAULT: Self = Self {
-        channel_rx_queue_length: 100,
-        service_request_queue_length: 10,
-        ping_interval: Some(Duration::from_secs(30)),
-        connection_timeout: Some(Duration::from_secs(60)),
+/// Multiplexer protocol error.
+macro_rules! protocol_err {
+    ($msg:expr) => {
+        crate::MultiplexError::Protocol($msg.to_string())
     };
 }
 
-impl Default for Cfg {
-    fn default() -> Self {
-        Self::DEFAULT
-    }
-}
-
-/// Message between two multiplexed endpoints.
-#[derive(Debug, Serialize, Deserialize)]
-pub enum MultiplexMsg<Content> {
-    /// Open connection to service on specified client port.
-    RequestService {
-        /// Requested service.
-        service: Content,
-        /// Requesting client port.
-        client_port: u32,
-    },
-    /// Connection accepted.
-    Accepted {
-        /// Requesting client port.
-        client_port: u32,
-        /// Assigned server port.
-        server_port: u32,
-    },
-    /// Connection to service refused.
-    Rejected {
-        /// Requesting client port.
-        client_port: u32,
-    },
-    /// Pause sending data from specified port.
-    Pause {
-        /// Port of side that receives this message.
-        port: u32,
-    },
-    /// Resume sending data from specified port.
-    Resume {
-        /// Port of side that receives this message.
-        port: u32,
-    },
-    /// No more data will be sent to specifed remote port.
-    Finish {
-        /// Port of side that receives this message.
-        port: u32,
-    },
-    /// Acknowledgement that Finish has been received for the specified remote port.
-    FinishAck {
-        /// Port of side that receives this message.
-        port: u32,
-    },
-    /// Not interested on receiving any more data from specified remote port.
-    Hangup {
-        /// Port of side that receives this message.
-        port: u32,
-        /// If true, already sent messages will still be processed by this side.
-        gracefully: bool,
-    },
-    /// Data for specified port.
-    Data {
-        /// Port of side that receives this message.
-        port: u32,
-        /// Data.
-        content: Content,
-    },
-    /// Ping to keep connection alive when there is no data to send.
-    Ping,
-    /// All clients have been dropped, therefore no more service requests will occur.
-    AllClientsDropped,
-}
-
-/// All necessary data to instantiate the user portion of a channel.
-pub struct ChannelData<Content>
-where
-    Content: Send,
-{
-    pub local_port: u32,
-    pub remote_port: u32,
-    pub sender_tx: mpsc::Sender<ChannelMsg<Content>>,
-    pub receiver_tx: mpsc::Sender<ChannelMsg<Content>>,
-    pub tx_lock: ChannelSendLockRequester,
-    pub rx_buffer: ChannelReceiverBufferDequeuer<Content>,
-    pub hangup_notify: Weak<Mutex<Option<Vec<oneshot::Sender<()>>>>>,
-}
-
-impl<Content> ChannelData<Content>
-where
-    Content: 'static + Send,
-{
-    pub fn instantiate(self) -> (RawSender<Content>, RawReceiver<Content>) {
-        let ChannelData { local_port, remote_port, sender_tx, receiver_tx, tx_lock, rx_buffer, hangup_notify } =
-            self;
-
-        let sender = RawSender::new(local_port, remote_port, sender_tx, tx_lock, hangup_notify);
-        let receiver = RawReceiver::new(local_port, remote_port, receiver_tx, rx_buffer);
-        (sender, receiver)
-    }
-}
-
 /// Port state.
-enum PortState<Content>
-where
-    Content: Send,
-{
-    /// Service request has been initiated locally and is waiting for reply
+#[derive(Debug)]
+enum PortState {
+    /// OpenPort request has been initiated locally and is waiting for reply
     /// from remote endpoint.
-    LocalRequestingRemoteService {
+    Connecting {
         /// Channel for providing the response to the local requester.
-        response_tx: oneshot::Sender<ConnectToRemoteServiceResponse<Content>>,
-    },
-    /// Service request has been received from remote endpoint and is
-    /// awaiting local decision.
-    RemoteRequestingLocalService {
-        /// Remote port.
-        remote_port: u32,
-        /// Transmission lock authority.
-        tx_lock: ChannelSendLockAuthority,
-        /// Receive buffer enqueuer.
-        rx_buffer: ChannelReceiverBufferEnqueuer<Content>,
-        /// Notification senders for when Hangup message has been received.
-        hangup_notify: Arc<Mutex<Option<Vec<oneshot::Sender<()>>>>>,
+        response_tx: oneshot::Sender<ConnectResponse>,
     },
     /// Port is connected.
     Connected {
         /// Remote port.
         remote_port: u32,
-        /// Transmission lock authority.
+        /// Credit provider for sending.
         /// Initially present, None when Hangup message has been received.
-        tx_lock: Option<ChannelSendLockAuthority>,
-        /// Receive buffer enqueuer.
-        /// Initially present, None when Finish message has been received.
-        rx_buffer: Option<ChannelReceiverBufferEnqueuer<Content>>,
-        /// Notification senders for when Hangup message has been received.
-        hangup_notify: Arc<Mutex<Option<Vec<oneshot::Sender<()>>>>>,
-        /// Pause request has been sent to remote endpoint.
-        rx_paused: bool,
-        /// Receiver has been closed and Hangup message has been sent to remote endpoint.
-        rx_hangedup: bool,
-        /// Receiver has been dropped and Hangup message has been sent to remote endpoint.
-        rx_dropped: bool,
-        /// Sender has been dropped, thus no more data can be send from this port to remote endpoint.
-        tx_finished: bool,
-        /// Finished message has been acknowledged by remote endpoint.
-        tx_finished_ack: bool,
+        sender_credit_provider: CreditProvider,
+        /// Receive queue.
+        receiver_tx_data: Option<mpsc::UnboundedSender<PortReceiveMsg>>,
+        /// Channel-specific credit monitor for received data.
+        receiver_credit_monitor: ChannelCreditMonitor,
+        /// Local receiver has been closed and ReceiveClose message has been sent to remote endpoint.
+        receiver_closed: bool,
+        /// Local receiver has been dropped and ReceiveFinish message has been sent to remote endpoint,
+        /// thus no more port credits can be returned.
+        receiver_dropped: bool,
+        /// Sender has been dropped and SendFinish message has been sent to remote endpoint,
+        /// thus no more data can be send from this port to remote endpoint.
+        sender_dropped: bool,
+        /// Remote receiver has been closed, thus no more data should be sent to remote port.
+        remote_receiver_closed: Arc<AtomicBool>,
+        /// Notification senders for when remote receiver has been closed.
+        remote_receiver_closed_notify: Arc<Mutex<Option<Vec<oneshot::Sender<()>>>>>,
+        /// Remote receiver has been dropped, thus no more sent data will be processed and
+        /// no port credits will be returned.
+        remote_receiver_dropped: bool,
     },
 }
 
-/// Message from a channel to the multiplexer event loop.
-pub enum ChannelMsg<Content> {
-    /// Send message with content.
-    SendMsg { remote_port: u32, content: Content },
-    /// Sender has been dropped.
-    SenderDropped { local_port: u32 },
-    /// Receiver has been dropped.
-    ReceiverDropped { local_port: u32 },
-    /// Receiver has been closed, i.e. remote endpoint should stop sending messages on this channel.
-    ReceiverClosed { local_port: u32 },
-    /// The channel receive buffer has reached the resume length from above.
-    ReceiveBufferReachedResumeLength { local_port: u32 },
+/// Event from a port to the multiplexer event loop.
+#[derive(Debug)]
+pub(crate) enum PortEvt {
     /// Connection has been accepted.
-    Accepted { local_port: u32 },
+    Accepted {
+        /// Allocated local port.
+        local_port: PortNumber,
+        /// Remote port.
+        remote_port: u32,
+        /// Reply with port sender and receiver.
+        port_tx: oneshot::Sender<(RawSender, RawReceiver)>,
+    },
+    /// Connection was rejected.
+    Rejected {
+        /// Remote port.
+        remote_port: u32,
+        /// True if rejection due to no ports available.
+        no_ports: bool,
+    },
+    /// Send message with content.
+    SendData {
+        /// Remote port that will receive data.
+        remote_port: u32,
+        /// Data to send.
+        data: Bytes,
+        /// First chunk of data.
+        first: bool,
+        /// Last part of data.
+        last: bool,
+        /// Flow-control credit.
+        credit: Credit,
+    },
+    /// Return channel-specific flow control credits.
+    ReturnCredits {
+        /// Remote port that will receive credits.
+        remote_port: u32,
+        /// Number of credits.
+        credits: u16,
+    },
+    /// Sender has been dropped.
+    SenderDropped {
+        /// Local port.
+        local_port: u32,
+    },
+    /// Receiver has been closed, i.e. remote endpoint should stop sending messages on this channel.
+    ReceiverClosed {
+        /// Local port.
+        local_port: u32,
+    },
+    /// Receiver has been dropped.
+    ReceiverDropped {
+        /// Local port.
+        local_port: u32,
+    },
 }
 
-/// Multiplexer event loop event.
-enum LoopEvent<Content>
-where
-    Content: Send,
-{
-    /// A message from a local channel.
-    ChannelMsg(ChannelMsg<Content>),
-    /// Received message from transport.
-    ReceiveMsg(Result<MultiplexMsg<Content>, MultiplexError>),
-    /// Transport stream is finished.
-    TransportFinished,
-    /// MultiplexClient has been dropped.
-    ClientDropped,
-    /// MultiplexServer has been dropped.
-    ServerDropped,
-    /// Connect to service with specified id on the remote side.
-    ConnectToRemoteServiceRequest(ConnectToRemoteServiceRequest<Content>),
-    /// Send ping timeout triggered.
-    SendPingTimeout,
-    /// Connection timeout triggered.
-    ConnectionTimeout,
+// Global event.
+#[derive(Debug)]
+enum GlobalEvt {
+    /// Connect request from local client.
+    ConnectReq(ConnectRequest),
+    /// All local clients have been dropped.
+    AllClientsDropped,
+    /// Local listener has been dropped.
+    ListenerDropped,
+    /// Event from an open port.
+    Port(PortEvt),
+    /// Return global credits.
+    ReturnGlobalCredits(u16),
+    /// Send Goodbye message.
+    SendGoodbye,
+    /// Flush transport send queue.
+    Flush,
 }
 
-/// Channel multiplexer.
-pub struct Multiplexer<'a, Content, ContentCodec, TransportType, TransportCodec, TransportSink, TransportStream>
-where
-    Content: Send,
-{
-    /// Configuration
-    cfg: Cfg,
-    /// Codec factory for message content.
-    content_codec: ContentCodec,
-    /// Transport sink.
-    transport_tx: Pin<Box<TransportSink>>,
-    /// Channel to send server connection requests to.
-    serve_tx: Option<mpsc::Sender<(Content, RemoteConnectToServiceRequest<Content, ContentCodec>)>>,
-    /// Open local ports.
-    ports: HashMap<u32, PortState<Content>>,
-    /// Port number allocator.
-    port_pool: NumberAllocator,
-    /// Receiver of event loop.
-    event_rx: SelectAll<Pin<Box<dyn Stream<Item = LoopEvent<Content>> + Send + 'a>>>,
-    /// Serializer applied for transport.
-    transport_serializer: Box<dyn Serializer<MultiplexMsg<Content>, TransportType>>,
-    /// All user clients have been dropped.
-    all_clients_dropped: bool,
-    /// User server has been dropped.
-    server_dropped: bool,
-    /// Timeout that will fire when next ping must be send.
-    send_ping_timeout: Timeout,
-    /// Timeout that will fire when connection times out.
-    connection_timeout: Timeout,
-    /// Time when last message was transmitted.
-    last_tx_time: Instant,
-    /// Time when last message was received.
-    last_rx_time: Instant,
-    /// Phantom data.
-    _transport_codec_ghost: PhantomData<TransportCodec>,
-    /// Phantom data.
-    _transport_stream_ghost: PhantomData<TransportStream>,
+/// Command to transport send task.
+enum SendCmd {
+    /// Send attached message.
+    Send(TransportMsg),
+    /// Flush sink.
+    Flush,
 }
 
-/// Buffer size of internal communication channels.
-const INTERNAL_CHANNEL_BUFFER: usize = 10;
+/// Message with optionally associated data.
+struct TransportMsg {
+    /// Message.
+    msg: MultiplexMsg,
+    /// Data chunk, if message is data message.
+    data: Option<Bytes>,
+}
 
-impl<'a, Content, ContentCodec, TransportType, TransportCodec, TransportSink, TransportStream> fmt::Debug
-    for Multiplexer<'a, Content, ContentCodec, TransportType, TransportCodec, TransportSink, TransportStream>
-where
-    Content: Send,
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Multiplexer {{cfg={:?}}}", &self.cfg)
+impl TransportMsg {
+    /// Message only.
+    fn new(msg: MultiplexMsg) -> Self {
+        assert!(!matches!(&msg, &MultiplexMsg::Data { .. }), "MultiplexMsg::Data with missing data");
+        Self { msg, data: None }
+    }
+
+    /// Message with data.
+    fn with_data(msg: MultiplexMsg, data: Bytes) -> Self {
+        assert!(matches!(&msg, &MultiplexMsg::Data { .. }), "MultiplexMsg with unexpected data");
+        Self { msg, data: Some(data) }
     }
 }
 
-impl<
-        'a,
-        Content,
-        ContentCodec,
-        TransportType,
-        TransportCodec,
-        TransportSink,
-        TransportStream,
-        TransportSinkError,
-        TransportStreamError,
-    > Multiplexer<'a, Content, ContentCodec, TransportType, TransportCodec, TransportSink, TransportStream>
+/// Channel multiplexer.
+pub struct Multiplexer<TransportSink, TransportStream> {
+    /// Trace id.
+    trace_id: String,
+    /// Our configuration.
+    local_cfg: Cfg,
+    /// Remote configuration.
+    remote_cfg: Cfg,
+    /// Remote protocol version.
+    remote_protocol_version: u8,
+    /// Channel for connection requests from local client.
+    connect_rx: Option<mpsc::UnboundedReceiver<ConnectRequest>>,
+    /// Channels for connection requests from remote endpoint with wait set and not set.
+    listen_tx: Option<(mpsc::Sender<RemoteConnectMsg>, mpsc::Sender<RemoteConnectMsg>)>,
+    /// Open local ports.
+    ports: HashMap<PortNumber, PortState>,
+    /// Sender from channels to event loop.
+    channel_tx: mpsc::Sender<PortEvt>,
+    /// Channel receiver of event loop.
+    channel_rx: Option<mpsc::Receiver<PortEvt>>,
+    /// All user clients have been dropped.
+    all_clients_dropped: bool,
+    /// Remote client has been dropped.
+    remote_client_dropped: bool,
+    /// Remote listener has been dropped.
+    remote_listener_dropped: Arc<AtomicBool>,
+    /// Goodbye message has been sent.
+    goodbye_sent: bool,
+    /// Goodbye message has been received.
+    goodbye_received: bool,
+    /// Global transmission credits.
+    global_tx_credits: GlobalCredits,
+    /// Global received credits returner.
+    global_rx_credits_monitor: GlobalCreditMonitor,
+    /// Receive end of channel for returning received global credits.
+    global_rx_credits_return_rx: Option<mpsc::UnboundedReceiver<u16>>,
+    /// Transport sender.
+    transport_sink: Option<TransportSink>,
+    /// Transport receiver.
+    transport_stream: Option<TransportStream>,
+}
+
+impl<TransportSink, TransportStream> fmt::Debug for Multiplexer<TransportSink, TransportStream> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Multiplexer")
+            .field("trace_id", &self.trace_id)
+            .field("local_cfg", &self.local_cfg)
+            .field("remote_cfg", &self.remote_cfg)
+            .field("local_protocol_version", &PROTOCOL_VERSION)
+            .field("remote_protocol_version", &self.remote_protocol_version)
+            .finish_non_exhaustive()
+    }
+}
+
+impl<TransportSink, TransportSinkError, TransportStream, TransportStreamError>
+    Multiplexer<TransportSink, TransportStream>
 where
-    Content: Serialize + DeserializeOwned + Send + 'static,
-    ContentCodec: ContentCodecFactory<Content>,
-    TransportType: Send + 'static,
-    TransportCodec: TransportCodecFactory<Content, TransportType>,
-    TransportSink: Sink<TransportType, Error = TransportSinkError> + Send,
-    TransportStream: Stream<Item = Result<TransportType, TransportStreamError>> + Send + 'a,
+    TransportSink: Sink<Bytes, Error = TransportSinkError> + Send + Unpin,
     TransportSinkError: Error + Send + Sync + 'static,
+    TransportStream: Stream<Item = Result<Bytes, TransportStreamError>> + Send + Unpin,
     TransportStreamError: Error + Send + Sync + 'static,
 {
     /// Creates a new multiplexer.
     ///
-    /// See the `codecs` module for provided transport and content codecs.
-    ///
     /// After creation use the `run` method of the multiplexer to launch the dispatch task.
-    #[allow(clippy::type_complexity)]
-    pub fn new<ClientService, ServerService>(
-        cfg: &Cfg, content_codec: &ContentCodec, transport_codec: &TransportCodec, transport_tx: TransportSink,
-        transport_rx: TransportStream,
-    ) -> (
-        Multiplexer<'a, Content, ContentCodec, TransportType, TransportCodec, TransportSink, TransportStream>,
-        Client<ClientService, Content, ContentCodec>,
-        Server<ServerService, Content, ContentCodec>,
-    )
-    where
-        ClientService: Serialize + DeserializeOwned + 'static,
-        ServerService: Serialize + DeserializeOwned + 'static,
-    {
+    pub async fn raw(
+        cfg: &Cfg, mut transport_sink: TransportSink, mut transport_stream: TransportStream,
+    ) -> Result<(Self, RawClient, RawListener), MultiplexError<TransportSinkError, TransportStreamError>> {
         // Check configuration.
-        assert!(cfg.channel_rx_queue_length >= 2, "Channel receive queue length must be at least 2.");
-        assert!(cfg.service_request_queue_length >= 1, "Service request queue length must be at least 1.");
+        if cfg.max_ports.get() > 2u32.pow(31) {
+            return Err(MultiplexError::TooManyPorts);
+        }
 
-        // Create serializer and deserializer for message transport encoding.
-        let transport_serializer = transport_codec.serializer();
-        let transport_deserializer = transport_codec.deserializer();
+        // Get trace id.
+        let trace_id = match cfg.trace_id.clone() {
+            Some(trace_id) => trace_id,
+            None => generate_trace_id(),
+        };
 
-        // Create internal communication channels.
-        let (connect_tx, connect_rx) = mpsc::channel(INTERNAL_CHANNEL_BUFFER);
-        let (serve_tx, serve_rx) = mpsc::channel(cfg.service_request_queue_length);
-        let (server_drop_tx, server_drop_rx) = mpsc::channel(1);
+        // Say hello to remote endpoint and exchange configurations.
+        log::trace!("{}: exchanging hello", &trace_id);
+        let fut = Self::exchange_hello(&trace_id, cfg, &mut transport_sink, &mut transport_stream);
+        let (remote_protocol_version, remote_cfg) = match cfg.connection_timeout {
+            Some(dur) => timeout(dur, fut).await.map_err(|_| MultiplexError::Timeout)??,
+            None => fut.await?,
+        };
 
-        // Decode received messages.
-        let transport_rx = transport_rx
-            .map(move |msg| match msg {
-                Ok(wire) => match transport_deserializer.deserialize(wire) {
-                    Ok(msg) => LoopEvent::ReceiveMsg(Ok(msg)),
-                    Err(err) => LoopEvent::ReceiveMsg(Err(MultiplexError::DeserializationError(err))),
-                },
-                Err(err) => LoopEvent::ReceiveMsg(Err(MultiplexError::TransportStreamError(Box::new(err)))),
-            })
-            .chain(stream::once(async { LoopEvent::TransportFinished }));
-
-        // Create timeouts
-        let (send_ping_timeout, send_ping_timeout_rx) = Timeout::new();
-        let (connection_timeout, connection_timeout_rx) = Timeout::new();
-
-        // Create event loop stream.
-        let connect_rx = connect_rx
-            .map(LoopEvent::ConnectToRemoteServiceRequest)
-            .chain(stream::once(async { LoopEvent::ClientDropped }));
-        let server_drop_rx = server_drop_rx.chain(stream::once(async {})).map(|()| LoopEvent::ServerDropped);
-        let send_ping_timeout_rx = send_ping_timeout_rx.map(|()| LoopEvent::SendPingTimeout);
-        let connection_timeout_rx = connection_timeout_rx.map(|()| LoopEvent::ConnectionTimeout);
-        let event_rx = stream::select_all(vec![
-            transport_rx.boxed(),
-            connect_rx.boxed(),
-            server_drop_rx.boxed(),
-            send_ping_timeout_rx.boxed(),
-            connection_timeout_rx.boxed(),
-        ]);
+        // Create channels.
+        let (channel_tx, channel_rx) = mpsc::channel(cfg.shared_send_queue.get().into());
+        let (listen_wait_tx, listen_wait_rx) = mpsc::channel(usize::from(cfg.connect_queue.get()) + 1);
+        let (listen_no_wait_tx, listen_no_wait_rx) = mpsc::channel(usize::from(cfg.connect_queue.get()) + 1);
+        let (connect_tx, connect_rx) = mpsc::unbounded_channel();
 
         // Create user objects.
+        let (global_rx_credits_return_tx, global_rx_credits_return_rx) = mpsc::unbounded_channel();
+        let remote_listener_dropped = Arc::new(AtomicBool::new(false));
         let multiplexer = Multiplexer {
-            cfg: cfg.clone(),
-            content_codec: content_codec.clone(),
-            transport_tx: Box::pin(transport_tx),
-            serve_tx: Some(serve_tx),
+            trace_id,
+            remote_protocol_version,
+            local_cfg: cfg.clone(),
+            remote_cfg: remote_cfg.clone(),
+            connect_rx: Some(connect_rx),
+            listen_tx: Some((listen_wait_tx, listen_no_wait_tx)),
             ports: HashMap::new(),
-            port_pool: NumberAllocator::new(),
-            event_rx,
-            transport_serializer,
+            channel_tx,
+            channel_rx: Some(channel_rx),
+            remote_client_dropped: false,
+            remote_listener_dropped: remote_listener_dropped.clone(),
             all_clients_dropped: false,
-            server_dropped: false,
-            send_ping_timeout,
-            connection_timeout,
-            last_tx_time: Instant::now(),
-            last_rx_time: Instant::now(),
-            _transport_codec_ghost: PhantomData,
-            _transport_stream_ghost: PhantomData,
+            goodbye_sent: false,
+            goodbye_received: false,
+            global_tx_credits: GlobalCredits::new(remote_cfg.shared_receive_queue),
+            global_rx_credits_monitor: GlobalCreditMonitor::new(
+                cfg.shared_receive_queue,
+                global_rx_credits_return_tx,
+            ),
+            global_rx_credits_return_rx: Some(global_rx_credits_return_rx),
+            transport_sink: Some(transport_sink),
+            transport_stream: Some(transport_stream),
         };
-        let client = Client::new(connect_tx, &multiplexer.content_codec);
-        let server = Server::new(serve_rx, server_drop_tx, &multiplexer.content_codec);
 
-        (multiplexer, client, server)
+        let port_allocator = PortAllocator::new(cfg.max_ports.get());
+        let raw_client = RawClient::new(
+            connect_tx,
+            remote_cfg.connect_queue.get(),
+            port_allocator.clone(),
+            remote_listener_dropped,
+        );
+        let raw_server = RawListener::new(listen_wait_rx, listen_no_wait_rx, port_allocator);
+
+        log::trace!("{}: multiplexer created", &multiplexer.trace_id);
+        Ok((multiplexer, raw_client, raw_server))
     }
 
-    fn make_channel_receiver_buffer_cfg(
-        &self, local_port: u32, channel_tx: mpsc::Sender<ChannelMsg<Content>>,
-    ) -> ChannelReceiverBufferCfg<Content> {
-        ChannelReceiverBufferCfg {
-            resume_length: self.cfg.channel_rx_queue_length / 2,
-            pause_length: self.cfg.channel_rx_queue_length,
-            block_length: self.cfg.channel_rx_queue_length * 2,
-            resume_notify_tx: channel_tx,
-            local_port,
+    /// Creates a new multiplexer.
+    ///
+    /// After creation use the `run` method of the multiplexer to launch the dispatch task.
+    pub async fn new<Codec>(
+        cfg: &Cfg, codec: Codec, transport_sink: TransportSink, transport_stream: TransportStream,
+    ) -> Result<
+        (Multiplexer<TransportSink, TransportStream>, Client<Codec>, Listener<Codec>),
+        MultiplexError<TransportSinkError, TransportStreamError>,
+    >
+    where
+        Codec: CodecFactory,
+    {
+        let (multiplexer, raw_client, raw_server) = Self::raw(cfg, transport_sink, transport_stream).await?;
+        let client = Client::new(raw_client, codec.clone());
+        let listener = Listener::new(raw_server, codec);
+
+        Ok((multiplexer, client, listener))
+    }
+
+    /// Feed transport message to sink and log it.
+    async fn feed_msg(
+        trace_id: &str, msg: TransportMsg, sink: &mut TransportSink,
+    ) -> Result<(), MultiplexError<TransportSinkError, TransportStreamError>> {
+        log::trace!("{} ==> {:?}", trace_id, &msg.msg);
+        sink.feed(msg.msg.to_vec().into()).await.map_err(MultiplexError::SinkError)?;
+
+        if let Some(data) = msg.data {
+            log::trace!("{} ==> [{} bytes data]", trace_id, data.len());
+            sink.feed(data).await.map_err(MultiplexError::SinkError)?;
         }
+
+        Ok(())
     }
 
-    async fn transport_send(&mut self, msg: MultiplexMsg<Content>) -> Result<(), MultiplexError> {
-        let content = self.transport_serializer.serialize(msg).map_err(MultiplexError::SerializationError)?;
-        self.last_tx_time = Instant::now();
-        self.transport_tx.send(content).await.map_err(|err| MultiplexError::TransportSinkError(Box::new(err)))
+    /// Flush sink and log it.
+    async fn flush(
+        trace_id: &str, sink: &mut TransportSink,
+    ) -> Result<(), MultiplexError<TransportSinkError, TransportStreamError>> {
+        log::trace!("{} ==> [flush]", trace_id);
+        sink.flush().await.map_err(MultiplexError::SinkError)
     }
 
+    /// Receive message and log it.
+    async fn recv_msg(
+        trace_id: &str, stream: &mut TransportStream,
+    ) -> Result<TransportMsg, MultiplexError<TransportSinkError, TransportStreamError>> {
+        let msg_data = match stream.next().await {
+            Some(Ok(msg_data)) => msg_data,
+            Some(Err(err)) => return Err(MultiplexError::StreamError(err)),
+            None => return Err(MultiplexError::StreamClosed),
+        };
+
+        let msg = MultiplexMsg::from_slice(&msg_data)?;
+        log::trace!("{} <== {:?}", trace_id, &msg);
+
+        let data = if let MultiplexMsg::Data { .. } = &msg {
+            match stream.next().await {
+                Some(Ok(data)) => {
+                    log::trace!("{} <== [{} bytes data]", trace_id, data.len());
+                    Some(data)
+                }
+                Some(Err(err)) => return Err(MultiplexError::StreamError(err)),
+                None => return Err(MultiplexError::StreamClosed),
+            }
+        } else {
+            None
+        };
+
+        Ok(TransportMsg { msg, data })
+    }
+
+    /// Exchange Hello message with remote endpoint.
+    async fn exchange_hello(
+        trace_id: &str, cfg: &Cfg, sink: &mut TransportSink, stream: &mut TransportStream,
+    ) -> Result<(u8, Cfg), MultiplexError<TransportSinkError, TransportStreamError>> {
+        // Say hello to remote endpoint and send our configuration.
+        let send_task = async {
+            Self::feed_msg(trace_id, TransportMsg::new(MultiplexMsg::Reset), sink).await?;
+            Self::flush(trace_id, sink).await?;
+            Self::feed_msg(
+                trace_id,
+                TransportMsg::new(MultiplexMsg::Hello { version: PROTOCOL_VERSION, cfg: cfg.clone() }),
+                sink,
+            )
+            .await?;
+            Self::flush(trace_id, sink).await?;
+            Ok(())
+        };
+
+        // Receive hello and configuration from remote endpoint.
+        let recv_task = async {
+            loop {
+                match Self::recv_msg(trace_id, stream).await {
+                    Ok(TransportMsg { msg: MultiplexMsg::Hello { version, cfg }, .. }) => {
+                        break Ok((version, cfg))
+                    }
+                    Ok(_) => (),
+                    Err(MultiplexError::Protocol(_)) => (),
+                    Err(err) => return Err(err),
+                }
+            }
+        };
+
+        Ok(try_join!(send_task, recv_task)?.1)
+    }
+
+    /// Returns true, when muxer task should terminate because no more
+    /// requests are possible.
     fn should_terminate(&self) -> bool {
-        self.all_clients_dropped && self.server_dropped && self.ports.is_empty() && self.serve_tx.is_none()
+        let mut terminate = true;
+
+        // Ensures that all ports are closed on both sides.
+        terminate &= self.ports.is_empty();
+        // Ensures that local clients are all dropped or remote listener is dropped.
+        terminate &= self.all_clients_dropped || self.remote_listener_dropped.load(Ordering::SeqCst);
+        // Ensures that local listener or all remote clients are dropped.
+        terminate &= self.listen_tx.is_none() || self.remote_client_dropped;
+
+        terminate
     }
 
-    fn maybe_free_port(&mut self, local_port: u32) -> bool {
-        let free = if let Some(PortState::Connected {
-            tx_lock,
-            rx_buffer,
-            rx_dropped,
-            tx_finished,
-            tx_finished_ack,
+    /// Create port in port registry and return associated sender and receiver.
+    fn create_port(&mut self, local_port: PortNumber, remote_port: u32) -> (RawSender, RawReceiver) {
+        let local_port_num = *local_port;
+        log::trace!(
+            "{}: created port {} connected to remote port {}",
+            &self.trace_id,
+            &local_port_num,
+            remote_port
+        );
+
+        let sender_tx = self.channel_tx.clone();
+        let (sender_credit_provider, sender_credit_user) =
+            credit_send_pair(self.remote_cfg.port_receive_queue.get(), &self.global_tx_credits);
+
+        let receiver_tx = self.channel_tx.clone();
+        let (receiver_tx_data, receiver_rx_data) = mpsc::unbounded_channel();
+        let (receiver_credit_monitor, receiver_credit_returner) =
+            credit_monitor_pair(self.local_cfg.port_receive_queue.get());
+
+        let hangup_notify = Arc::new(Mutex::new(Some(Vec::new())));
+        let hangup_recved = Arc::new(AtomicBool::new(false));
+
+        if let Some(PortState::Connected { remote_port, .. }) = self.ports.insert(
+            local_port,
+            PortState::Connected {
+                remote_port,
+                sender_credit_provider,
+                receiver_tx_data: Some(receiver_tx_data),
+                receiver_credit_monitor,
+                remote_receiver_closed_notify: hangup_notify.clone(),
+                remote_receiver_closed: hangup_recved.clone(),
+                receiver_closed: false,
+                receiver_dropped: false,
+                sender_dropped: false,
+                remote_receiver_dropped: false,
+            },
+        ) {
+            panic!(
+                "create_port called for local port {} already connected to remote port {}",
+                local_port_num, remote_port
+            );
+        }
+
+        let raw_sender = RawSender::new(
+            local_port_num,
+            remote_port,
+            self.remote_cfg.max_data_size.get(),
+            self.remote_cfg.chunk_size.get() as usize,
+            sender_tx,
+            sender_credit_user,
+            Arc::downgrade(&hangup_recved),
+            Arc::downgrade(&hangup_notify),
+        );
+
+        let raw_receiver = RawReceiver::new(
+            local_port_num,
+            remote_port,
+            self.local_cfg.max_data_size.get(),
+            receiver_tx,
+            receiver_rx_data,
+            receiver_credit_returner,
+        );
+
+        (raw_sender, raw_receiver)
+    }
+
+    /// Releases a port if no more local requests to it are possible
+    /// and no more messages from the remote endpoint can reference it.
+    fn maybe_free_port(&mut self, local_port: u32) {
+        let mut free = true;
+
+        if let Some(PortState::Connected {
+            receiver_tx_data,
+            receiver_dropped,
+            sender_dropped,
+            remote_receiver_dropped,
             ..
         }) = self.ports.get(&local_port)
         {
-            tx_lock.is_none() && rx_buffer.is_none() && *rx_dropped && *tx_finished && *tx_finished_ack
+            // Ensures that local sender is dropped and thus no more
+            // Data and SendFinish messages can be sent for port.
+            free &= *sender_dropped;
+            // Ensures that local receiver is dropped and thus no more
+            // PortCredits, ReceiveClose and ReceiveFinish messages can be sent for port.
+            free &= *receiver_dropped;
+            // Ensures that remote sender has been dropped and thus no more
+            // Data and SendFinish messages can be received for port.
+            free &= receiver_tx_data.is_none();
+            // Ensures that remote receiver is dropped and thus no more
+            // PortCredits, ReceiveClose and ReceiveFinish messages can be received for port.
+            free &= *remote_receiver_dropped;
         } else {
             panic!("maybe_free_port called for port {} not in connected state.", &local_port);
-        };
+        }
+
         if free {
+            log::trace!("{}: freed port {}", &self.trace_id, &local_port);
             self.ports.remove(&local_port);
         }
-        self.should_terminate()
+    }
+
+    /// Sends data over the transport sink.
+    ///
+    /// Automatically sends pings if no data is to be transmitted.
+    async fn send_task(
+        trace_id: &str, mut sink: &mut TransportSink, ping_interval: Option<Duration>,
+        mut rx: mpsc::Receiver<SendCmd>,
+    ) -> Result<(), MultiplexError<TransportSinkError, TransportStreamError>> {
+        async fn get_next_ping(ping_interval: Option<Duration>) {
+            match ping_interval {
+                Some(interval) => sleep(interval).await,
+                None => future::pending().await,
+            }
+        }
+
+        let mut next_ping = get_next_ping(ping_interval).fuse().boxed();
+
+        loop {
+            SinkReady::new(&mut sink).await.map_err(MultiplexError::SinkError)?;
+
+            tokio::select! {
+                biased;
+
+                cmd_opt = rx.recv() => {
+                    match cmd_opt {
+                        Some(SendCmd::Send (msg)) => {
+                            let is_goodbye = matches!(&msg, TransportMsg {msg: MultiplexMsg::Goodbye, ..});
+                            Self::feed_msg(trace_id, msg, sink).await?;
+                            if is_goodbye {
+                                break;
+                            }
+
+                            next_ping = get_next_ping(ping_interval).fuse().boxed();
+                        }
+                        Some(SendCmd::Flush) => Self::flush(trace_id, sink).await?,
+                        None => break,
+                    }
+                }
+
+                () = &mut next_ping => {
+                    Self::feed_msg(trace_id, TransportMsg::new(MultiplexMsg::Ping), sink).await?;
+                    Self::flush(trace_id, sink).await?;
+                    next_ping = get_next_ping(ping_interval).fuse().boxed();
+                }
+            }
+        }
+
+        // Flushing may fail after Goodbye message has been sent, because the remote
+        // endpoint may immediately close the connection.
+        let _ = Self::flush(trace_id, sink).await;
+
+        Ok(())
+    }
+
+    /// Receives data over the transport sink.
+    ///
+    /// Watches the connection timeout.
+    async fn recv_task(
+        trace_id: &str, stream: &mut TransportStream, connection_timeout: Option<Duration>,
+        tx: mpsc::Sender<TransportMsg>,
+    ) -> Result<(), MultiplexError<TransportSinkError, TransportStreamError>> {
+        async fn get_connection_timeout(connection_timeout: Option<Duration>) {
+            match connection_timeout {
+                Some(timeout) => sleep(timeout).await,
+                None => future::pending().await,
+            }
+        }
+
+        let mut next_timeout = get_connection_timeout(connection_timeout).fuse().boxed();
+        while let Ok(tx_permit) = tx.reserve().await {
+            tokio::select! {
+                biased;
+
+                msg = Self::recv_msg(trace_id, stream) => {
+                    let msg = msg?;
+                    let is_goodbye = matches!(&msg, TransportMsg {msg: MultiplexMsg::Goodbye, ..});
+                    tx_permit.send(msg);
+                    if is_goodbye {
+                        break;
+                    }
+
+                    next_timeout = get_connection_timeout(connection_timeout).fuse().boxed();
+                },
+
+                () = &mut next_timeout => return Err(MultiplexError::Timeout),
+            }
+        }
+
+        Ok(())
     }
 
     /// Runs the multiplexer dispatcher.
     ///
-    /// The dispatches terminates when the client, server and all channels have been dropped or
+    /// The dispatcher terminates when the client, server and all channels have been dropped or
     /// the transport is closed.
-    pub async fn run(mut self) -> Result<(), MultiplexError> {
-        // Initialize timers.
-        if let Some(ping_timeout) = self.cfg.ping_interval {
-            self.send_ping_timeout.set_duration(ping_timeout);
-        }
-        if let Some(connection_timeout) = self.cfg.connection_timeout {
-            self.connection_timeout.set_duration(connection_timeout);
-        }
-        self.last_tx_time = Instant::now();
-        self.last_rx_time = Instant::now();
+    pub async fn run(mut self) -> Result<(), MultiplexError<TransportSinkError, TransportStreamError>> {
+        let trace_id = self.trace_id.clone();
+        let mut transport_sink = self.transport_sink.take().unwrap();
+        let mut transport_stream = self.transport_stream.take().unwrap();
 
-        // Process events.
-        loop {
-            let event = self.event_rx.next().await;
-            if let Some(LoopEvent::ReceiveMsg(_)) = &event {
-                self.last_rx_time = Instant::now();
+        log::trace!("{}: multiplexer run", &trace_id);
+
+        // Create send over transport task.
+        let (send_tx, send_rx) = mpsc::channel(1);
+        let send_task = Self::send_task(
+            &trace_id,
+            &mut transport_sink,
+            self.remote_cfg.connection_timeout.map(|d| d / 2),
+            send_rx,
+        )
+        .fuse();
+        pin_mut!(send_task);
+
+        // Create receive over transport task.
+        let (recv_tx, mut recv_rx) = mpsc::channel(1);
+        let recv_task =
+            Self::recv_task(&trace_id, &mut transport_stream, self.local_cfg.connection_timeout, recv_tx).fuse();
+        pin_mut!(recv_task);
+
+        // Setup channels.
+        let mut channel_rx = self.channel_rx.take().unwrap();
+        let mut connect_rx = self.connect_rx.take().unwrap();
+        let mut global_rx_credits_return_rx = self.global_rx_credits_return_rx.take().unwrap();
+        let mut flushed = false;
+        let mut send_task_ended = false;
+
+        while !(self.goodbye_sent && self.goodbye_received && send_task_ended) {
+            let send_prep_task = async {
+                // Obtain permit to ensure that space is available in transport send queue.
+                let permit = match send_tx.reserve().await {
+                    Ok(permit) => permit,
+                    Err(_) => return None,
+                };
+
+                // Select local request for processing.
+                let event = tokio::select! {
+                    biased;
+
+                    // Global credit return.
+                    Some(credits) = global_rx_credits_return_rx.recv() => {
+                        flushed = false;
+                        GlobalEvt::ReturnGlobalCredits(credits)
+                    },
+
+                    // Server dropped.
+                    () = async { match &self.listen_tx {
+                        Some((listen_wait_tx, _)) => listen_wait_tx.closed().await,
+                        None => future::pending().await
+                    }} => {
+                        // listen_no_wait_tx is closed simultaneously.
+                        flushed = false;
+                        GlobalEvt::ListenerDropped
+                    },
+
+                    // Connection request from client.
+                    connect_req_opt = connect_rx.recv(), if !self.all_clients_dropped => {
+                        flushed = false;
+                        match connect_req_opt {
+                            Some(connect_req) => GlobalEvt::ConnectReq(connect_req),
+                            None => GlobalEvt::AllClientsDropped,
+                        }
+                    },
+
+                    // Request from port.
+                    Some(msg) = channel_rx.recv() => {
+                        flushed = false;
+                        GlobalEvt::Port(msg)
+                    },
+
+                    // Send Goodbye message and terminate.
+                    () = future::ready(()), if self.should_terminate() && !self.goodbye_sent => {
+                        GlobalEvt::SendGoodbye
+                    }
+
+                    // Flush transport sink if no requests are queued.
+                    () = future::ready(()), if !flushed => {
+                        flushed = true;
+                        GlobalEvt::Flush
+                    },
+                };
+
+                Some((permit, event))
+            };
+
+            tokio::select! {
+                // Local send request.
+                Some((permit, event)) = send_prep_task => self.handle_event(&trace_id, permit, event).await?,
+
+                // Received message from remote endpoint.
+                Some(msg) = recv_rx.recv() => self.handle_received_msg(&trace_id, msg).await?,
+
+                // Send task ended.
+                res = &mut send_task => {
+                    match res {
+                        Ok(()) => send_task_ended = true,
+                        Err(err) => return Err(err),
+                    }
+                }
+
+                // Receive task failed.
+                Err(err) = &mut recv_task => return Err(err),
+            }
+        }
+
+        log::trace!("{}: multiplexer normal exit", &trace_id);
+        Ok(())
+    }
+
+    /// Handle local event that results in sending a message to the remote endpoint.
+    async fn handle_event(
+        &mut self, trace_id: &str, permit: Permit<'_, SendCmd>, event: GlobalEvt,
+    ) -> Result<(), MultiplexError<TransportSinkError, TransportStreamError>> {
+        log::trace!("{}: processing event {:?}", trace_id, &event);
+
+        fn send_msg(permit: Permit<'_, SendCmd>, msg: MultiplexMsg) {
+            permit.send(SendCmd::Send(TransportMsg::new(msg)))
+        }
+
+        match event {
+            // Process local connect request.
+            GlobalEvt::ConnectReq(ConnectRequest { local_port, response_tx, wait }) => {
+                if !self.remote_listener_dropped.load(Ordering::SeqCst) {
+                    let local_port_num = *local_port;
+                    if self.ports.insert(local_port, PortState::Connecting { response_tx }).is_some() {
+                        panic!("ConnectRequest for already used local port {}", local_port_num);
+                    }
+                    send_msg(permit, MultiplexMsg::OpenPort { client_port: local_port_num, wait });
+                } else {
+                    let _ = response_tx.send(ConnectResponse::Rejected { no_ports: false });
+                }
             }
 
-            match event {
-                // Send data from channel.
-                Some(LoopEvent::ChannelMsg(ChannelMsg::SendMsg { remote_port, content })) => {
-                    self.transport_send(MultiplexMsg::Data { port: remote_port, content }).await?;
-                }
+            // Remote connect request was accepted by local listener.
+            GlobalEvt::Port(PortEvt::Accepted { local_port, remote_port, port_tx }) => {
+                let local_port_num = *local_port;
+                send_msg(
+                    permit,
+                    MultiplexMsg::PortOpened { client_port: remote_port, server_port: local_port_num },
+                );
+                let (raw_sender, raw_receiver) = self.create_port(local_port, remote_port);
+                let _ = port_tx.send((raw_sender, raw_receiver));
+            }
 
-                // Local channel sender has been dropped.
-                Some(LoopEvent::ChannelMsg(ChannelMsg::SenderDropped { local_port })) => {
-                    match self.ports.get_mut(&local_port) {
-                        Some(PortState::Connected { remote_port, tx_finished, .. }) => {
-                            if *tx_finished {
-                                panic!("ChannelMsg SenderDropped more than once for port {}.", &local_port);
-                            }
-                            *tx_finished = true;
-                            let msg = MultiplexMsg::Finish { port: *remote_port };
-                            self.transport_send(msg).await?;
-                            if self.maybe_free_port(local_port) {
-                                break;
-                            }
-                        }
-                        Some(PortState::RemoteRequestingLocalService { remote_port, .. }) => {
-                            let remote_port = *remote_port;
-                            self.port_pool.release(local_port);
-                            self.transport_send(MultiplexMsg::Rejected { client_port: remote_port }).await?;
-                            self.ports.remove(&local_port);
-                            if self.should_terminate() {
-                                break;
-                            }
-                        }
-                        _ => {
-                            panic!("ChannelMsg SenderDropped for port {} in invalid state.", &local_port);
-                        }
+            // Remote connect request was rejected by local listener.
+            GlobalEvt::Port(PortEvt::Rejected { remote_port, no_ports }) => {
+                send_msg(permit, MultiplexMsg::Rejected { client_port: remote_port, no_ports });
+            }
+
+            // Send data from port.
+            GlobalEvt::Port(PortEvt::SendData { remote_port, data, first, last, credit }) => {
+                permit.send(SendCmd::Send(TransportMsg::with_data(
+                    MultiplexMsg::Data { port: remote_port, first, last, credit },
+                    data,
+                )));
+            }
+
+            // Return port credits to remote endpoint.
+            GlobalEvt::Port(PortEvt::ReturnCredits { remote_port, credits }) => {
+                send_msg(permit, MultiplexMsg::PortCredits { port: remote_port, credits });
+            }
+
+            // Local port sender has been dropped.
+            GlobalEvt::Port(PortEvt::SenderDropped { local_port }) => {
+                if let Some(PortState::Connected { remote_port, sender_dropped, .. }) =
+                    self.ports.get_mut(&local_port)
+                {
+                    if *sender_dropped {
+                        panic!("PortEvt SenderDropped more than once for port {}", &local_port);
                     }
+                    *sender_dropped = true;
+                    send_msg(permit, MultiplexMsg::SendFinish { port: *remote_port });
+                    self.maybe_free_port(local_port);
+                } else {
+                    panic!("PortEvt SenderDropped for port {} in invalid state", &local_port);
                 }
+            }
 
-                // Local channel receiver has been closed.
-                Some(LoopEvent::ChannelMsg(ChannelMsg::ReceiverClosed { local_port })) => {
-                    if let Some(PortState::Connected { remote_port, rx_hangedup, rx_dropped, .. }) =
-                        self.ports.get_mut(&local_port)
-                    {
-                        if *rx_hangedup || *rx_dropped {
-                            panic!(
-                                "ChannelMsg ReceiverClosed or ReceiverDropped more than once for port {}.",
-                                &local_port
-                            );
-                        }
-                        *rx_hangedup = true;
-                        let msg = MultiplexMsg::Hangup { port: *remote_port, gracefully: true };
-                        self.transport_send(msg).await?;
-                    } else {
-                        panic!("ChannelMsg ReceiverClosed for non-connected port {}.", &local_port);
-                    }
-                }
-
-                // Local channel receiver has been dropped.
-                Some(LoopEvent::ChannelMsg(ChannelMsg::ReceiverDropped { local_port })) => {
-                    match self.ports.get_mut(&local_port) {
-                        Some(PortState::Connected { remote_port, rx_hangedup, rx_dropped, .. }) => {
-                            if *rx_dropped {
-                                panic!("ChannelMsg ReceiverDropped more than once for port {}.", &local_port);
-                            }
-                            *rx_dropped = true;
-                            if !*rx_hangedup {
-                                *rx_hangedup = true;
-                                let msg = MultiplexMsg::Hangup { port: *remote_port, gracefully: false };
-                                self.transport_send(msg).await?;
-                            }
-                            if self.maybe_free_port(local_port) {
-                                break;
-                            }
-                        }
-                        Some(PortState::RemoteRequestingLocalService { .. }) => {
-                            // handled by ChannelMsg::SenderDropped
-                        }
-                        None => {
-                            // port has already been cleaned up by ChannelMsg::SenderDropped
-                        }
-                        _ => {
-                            panic!("ChannelMsg ReceiverDropped for port {} in invalid state.", &local_port);
-                        }
-                    }
-                }
-
-                // Receive buffer reached resume threshold.
-                Some(LoopEvent::ChannelMsg(ChannelMsg::ReceiveBufferReachedResumeLength { local_port })) => {
-                    if let Some(PortState::Connected { remote_port, rx_paused, rx_buffer, .. }) =
-                        self.ports.get_mut(&local_port)
-                    {
-                        // Send resume message only, when no Finish message has been received.
-                        if let Some(rx_buffer) = rx_buffer.as_ref() {
-                            if *rx_paused && rx_buffer.resumeable().await {
-                                *rx_paused = false;
-                                let msg = MultiplexMsg::Resume { port: *remote_port };
-                                self.transport_send(msg).await?;
-                            }
-                        }
-                    } else {
+            // Local port receiver has been closed.
+            GlobalEvt::Port(PortEvt::ReceiverClosed { local_port }) => {
+                if let Some(PortState::Connected { remote_port, receiver_closed, receiver_dropped, .. }) =
+                    self.ports.get_mut(&local_port)
+                {
+                    if *receiver_closed || *receiver_dropped {
                         panic!(
-                            "ChannelMsg ReceiveBufferReachedResumeLength for non-connected port {}.",
+                            "PortEvt ReceiverClosed or ReceiverDropped more than once for port {}",
                             &local_port
                         );
                     }
+                    *receiver_closed = true;
+                    send_msg(permit, MultiplexMsg::ReceiveClose { port: *remote_port });
+                } else {
+                    panic!("PortEvt ReceiverClosed for non-connected port {}", &local_port);
                 }
+            }
 
-                // Remote service request was accepted by local.
-                Some(LoopEvent::ChannelMsg(ChannelMsg::Accepted { local_port })) => {
-                    if let Some(PortState::RemoteRequestingLocalService {
-                        remote_port,
-                        tx_lock,
-                        rx_buffer,
-                        hangup_notify,
-                    }) = self.ports.remove(&local_port)
-                    {
-                        self.ports.insert(
-                            local_port,
-                            PortState::Connected {
-                                remote_port,
-                                tx_lock: Some(tx_lock),
-                                rx_buffer: Some(rx_buffer),
-                                hangup_notify,
-                                rx_paused: false,
-                                rx_hangedup: false,
-                                rx_dropped: false,
-                                tx_finished: false,
-                                tx_finished_ack: false,
-                            },
-                        );
-                        self.transport_send(MultiplexMsg::Accepted {
-                            client_port: remote_port,
-                            server_port: local_port,
-                        })
-                        .await?;
-                    } else {
-                        panic!("ChannelMsg Accepted for non-requesting port {}.", &local_port);
+            // Local port receiver has been dropped.
+            // No port credits can be returned afterwards.
+            GlobalEvt::Port(PortEvt::ReceiverDropped { local_port }) => match self.ports.get_mut(&local_port) {
+                Some(PortState::Connected { remote_port, receiver_dropped, .. }) => {
+                    if *receiver_dropped {
+                        panic!("PortEvt ReceiverDropped more than once for port {}.", &local_port);
                     }
+                    *receiver_dropped = true;
+                    send_msg(permit, MultiplexMsg::ReceiveFinish { port: *remote_port });
+                    self.maybe_free_port(local_port);
                 }
-
-                // Process request service message from remote endpoint.
-                Some(LoopEvent::ReceiveMsg(Ok(MultiplexMsg::RequestService { service, client_port }))) => {
-                    let server_port = self.port_pool.allocate()?;
-
-                    let (sender_tx, sender_rx) = mpsc::channel(INTERNAL_CHANNEL_BUFFER);
-                    let sender_events = sender_rx
-                        .chain(stream::once(async move { ChannelMsg::SenderDropped { local_port: server_port } }))
-                        .map(LoopEvent::ChannelMsg);
-                    self.event_rx.push(sender_events.boxed());
-
-                    let (receiver_tx, receiver_rx) = mpsc::channel(INTERNAL_CHANNEL_BUFFER);
-                    let receiver_events = receiver_rx
-                        .chain(stream::once(
-                            async move { ChannelMsg::ReceiverDropped { local_port: server_port } },
-                        ))
-                        .map(LoopEvent::ChannelMsg);
-                    self.event_rx.push(receiver_events.boxed());
-
-                    let (tx_lock_authority, tx_lock_requester) = channel_send_lock();
-                    let (rx_buffer_enqueuer, rx_buffer_dequeuer) =
-                        self.make_channel_receiver_buffer_cfg(server_port, receiver_tx.clone()).instantiate();
-                    let hangup_notify = Arc::new(Mutex::new(Some(Vec::new())));
-                    self.ports.insert(
-                        server_port,
-                        PortState::RemoteRequestingLocalService {
-                            remote_port: client_port,
-                            tx_lock: tx_lock_authority,
-                            rx_buffer: rx_buffer_enqueuer,
-                            hangup_notify: hangup_notify.clone(),
-                        },
-                    );
-
-                    let req = RemoteConnectToServiceRequest::new(
-                        ChannelData {
-                            local_port: server_port,
-                            remote_port: client_port,
-                            sender_tx,
-                            receiver_tx,
-                            tx_lock: tx_lock_requester,
-                            rx_buffer: rx_buffer_dequeuer,
-                            hangup_notify: Arc::downgrade(&hangup_notify),
-                        },
-                        &self.content_codec,
-                    );
-
-                    if let Some(serve_tx) = self.serve_tx.as_mut() {
-                        let _ = serve_tx.send((service, req)).await;
-                    }
+                _ => {
+                    panic!("PortEvt ReceiverDropped for port {} in invalid state.", &local_port);
                 }
+            },
 
-                // Process accepted service request message from remote endpoint.
-                Some(LoopEvent::ReceiveMsg(Ok(MultiplexMsg::Accepted { client_port, server_port }))) => {
-                    if let Some(PortState::LocalRequestingRemoteService { response_tx }) =
-                        self.ports.remove(&client_port)
-                    {
-                        let (sender_tx, sender_rx) = mpsc::channel(INTERNAL_CHANNEL_BUFFER);
-                        let sender_events = sender_rx
-                            .chain(stream::once(
-                                async move { ChannelMsg::SenderDropped { local_port: client_port } },
-                            ))
-                            .map(LoopEvent::ChannelMsg);
-                        self.event_rx.push(sender_events.boxed());
+            // Return global credits to remote endpoint.
+            GlobalEvt::ReturnGlobalCredits(credits) => {
+                send_msg(permit, MultiplexMsg::GlobalCredits { credits });
+            }
 
-                        let (receiver_tx, receiver_rx) = mpsc::channel(INTERNAL_CHANNEL_BUFFER);
-                        let receiver_events = receiver_rx
-                            .chain(stream::once(async move {
-                                ChannelMsg::ReceiverDropped { local_port: client_port }
-                            }))
-                            .map(LoopEvent::ChannelMsg);
-                        self.event_rx.push(receiver_events.boxed());
+            // Process that all clients has been dropped.
+            GlobalEvt::AllClientsDropped => {
+                self.all_clients_dropped = true;
+                send_msg(permit, MultiplexMsg::ClientFinish);
+            }
 
-                        let (tx_lock_authority, tx_lock_requester) = channel_send_lock();
-                        let (rx_buffer_enqueuer, rx_buffer_dequeuer) =
-                            self.make_channel_receiver_buffer_cfg(client_port, receiver_tx.clone()).instantiate();
-                        let hangup_notify = Arc::new(Mutex::new(Some(Vec::new())));
-                        self.ports.insert(
-                            client_port,
-                            PortState::Connected {
-                                remote_port: server_port,
-                                tx_lock: Some(tx_lock_authority),
-                                rx_buffer: Some(rx_buffer_enqueuer),
-                                hangup_notify: hangup_notify.clone(),
-                                rx_paused: false,
-                                rx_hangedup: false,
-                                rx_dropped: false,
-                                tx_finished: false,
-                                tx_finished_ack: false,
-                            },
-                        );
+            // Process that server has been dropped.
+            GlobalEvt::ListenerDropped => {
+                self.listen_tx = None;
+                send_msg(permit, MultiplexMsg::ListenerFinish);
+            }
 
-                        let channel_data = ChannelData {
-                            local_port: client_port,
-                            remote_port: server_port,
-                            sender_tx,
-                            receiver_tx,
-                            tx_lock: tx_lock_requester,
-                            rx_buffer: rx_buffer_dequeuer,
-                            hangup_notify: Arc::downgrade(&hangup_notify),
-                        };
-                        let (raw_sender, raw_receiver) = channel_data.instantiate();
-                        let _ =
-                            response_tx.send(ConnectToRemoteServiceResponse::Accepted(raw_sender, raw_receiver));
-                    } else {
-                        return Err(MultiplexError::ProtocolError(format!(
-                            "Received accepted message for port {} not in LocalRequestingRemoteService state.",
-                            client_port
-                        )));
-                    }
-                }
+            // Send Goodbye message.
+            GlobalEvt::SendGoodbye => {
+                self.goodbye_sent = true;
+                send_msg(permit, MultiplexMsg::Goodbye);
+            }
 
-                // Process rejected service request message from remote endpoint.
-                Some(LoopEvent::ReceiveMsg(Ok(MultiplexMsg::Rejected { client_port }))) => {
-                    if let Some(PortState::LocalRequestingRemoteService { response_tx }) =
-                        self.ports.remove(&client_port)
-                    {
-                        self.port_pool.release(client_port);
-                        let _ = response_tx.send(ConnectToRemoteServiceResponse::Rejected);
-                    } else {
-                        return Err(MultiplexError::ProtocolError(format!(
-                            "Received rejected message for port {} not in LocalRequestingRemoteService state.",
-                            client_port
-                        )));
-                    }
-                }
-
-                // Process pause sending data request from remote endpoint.
-                Some(LoopEvent::ReceiveMsg(Ok(MultiplexMsg::Pause { port }))) => {
-                    if let Some(PortState::Connected { tx_lock, .. }) = self.ports.get_mut(&port) {
-                        // Ignore request after receiving hangup message, since no more data will be transmitted anyway.
-                        if let Some(tx_lock) = tx_lock.as_mut() {
-                            tx_lock.pause().await;
-                        }
-                    } else {
-                        return Err(MultiplexError::ProtocolError(format!(
-                            "Received pause message for port {} not in Connected state.",
-                            &port
-                        )));
-                    }
-                }
-
-                // Process resume sending data request from remote endpoint.
-                Some(LoopEvent::ReceiveMsg(Ok(MultiplexMsg::Resume { port }))) => {
-                    if let Some(PortState::Connected { tx_lock, .. }) = self.ports.get_mut(&port) {
-                        // Ignore request after receiving hangup message, since no more data will be transmitted anyway.
-                        if let Some(tx_lock) = tx_lock.as_mut() {
-                            tx_lock.resume().await;
-                        }
-                    } else {
-                        return Err(MultiplexError::ProtocolError(format!(
-                            "Received resume message for port {} not in Connected state.",
-                            &port
-                        )));
-                    }
-                }
-
-                // Process finish information from remote endpoint.
-                Some(LoopEvent::ReceiveMsg(Ok(MultiplexMsg::Finish { port }))) => {
-                    if let Some(PortState::Connected { rx_buffer, remote_port, .. }) = self.ports.get_mut(&port) {
-                        if let Some(rx_buffer) = rx_buffer.take() {
-                            rx_buffer.close().await;
-                            let msg = MultiplexMsg::FinishAck { port: *remote_port };
-                            self.transport_send(msg).await?;
-                            if self.maybe_free_port(port) {
-                                break;
-                            }
-                        } else {
-                            return Err(MultiplexError::ProtocolError(format!(
-                                "Received Finish message for port {} more than once.",
-                                &port
-                            )));
-                        }
-                    } else {
-                        return Err(MultiplexError::ProtocolError(format!(
-                            "Received Finish message for port {} not in Connected state.",
-                            &port
-                        )));
-                    }
-                }
-
-                // Process acknowledgement that our finish message has been received by remote endpoint.
-                Some(LoopEvent::ReceiveMsg(Ok(MultiplexMsg::FinishAck { port }))) => {
-                    if let Some(PortState::Connected { tx_finished_ack, .. }) = self.ports.get_mut(&port) {
-                        *tx_finished_ack = true;
-                        if self.maybe_free_port(port) {
-                            break;
-                        }
-                    } else {
-                        return Err(MultiplexError::ProtocolError(format!(
-                            "Received FinishAck message for port {} not in Connected state.",
-                            &port
-                        )));
-                    }
-                }
-
-                // Process hangup information from remote endpoint.
-                Some(LoopEvent::ReceiveMsg(Ok(MultiplexMsg::Hangup { port, gracefully }))) => {
-                    if let Some(PortState::Connected { tx_lock, hangup_notify, .. }) = self.ports.get_mut(&port) {
-                        if let Some(tx_lock) = tx_lock.take() {
-                            tx_lock.close(gracefully).await;
-
-                            // Send hangup notifications.
-                            let notifies = hangup_notify.lock().await.take().unwrap();
-                            for tx in notifies {
-                                let _ = tx.send(());
-                            }
-
-                            if self.maybe_free_port(port) {
-                                break;
-                            }
-                        } else {
-                            return Err(MultiplexError::ProtocolError(format!(
-                                "Received more than one Hangup message for port {}.",
-                                &port
-                            )));
-                        }
-                    } else {
-                        return Err(MultiplexError::ProtocolError(format!(
-                            "Received Hangup message for port {} not in Connected state.",
-                            &port
-                        )));
-                    }
-                }
-
-                // Process data from remote endpoint.
-                Some(LoopEvent::ReceiveMsg(Ok(MultiplexMsg::Data { port, content }))) => {
-                    if let Some(PortState::Connected { rx_buffer, rx_paused, remote_port, .. }) =
-                        self.ports.get_mut(&port)
-                    {
-                        if let Some(rx_buffer) = rx_buffer.as_mut() {
-                            let pause_required = rx_buffer.enqueue(content).await;
-                            if pause_required && !*rx_paused {
-                                let msg = MultiplexMsg::Pause { port: *remote_port };
-                                *rx_paused = true;
-                                self.transport_send(msg).await?;
-                            }
-                        } else {
-                            return Err(MultiplexError::ProtocolError(format!(
-                                "Received data after finish for port {}.",
-                                &port
-                            )));
-                        }
-                    } else {
-                        return Err(MultiplexError::ProtocolError(format!(
-                            "Received data for non-connected port {}.",
-                            &port
-                        )));
-                    }
-                }
-
-                // Process ping message.
-                Some(LoopEvent::ReceiveMsg(Ok(MultiplexMsg::Ping))) => {
-                    // Nothing to do, because last_rx_time was already updated.
-                }
-
-                // Process all clients dropped.
-                Some(LoopEvent::ReceiveMsg(Ok(MultiplexMsg::AllClientsDropped))) => {
-                    if self.serve_tx.is_none() {
-                        return Err(MultiplexError::ProtocolError(
-                            "Received all clients dropped notification more than once.".to_string(),
-                        ));
-                    }
-                    self.serve_tx = None;
-                    if self.should_terminate() {
-                        break;
-                    }
-                }
-
-                // Process receive error.
-                Some(LoopEvent::ReceiveMsg(Err(rx_err))) => {
-                    return Err(rx_err);
-                }
-
-                // Process local request to connect to remote service.
-                Some(LoopEvent::ConnectToRemoteServiceRequest(ConnectToRemoteServiceRequest {
-                    service,
-                    response_tx,
-                })) => {
-                    let client_port = self.port_pool.allocate()?;
-                    self.ports.insert(client_port, PortState::LocalRequestingRemoteService { response_tx });
-                    self.transport_send(MultiplexMsg::RequestService { service, client_port }).await?;
-                }
-
-                // Process that client has been dropped.
-                Some(LoopEvent::ClientDropped) => {
-                    self.all_clients_dropped = true;
-                    self.transport_send(MultiplexMsg::AllClientsDropped).await?;
-                    if self.should_terminate() {
-                        break;
-                    }
-                }
-
-                // Process that server has been dropped.
-                Some(LoopEvent::ServerDropped) => {
-                    self.server_dropped = true;
-                    if self.should_terminate() {
-                        break;
-                    }
-                }
-
-                // Transport stream has been closed.
-                Some(LoopEvent::TransportFinished) => {
-                    // If client is dropped and no multiplex connections are active,
-                    // treat transport closure as normal disconnection of remote
-                    // endpoint.
-                    if self.all_clients_dropped && self.ports.is_empty() {
-                        break;
-                    } else {
-                        return Err(MultiplexError::TransportStreamClosed);
-                    }
-                }
-
-                // Send ping timeout triggered.
-                Some(LoopEvent::SendPingTimeout) => {
-                    let timeout = self.cfg.ping_interval.unwrap();
-                    if Instant::now() - self.last_tx_time > timeout {
-                        self.transport_send(MultiplexMsg::Ping).await?;
-                    } else {
-                    }
-                    self.send_ping_timeout.set_instant(self.last_tx_time + timeout);
-                }
-
-                // Connection timeout triggered.
-                Some(LoopEvent::ConnectionTimeout) => {
-                    let timeout = self.cfg.connection_timeout.unwrap();
-                    if Instant::now() - self.last_rx_time > timeout {
-                        return Err(MultiplexError::ConnectionTimeout);
-                    } else {
-                        self.connection_timeout.set_instant(self.last_rx_time + timeout);
-                    }
-                }
-
-                // All event streams have ended.
-                None => panic!("Unexpected end of event stream."),
+            // Flush transport sink.
+            GlobalEvt::Flush => {
+                permit.send(SendCmd::Flush);
             }
         }
         Ok(())
     }
+
+    /// Handle message received from remote endpoint.
+    async fn handle_received_msg(
+        &mut self, _trace_id: &str, received_msg: TransportMsg,
+    ) -> Result<(), MultiplexError<TransportSinkError, TransportStreamError>> {
+        let TransportMsg { msg, data } = received_msg;
+        // log::trace!("{}: processing received message {:?}", trace_id, &msg);
+
+        match msg {
+            // Connection reset by remote endpoint.
+            MultiplexMsg::Reset => {
+                return Err(MultiplexError::Reset);
+            }
+
+            // Hello message only allowed when establishing connection.
+            MultiplexMsg::Hello { .. } => {
+                return Err(protocol_err!(
+                    "received Hello message for already established multiplexer connection"
+                ));
+            }
+
+            //  Nothing to do for ping message.
+            MultiplexMsg::Ping => (),
+
+            // Open port request from remote endpoint.
+            MultiplexMsg::OpenPort { client_port, wait } => {
+                let req =
+                    RemoteConnectMsg::Request(RemoteConnectRequest::new(client_port, self.channel_tx.clone()));
+                if let Some((listen_wait_tx, listen_no_wait_tx)) = &self.listen_tx {
+                    let res = if wait { listen_wait_tx.try_send(req) } else { listen_no_wait_tx.try_send(req) };
+                    if let Err(mpsc::error::TrySendError::Full(_)) = res {
+                        return Err(protocol_err!("remote endpoint sent too many OpenPort requests"));
+                    }
+                }
+            }
+
+            // Port opened response from remote endpoint.
+            MultiplexMsg::PortOpened { client_port, server_port } => {
+                if let Some((local_port, PortState::Connecting { response_tx })) =
+                    self.ports.remove_entry(&client_port)
+                {
+                    let (raw_sender, raw_receiver) = self.create_port(local_port, server_port);
+                    let _ = response_tx.send(ConnectResponse::Accepted(raw_sender, raw_receiver));
+                } else {
+                    return Err(protocol_err!(format!(
+                        "received PortOpened message for port {} not in connecting state",
+                        client_port
+                    )));
+                }
+            }
+
+            // Port open rejected response from remote endpoint.
+            MultiplexMsg::Rejected { client_port, no_ports } => {
+                if let Some(PortState::Connecting { response_tx }) = self.ports.remove(&client_port) {
+                    let _ = response_tx.send(ConnectResponse::Rejected { no_ports });
+                } else {
+                    return Err(protocol_err!(format!(
+                        "received Rejected message for port {} not in connecting state",
+                        client_port
+                    )));
+                }
+            }
+
+            // Data from remote endpoint.
+            MultiplexMsg::Data { port, first, last, credit } => {
+                if let Some(PortState::Connected {
+                    receiver_tx_data: Some(receiver_tx_data),
+                    receiver_credit_monitor,
+                    ..
+                }) = self.ports.get_mut(&port)
+                {
+                    let used_credit = match credit {
+                        Credit::Global => self.global_rx_credits_monitor.use_one()?,
+                        Credit::Port => receiver_credit_monitor.use_one()?,
+                    };
+                    let _ = receiver_tx_data.send(PortReceiveMsg::Data(ReceivedData {
+                        buf: data.unwrap(),
+                        first,
+                        last,
+                        credit: used_credit,
+                    }));
+                } else {
+                    return Err(protocol_err!(format!(
+                        "received data for non-connected or finished local port {}",
+                        &port
+                    )));
+                }
+            }
+
+            // Give flow credits to a port.
+            MultiplexMsg::PortCredits { port, credits } => {
+                if let Some(PortState::Connected { sender_credit_provider, .. }) = self.ports.get_mut(&port) {
+                    sender_credit_provider.provide(credits)?;
+                } else {
+                    return Err(protocol_err!(format!(
+                        "received port credits message for port {} not in connected state",
+                        &port
+                    )));
+                }
+            }
+
+            // Remote endpoint indicates that it will send no more data for port.
+            MultiplexMsg::SendFinish { port } => {
+                if let Some(PortState::Connected { receiver_tx_data, .. }) = self.ports.get_mut(&port) {
+                    if let Some(receiver_tx_data) = receiver_tx_data.take() {
+                        let _ = receiver_tx_data.send(PortReceiveMsg::Finished);
+                        self.maybe_free_port(port);
+                    } else {
+                        return Err(protocol_err!(format!(
+                            "received SendFinish message for local port {} more than once",
+                            &port
+                        )));
+                    }
+                } else {
+                    return Err(protocol_err!(format!(
+                        "received SendFinish message for local port {} not in connected state",
+                        &port
+                    )));
+                }
+            }
+
+            // Remote hang up indicates that it does not want to receive any more data on a port.
+            MultiplexMsg::ReceiveClose { port } => {
+                if let Some(PortState::Connected {
+                    sender_credit_provider,
+                    remote_receiver_closed_notify,
+                    remote_receiver_closed,
+                    ..
+                }) = self.ports.get_mut(&port)
+                {
+                    if !remote_receiver_closed.load(Ordering::SeqCst) {
+                        // Disable credits provider.
+                        sender_credit_provider.close(true);
+
+                        // Send hangup notifications.
+                        remote_receiver_closed.store(true, Ordering::SeqCst);
+                        let notifies = remote_receiver_closed_notify.lock().await.take().unwrap();
+                        for tx in notifies {
+                            let _ = tx.send(());
+                        }
+
+                        self.maybe_free_port(port);
+                    } else {
+                        return Err(protocol_err!(format!(
+                            "received more than one ReceiveClose message for port {}",
+                            &port
+                        )));
+                    }
+                } else {
+                    return Err(protocol_err!(format!(
+                        "received ReceiveClose message for port {} not in connected state",
+                        &port
+                    )));
+                }
+            }
+
+            // Remote hang up indicates that it will not process any more data on a port.
+            MultiplexMsg::ReceiveFinish { port } => {
+                if let Some(PortState::Connected {
+                    sender_credit_provider,
+                    remote_receiver_closed_notify,
+                    remote_receiver_closed,
+                    remote_receiver_dropped,
+                    ..
+                }) = self.ports.get_mut(&port)
+                {
+                    if !remote_receiver_closed.load(Ordering::SeqCst) {
+                        // Disable credits provider.
+                        sender_credit_provider.close(false);
+
+                        // Send hangup notifications.
+                        remote_receiver_closed.store(true, Ordering::SeqCst);
+                        let notifies = remote_receiver_closed_notify.lock().await.take().unwrap();
+                        for tx in notifies {
+                            let _ = tx.send(());
+                        }
+                    }
+
+                    *remote_receiver_dropped = true;
+                    self.maybe_free_port(port);
+                } else {
+                    return Err(protocol_err!(format!(
+                        "received ReceiveFinish message for port {} not in connected state",
+                        &port
+                    )));
+                }
+            }
+
+            // Give global flow credits.
+            MultiplexMsg::GlobalCredits { credits } => {
+                self.global_tx_credits.provide(credits)?;
+            }
+
+            // Remote endpoint will send no more connect requests.
+            MultiplexMsg::ClientFinish => {
+                if let Some((listen_wait_tx, listen_no_wait_tx)) = &self.listen_tx {
+                    // One additonal slot is reserved in listen queue for sending the client
+                    // dropped notification.
+                    let mut failed = false;
+                    if let Err(mpsc::error::TrySendError::Full(_)) =
+                        listen_wait_tx.try_send(RemoteConnectMsg::ClientDropped)
+                    {
+                        failed = true;
+                    }
+                    if let Err(mpsc::error::TrySendError::Full(_)) =
+                        listen_no_wait_tx.try_send(RemoteConnectMsg::ClientDropped)
+                    {
+                        failed = true;
+                    }
+                    if failed {
+                        return Err(protocol_err!(
+                            "remote endpoint sent too many OpenPort or ClientFinish requests"
+                        ));
+                    }
+                }
+
+                self.remote_client_dropped = true;
+            }
+
+            // Remote endpoint will process no more connect requests.
+            MultiplexMsg::ListenerFinish => {
+                self.remote_listener_dropped.store(true, Ordering::SeqCst);
+            }
+
+            // Remote endpoint terminates connection.
+            MultiplexMsg::Goodbye => {
+                if self.should_terminate() {
+                    self.goodbye_received = true;
+                } else {
+                    return Err(protocol_err!("received Goodbye prematurely"));
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
-impl<'a, Content, ContentCodec, TransportType, TransportCodec, TransportSink, TransportStream> Drop
-    for Multiplexer<'a, Content, ContentCodec, TransportType, TransportCodec, TransportSink, TransportStream>
-where
-    Content: Send,
-{
+impl<TransportSink, TransportStream> Drop for Multiplexer<TransportSink, TransportStream> {
     fn drop(&mut self) {
         // Should be present to ensure correct drop order.
     }
+}
+
+/// A future that resolves when the sink is ready to receive a value.
+struct SinkReady<S, Item> {
+    sink: S,
+    _item: PhantomData<Item>,
+}
+
+impl<S, Item> SinkReady<S, Item> {
+    fn new(sink: S) -> Self {
+        Self { sink, _item: PhantomData }
+    }
+}
+
+impl<S, Item> Future for SinkReady<S, Item>
+where
+    S: Sink<Item> + Unpin,
+    Item: Unpin,
+{
+    type Output = Result<(), S::Error>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        Pin::into_inner(self).sink.poll_ready_unpin(cx)
+    }
+}
+
+/// Generate trace id.
+fn generate_trace_id() -> String {
+    lazy_static! {
+        static ref ID: AtomicU16 = AtomicU16::new(0);
+    }
+
+    let id = ID.fetch_add(1, Ordering::SeqCst);
+    format!("{:04x}", id)
 }

@@ -1,13 +1,18 @@
-use futures::{
-    channel::{mpsc, oneshot},
-    sink::SinkExt,
-    Future,
-};
 use serde::{de::DeserializeOwned, Serialize};
-use std::{clone::Clone, error::Error, fmt, marker::PhantomData};
+use std::{
+    clone::Clone,
+    error::Error,
+    fmt, mem,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
+};
+use tokio::sync::{mpsc, oneshot};
 
 use crate::{
-    codec::ContentCodecFactory,
+    codec::{BoxError, CodecFactory},
+    port_allocator::{PortAllocator, PortNumber},
     receiver::{RawReceiver, Receiver},
     sender::{RawSender, Sender},
 };
@@ -15,128 +20,287 @@ use crate::{
 /// An error occured during connecting to a remote service.
 #[derive(Debug)]
 pub enum ConnectError {
+    /// All local ports are in use.
+    LocalPortsExhausted,
+    /// All remote ports are in use.
+    RemotePortsExhausted,
+    /// Too many connection requests are pending.
+    TooManyPendingConnectionRequests,
     /// Connection has been rejected by server.
     Rejected,
     /// A multiplexer error has occured or it has been terminated.
     MultiplexerError,
     /// Error serializing the service request.
-    SerializationError(Box<dyn Error + Send + Sync + 'static>),
+    SerializationError(BoxError),
 }
 
 impl fmt::Display for ConnectError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::Rejected => write!(f, "Connection has been rejected by server."),
-            Self::MultiplexerError => write!(f, "A multiplexer error has occured or it has been terminated."),
-            Self::SerializationError(err) => write!(f, "A serialization error occured: {}", err),
+            Self::LocalPortsExhausted => write!(f, "all local ports are in use"),
+            Self::RemotePortsExhausted => write!(f, "all remote ports are in use"),
+            Self::TooManyPendingConnectionRequests => write!(f, "too many connection requests are pending"),
+            Self::Rejected => write!(f, "connection has been rejected by server"),
+            Self::MultiplexerError => write!(f, "multiplexer error"),
+            Self::SerializationError(err) => write!(f, "serialization error: {}", err),
         }
     }
 }
 
 impl Error for ConnectError {}
 
-/// Connection to remote service request to local multiplexer.
-pub struct ConnectToRemoteServiceRequest<Content>
-where
-    Content: Send,
-{
-    /// Service to connect to.
-    pub service: Content,
-    /// Response channel sender.
-    pub response_tx: oneshot::Sender<ConnectToRemoteServiceResponse<Content>>,
+/// Accounts connection request credits.
+#[derive(Clone)]
+struct ConntectRequestCrediter(Arc<Mutex<ConntectRequestCrediterInner>>);
+
+struct ConntectRequestCrediterInner {
+    limit: u16,
+    used: u16,
+    notify_tx: Vec<oneshot::Sender<()>>,
 }
 
-/// Connection to remote service response from local multiplexer.
-pub enum ConnectToRemoteServiceResponse<Content>
-where
-    Content: Send,
-{
-    /// Connection accepted and channel opened.
-    Accepted(RawSender<Content>, RawReceiver<Content>),
-    /// Connection rejected.
-    Rejected,
-}
-
-/// Raw multiplexer client.
-///
-/// Allows to connect to remote services.
-///
-/// A client can be cloned to allow multiple simultaneous service requests.
-pub struct Client<Service, Content, Codec>
-where
-    Content: Send,
-{
-    pub(crate) connect_tx: mpsc::Sender<ConnectToRemoteServiceRequest<Content>>,
-    codec_factory: Codec,
-    _service_ghost: PhantomData<Service>,
-}
-
-impl<Service, Content, Codec> fmt::Debug for Client<Service, Content, Codec>
-where
-    Content: Send,
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Client")
-    }
-}
-
-impl<Service, Content, Codec> Client<Service, Content, Codec>
-where
-    Service: Serialize + 'static,
-    Content: Send + 'static,
-    Codec: ContentCodecFactory<Content>,
-{
-    pub(crate) fn new(
-        connect_tx: mpsc::Sender<ConnectToRemoteServiceRequest<Content>>, codec_factory: &Codec,
-    ) -> Client<Service, Content, Codec> {
-        Client { connect_tx, codec_factory: codec_factory.clone(), _service_ghost: PhantomData }
+impl ConntectRequestCrediter {
+    /// Creates a new connection request crediter.
+    pub fn new(limit: u16) -> Self {
+        let inner = ConntectRequestCrediterInner { limit, used: 0, notify_tx: Vec::new() };
+        Self(Arc::new(Mutex::new(inner)))
     }
 
-    /// Connects to the specified service of the remote endpoint.
-    /// If connection is accepted, a pair of channel sender and receiver is returned.
+    /// Obtains a connection request credit.
     ///
-    /// Multiple connect requests can be outstanding at the same time.
-    pub fn connect<SinkItem, StreamItem>(
-        &self, service: Service,
-    ) -> impl Future<Output = Result<(Sender<SinkItem>, Receiver<StreamItem>), ConnectError>>
-    where
-        SinkItem: 'static + Serialize,
-        StreamItem: 'static + DeserializeOwned,
-    {
-        let mut connect_tx = self.connect_tx.clone();
-        let codec_factory = self.codec_factory.clone();
+    /// Waits for the credit to become available.
+    pub async fn request(&self) -> ConnectRequestCredit {
+        loop {
+            let rx = {
+                let mut inner = self.0.lock().unwrap();
 
-        async move {
-            let serializer = codec_factory.serializer();
-            let service = serializer.serialize(service).map_err(ConnectError::SerializationError)?;
-
-            let (response_tx, response_rx) = oneshot::channel();
-            connect_tx
-                .send(ConnectToRemoteServiceRequest { service, response_tx })
-                .await
-                .map_err(|_| ConnectError::MultiplexerError)?;
-            match response_rx.await {
-                Ok(ConnectToRemoteServiceResponse::Accepted(raw_sender, raw_receiver)) => {
-                    let serializer = codec_factory.serializer();
-                    let sender = Sender::new(raw_sender, serializer);
-                    let deserializer = codec_factory.deserializer();
-                    let receiver = Receiver::new(raw_receiver, deserializer);
-                    Ok((sender, receiver))
+                if inner.used < inner.limit {
+                    inner.used += 1;
+                    return ConnectRequestCredit(self.0.clone());
+                } else {
+                    let (tx, rx) = oneshot::channel();
+                    inner.notify_tx.push(tx);
+                    rx
                 }
-                Ok(ConnectToRemoteServiceResponse::Rejected) => Err(ConnectError::Rejected),
-                Err(_) => Err(ConnectError::MultiplexerError),
-            }
+            };
+
+            let _ = rx.await;
+        }
+    }
+
+    /// Tries to obtain a connection request credit.
+    ///
+    /// Does not wait for the credit to become available.
+    pub fn try_request(&self) -> Option<ConnectRequestCredit> {
+        let mut inner = self.0.lock().unwrap();
+
+        if inner.used < inner.limit {
+            inner.used += 1;
+            Some(ConnectRequestCredit(self.0.clone()))
+        } else {
+            None
         }
     }
 }
 
-impl<Service, Content, Codec> Clone for Client<Service, Content, Codec>
+/// A credit for requesting a connection.
+pub(crate) struct ConnectRequestCredit(Arc<Mutex<ConntectRequestCrediterInner>>);
+
+impl Drop for ConnectRequestCredit {
+    fn drop(&mut self) {
+        let notify_tx = {
+            let mut inner = self.0.lock().unwrap();
+            inner.used -= 1;
+            mem::take(&mut inner.notify_tx)
+        };
+
+        for tx in notify_tx {
+            let _ = tx.send(());
+        }
+    }
+}
+
+/// Connection to remote service request to local multiplexer.
+#[derive(Debug)]
+pub(crate) struct ConnectRequest {
+    /// Local port.
+    pub local_port: PortNumber,
+    /// Response channel sender.
+    pub response_tx: oneshot::Sender<ConnectResponse>,
+    /// Wait for port to become available.
+    pub wait: bool,
+}
+
+/// Connection to remote service response from local multiplexer.
+#[derive(Debug)]
+pub(crate) enum ConnectResponse {
+    /// Connection accepted and channel opened.
+    Accepted(RawSender, RawReceiver),
+    /// Connection was rejected.
+    Rejected {
+        /// Remote endpoint had not ports available.
+        no_ports: bool,
+    },
+}
+
+/// Raw multiplexer client.
+///
+/// Use to request a new port for raw sending and raw receiving.
+/// This can be cloned to make simultaneous requests.
+#[derive(Clone)]
+pub struct RawClient {
+    tx: mpsc::UnboundedSender<ConnectRequest>,
+    crediter: ConntectRequestCrediter,
+    port_allocator: PortAllocator,
+    listener_dropped: Arc<AtomicBool>,
+}
+
+impl fmt::Debug for RawClient {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("RawClient").field("port_allocator", &self.port_allocator).finish()
+    }
+}
+
+impl RawClient {
+    pub(crate) fn new(
+        tx: mpsc::UnboundedSender<ConnectRequest>, limit: u16, port_allocator: PortAllocator,
+        listener_dropped: Arc<AtomicBool>,
+    ) -> RawClient {
+        RawClient { tx, crediter: ConntectRequestCrediter::new(limit), port_allocator, listener_dropped }
+    }
+
+    /// Opens a new raw port.
+    ///
+    /// If `wait` is true, this function waits until a local and remote port become available.
+    /// Otherwise it returns the appropriate error if no ports are available.
+    async fn connect_int(&self, wait: bool) -> Result<(RawSender, RawReceiver), ConnectError> {
+        // Obtain local port.
+        let local_port = if wait {
+            self.port_allocator.allocate().await
+        } else {
+            self.port_allocator.try_allocate().ok_or(ConnectError::LocalPortsExhausted)?
+        };
+
+        // Obtain credit for connection request.
+        let credit = if wait {
+            self.crediter.request().await
+        } else {
+            match self.crediter.try_request() {
+                Some(credit) => credit,
+                None => return Err(ConnectError::TooManyPendingConnectionRequests),
+            }
+        };
+
+        // Build and send request.
+        let (response_tx, response_rx) = oneshot::channel();
+        let req = ConnectRequest { local_port, response_tx, wait };
+        let _ = self.tx.send(req);
+
+        let listener_dropped = self.listener_dropped.clone();
+        tokio::spawn(async move {
+            // Credit must be kept until response is received.
+            let _credit = credit;
+
+            // Process response.
+            match response_rx.await {
+                Ok(ConnectResponse::Accepted(sender, receiver)) => Ok((sender, receiver)),
+                Ok(ConnectResponse::Rejected { no_ports }) => {
+                    if no_ports {
+                        Err(ConnectError::RemotePortsExhausted)
+                    } else {
+                        Err(ConnectError::Rejected)
+                    }
+                }
+                Err(_) => {
+                    if listener_dropped.load(Ordering::SeqCst) {
+                        Err(ConnectError::Rejected)
+                    } else {
+                        Err(ConnectError::MultiplexerError)
+                    }
+                }
+            }
+        })
+        .await
+        .map_err(|_| ConnectError::MultiplexerError)?
+    }
+
+    /// Opens a new raw port.
+    ///
+    /// This function waits until a local and remote port become available.
+    pub async fn connect(&self) -> Result<(RawSender, RawReceiver), ConnectError> {
+        self.connect_int(true).await
+    }
+
+    /// Opens a new raw port.
+    ///
+    /// This function does not wait until a local and remote port becomes available.
+    /// However, it still waits until the listener on the remote endpoint accepts or rejects the connection.
+    pub async fn try_connect(&self) -> Result<(RawSender, RawReceiver), ConnectError> {
+        self.connect_int(false).await
+    }
+}
+
+/// Multiplexer client.
+///
+/// Use to request a new port for raw sending and raw receiving.
+/// This can be cloned to make simultaneous requests.
+#[derive(Clone, Debug)]
+pub struct Client<Codec>
 where
-    Service: Serialize + 'static,
-    Content: Send + 'static,
-    Codec: ContentCodecFactory<Content>,
+    Codec: CodecFactory,
 {
-    fn clone(&self) -> Self {
-        Self::new(self.connect_tx.clone(), &self.codec_factory)
+    raw: RawClient,
+    codec: Codec,
+}
+
+impl<Codec> Client<Codec>
+where
+    Codec: CodecFactory,
+{
+    /// Creates a new client.
+    pub fn new(raw: RawClient, codec: Codec) -> Self {
+        Self { raw, codec }
+    }
+
+    /// Convert this into a raw client.
+    pub fn into_raw(self) -> RawClient {
+        self.raw
+    }
+
+    /// Opens a new port.
+    ///
+    /// This function waits until a local and remote port become available.
+    pub async fn connect<SendItem, ReceiveItem>(
+        &self,
+    ) -> Result<(Sender<SendItem>, Receiver<ReceiveItem>), ConnectError>
+    where
+        SendItem: Serialize + 'static,
+        ReceiveItem: DeserializeOwned + 'static,
+    {
+        self.raw.connect().await.map(|(raw_sender, raw_receiver)| {
+            (
+                Sender::new(raw_sender, self.codec.serializer()),
+                Receiver::new(raw_receiver, self.codec.deserializer()),
+            )
+        })
+    }
+
+    /// Opens a new port.
+    ///
+    /// This function does not wait until a local and remote port becomes available.
+    /// However, it still waits until the listener on the remote endpoint accepts or rejects the connection.
+    pub async fn try_connect<SendItem, ReceiveItem>(
+        &self,
+    ) -> Result<(Sender<SendItem>, Receiver<ReceiveItem>), ConnectError>
+    where
+        SendItem: Serialize + 'static,
+        ReceiveItem: DeserializeOwned + 'static,
+    {
+        self.raw.try_connect().await.map(|(raw_sender, raw_receiver)| {
+            (
+                Sender::new(raw_sender, self.codec.serializer()),
+                Receiver::new(raw_receiver, self.codec.deserializer()),
+            )
+        })
     }
 }

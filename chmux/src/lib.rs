@@ -7,25 +7,75 @@
 
 mod channel;
 mod client;
+mod credit;
+mod listener;
+mod msg;
 mod multiplexer;
-mod number_allocator;
-mod receive_buffer;
+mod port_allocator;
 mod receiver;
-mod send_lock;
 mod sender;
-mod server;
-mod timeout;
 
 pub mod codec;
 pub mod serde_map;
 
+use std::{error::Error, fmt};
+
 pub use channel::Channel;
-pub use client::{Client, ConnectError};
-pub use codec::{ContentCodecFactory, Deserializer, Serializer, TransportCodecFactory};
-pub use multiplexer::{Cfg, MultiplexError, MultiplexMsg, Multiplexer};
-pub use receiver::{ReceiveError, Receiver};
-pub use sender::{HangupNotify, SendError, Sender};
-pub use server::{RemoteConnectToServiceRequest, Server, ServerError};
+pub use client::{Client, ConnectError, RawClient};
+pub use codec::{CodecFactory, Deserializer, Serializer};
+pub use listener::{Listener, ListenerError, ListenerStream, RawListener, RawListenerStream};
+pub use msg::Cfg;
+pub use multiplexer::Multiplexer;
+pub use receiver::{DataBuf, RawReceiver, RawReceiverStream, ReceiveError, Receiver, ReceiverStream};
+pub use sender::{Closed, RawSender, RawSenderSink, SendError, Sender, SenderSink, TrySendError};
+
+/// Channel multiplexer protocol version.
+pub const PROTOCOL_VERSION: u8 = 2;
+
+/// Channel multiplexer error.
+#[derive(Debug)]
+pub enum MultiplexError<SinkError, StreamError> {
+    /// An error was encountered while sending data to the transport sink.
+    SinkError(SinkError),
+    /// An error was encountered while receiving data from the transport stream.
+    StreamError(StreamError),
+    /// The transport stream was closed while multiplex channels were active or the
+    /// multiplex client was not dropped.
+    StreamClosed,
+    /// The connection was reset by the remote endpoint.
+    Reset,
+    /// No messages where received over the configured connection timeout.
+    Timeout,
+    /// Too many ports specified in configuration.
+    TooManyPorts,
+    /// A multiplex protocol error occured.
+    Protocol(String),
+}
+
+impl<SinkError, StreamError> fmt::Display for MultiplexError<SinkError, StreamError>
+where
+    SinkError: fmt::Display,
+    StreamError: fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::SinkError(err) => write!(f, "send error: {}", err),
+            Self::StreamError(err) => write!(f, "receive error: {}", err),
+            Self::StreamClosed => write!(f, "end of receive stream"),
+            Self::Reset => write!(f, "connection reset"),
+            Self::Timeout => write!(f, "connection timeout"),
+            Self::TooManyPorts => write!(f, "too many ports configured"),
+            Self::Protocol(err) => write!(f, "protocol error: {}", err),
+        }
+    }
+}
+
+impl<SinkError, StreamError> Error for MultiplexError<SinkError, StreamError>
+where
+    SinkError: Error,
+    StreamError: Error,
+{
+}
 
 /// Return if connection terminated.
 ///

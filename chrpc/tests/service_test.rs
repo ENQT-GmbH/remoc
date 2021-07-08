@@ -8,7 +8,7 @@ use tokio_util::codec::{length_delimited::LengthDelimitedCodec, FramedRead, Fram
 
 use chmux::{
     self,
-    codec::json::{JsonContentCodec, JsonTransportCodec},
+    codec::json::{JsonCodec, JsonTransportCodec},
 };
 use chrpc::service;
 
@@ -64,7 +64,7 @@ async fn server_part() {
     let framed_rx = framed_rx.map(|data| data.map(|b| b.freeze()));
 
     let mux_cfg = chmux::Cfg::default();
-    let content_codec = JsonContentCodec::new();
+    let content_codec = JsonCodec::new();
     let transport_codec = JsonTransportCodec::new();
 
     let (mux, _, server) =
@@ -91,7 +91,7 @@ async fn client_part() {
     let framed_rx = framed_rx.map(|data| data.map(|b| b.freeze()));
 
     let mux_cfg = chmux::Cfg::default();
-    let content_codec = JsonContentCodec::new();
+    let content_codec = JsonCodec::new();
     let transport_codec = JsonTransportCodec::new();
 
     let (mux, client, _) =

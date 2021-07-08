@@ -4,7 +4,7 @@ use futures::{channel::mpsc, pin_mut, stream::StreamExt, Future, FutureExt};
 use serde::{de::DeserializeOwned, Serialize};
 use std::convert::Infallible;
 
-use chmux::{codec::id::IdTransportCodec, ContentCodecFactory, MultiplexMsg};
+use chmux::{codec::id::IdTransportCodec, CodecFactory, MultiplexMsg};
 
 fn mux_cfg() -> chmux::Cfg {
     chmux::Cfg { ping_interval: None, connection_timeout: None, ..Default::default() }
@@ -44,11 +44,11 @@ impl<Content> MpscDuplexChannelPair<Content> {
 /// Use `<RPCClient>::bind(mpsc_client(...).await?)` to obtain an RPC client.
 pub async fn mpsc_client<Service, Content, ContentCodec>(
     ch: MpscDuplexChannel<Content>, content_codec: ContentCodec,
-) -> chmux::Client<Service, Content, ContentCodec>
+) -> chmux::RawClient<Service, Content, ContentCodec>
 where
     Service: Serialize + DeserializeOwned + 'static,
     Content: Serialize + DeserializeOwned + Send + 'static,
-    ContentCodec: ContentCodecFactory<Content> + 'static,
+    ContentCodec: CodecFactory<Content> + 'static,
 {
     let MpscDuplexChannel { tx, rx } = ch;
     let rx = rx.map(Ok::<_, Infallible>);
@@ -70,12 +70,12 @@ where
 /// `run_server` takes the server mux as argument.
 pub async fn mpsc_server<Service, Content, ContentCodec, ServerFut, ServerFutOutput>(
     ch: MpscDuplexChannel<Content>, content_codec: ContentCodec,
-    run_server: impl Fn(chmux::Server<Service, Content, ContentCodec>) -> ServerFut + Send + Clone + 'static,
+    run_server: impl Fn(chmux::RawListener<Service, Content, ContentCodec>) -> ServerFut + Send + Clone + 'static,
 ) -> ServerFutOutput
 where
     Service: Serialize + DeserializeOwned + 'static,
     Content: Serialize + DeserializeOwned + Send + 'static,
-    ContentCodec: ContentCodecFactory<Content> + 'static,
+    ContentCodec: CodecFactory<Content> + 'static,
     ServerFut: Future<Output = ServerFutOutput> + Send,
 {
     let MpscDuplexChannel { tx, rx } = ch;
