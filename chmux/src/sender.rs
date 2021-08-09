@@ -209,6 +209,16 @@ impl RawSender {
         n
     }
 
+    /// The local port number.
+    pub fn local_port(&self) -> u32 {
+        self.local_port
+    }
+
+    /// The remote port number.
+    pub fn remote_port(&self) -> u32 {
+        self.remote_port
+    }
+
     /// Sends data over the channel.
     ///
     /// Waits until send space becomes available.

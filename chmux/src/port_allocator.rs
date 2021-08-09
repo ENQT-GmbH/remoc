@@ -37,11 +37,11 @@ impl PortAllocatorInner {
     }
 }
 
-/// Allocates port numbers randomly and uniquely.
+/// Local port number allocator.
 ///
 /// State is shared between clones of this type.
 #[derive(Clone)]
-pub(crate) struct PortAllocator(Arc<Mutex<PortAllocatorInner>>);
+pub struct PortAllocator(Arc<Mutex<PortAllocatorInner>>);
 
 impl fmt::Debug for PortAllocator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -52,14 +52,15 @@ impl fmt::Debug for PortAllocator {
 
 impl PortAllocator {
     /// Creates a new port number allocator.
-    pub fn new(limit: u32) -> PortAllocator {
+    pub(crate) fn new(limit: u32) -> PortAllocator {
         let inner = PortAllocatorInner { used: HashSet::new(), limit, notify_tx: Vec::new() };
         PortAllocator(Arc::new(Mutex::new(inner)))
     }
 
-    /// Allocates a random, unique port number.
+    /// Allocates a local port number.
     ///
-    /// Waits for a port number to become available.
+    /// Port numbers are allocated randomly.
+    /// If all ports are currently in use, this waits for a port number to become available.
     pub async fn allocate(&self) -> PortNumber {
         loop {
             let rx = {
@@ -78,19 +79,19 @@ impl PortAllocator {
         }
     }
 
-    /// Tries to allocates a random, unique port number.
+    /// Tries to allocate a local port number.
     ///
-    /// Does not wait for a port number to become available.
+    /// If all port are currently in use, this returns [None].
     pub fn try_allocate(&self) -> Option<PortNumber> {
         let mut inner = self.0.lock().unwrap();
         inner.try_allocate(self.0.clone())
     }
 }
 
-/// An allocated port number.
+/// An allocated local port number.
 ///
-/// Drop to release allocation.
-pub(crate) struct PortNumber {
+/// When this is dropped, the allocated is automatically released.
+pub struct PortNumber {
     number: u32,
     allocator: Arc<Mutex<PortAllocatorInner>>,
 }

@@ -235,6 +235,16 @@ impl RawReceiver {
         }
     }
 
+    /// The local port number.
+    pub fn local_port(&self) -> u32 {
+        self.local_port
+    }
+
+    /// The remote port number.
+    pub fn remote_port(&self) -> u32 {
+        self.remote_port
+    }
+
     /// Receives data over the channel.
     ///
     /// Waits for data to become available.

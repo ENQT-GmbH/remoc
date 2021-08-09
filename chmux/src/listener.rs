@@ -20,6 +20,8 @@ use crate::{
 /// An multiplexer listener error.
 #[derive(Debug)]
 pub enum ListenerError {
+    /// All local ports are in use.
+    LocalPortsExhausted,
     /// A multiplexer error has occured or it has been terminated.
     MultiplexerError,
 }
@@ -27,6 +29,7 @@ pub enum ListenerError {
 impl fmt::Display for ListenerError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            Self::LocalPortsExhausted => write!(f, "all local ports are in use"),
             Self::MultiplexerError => write!(f, "multiplexer error"),
         }
     }
@@ -37,14 +40,16 @@ impl Error for ListenerError {}
 /// A connection request by the remote endpoint.
 ///
 /// Dropping the request rejects it.
-pub(crate) struct RemoteConnectRequest {
+pub struct Request {
     remote_port: u32,
+    wait: bool,
+    allocator: PortAllocator,
     tx: mpsc::Sender<PortEvt>,
     done_tx: Option<oneshot::Sender<()>>,
 }
 
-impl RemoteConnectRequest {
-    pub(crate) fn new(remote_port: u32, tx: mpsc::Sender<PortEvt>) -> Self {
+impl Request {
+    pub(crate) fn new(remote_port: u32, wait: bool, allocator: PortAllocator, tx: mpsc::Sender<PortEvt>) -> Self {
         let (done_tx, done_rx) = oneshot::channel();
         let drop_tx = tx.clone();
         tokio::spawn(async move {
@@ -53,10 +58,41 @@ impl RemoteConnectRequest {
             }
         });
 
-        Self { remote_port, tx, done_tx: Some(done_tx) }
+        Self { remote_port, wait, allocator, tx, done_tx: Some(done_tx) }
     }
 
-    async fn accept(mut self, local_port: PortNumber) -> Result<(RawSender, RawReceiver), ListenerError> {
+    /// The remote port number.
+    pub fn remote_port(&self) -> u32 {
+        self.remote_port
+    }
+
+    /// Indicates whether the handler of the request should wait for a local
+    /// port to become available, if all are currently in use.
+    pub fn is_wait(&self) -> bool {
+        self.wait
+    }
+
+    /// Accepts the request using a newly allocated local port.
+    pub async fn accept(self) -> Result<(RawSender, RawReceiver), ListenerError> {
+        let local_port = if self.wait {
+            self.allocator.allocate().await
+        } else {
+            match self.allocator.try_allocate() {
+                Some(local_port) => local_port,
+                None => {
+                    self.reject(true).await;
+                    return Err(ListenerError::LocalPortsExhausted);
+                }
+            }
+        };
+
+        self.accept_from(local_port).await
+    }
+
+    /// Accepts the request using the specified local port.
+    pub async fn accept_from(
+        mut self, local_port: PortNumber,
+    ) -> Result<(RawSender, RawReceiver), ListenerError> {
         let (port_tx, port_rx) = oneshot::channel();
         let _ = self.tx.send(PortEvt::Accepted { local_port, remote_port: self.remote_port, port_tx }).await;
         let _ = self.done_tx.take().unwrap().send(());
@@ -64,13 +100,17 @@ impl RemoteConnectRequest {
         port_rx.await.map_err(|_| ListenerError::MultiplexerError)
     }
 
-    async fn reject(mut self, no_ports: bool) {
+    /// Rejects the connect request.
+    ///
+    /// Setting `no_ports` to true indicates to the remote endpoint that the request
+    /// was rejected because no local port could be allocated.
+    pub async fn reject(mut self, no_ports: bool) {
         let _ = self.tx.send(PortEvt::Rejected { remote_port: self.remote_port, no_ports }).await;
         let _ = self.done_tx.take().unwrap().send(());
     }
 }
 
-impl Drop for RemoteConnectRequest {
+impl Drop for Request {
     fn drop(&mut self) {
         // required for correct drop order
     }
@@ -79,7 +119,7 @@ impl Drop for RemoteConnectRequest {
 /// Remote connect message.
 pub(crate) enum RemoteConnectMsg {
     /// Remote connect request.
-    Request(RemoteConnectRequest),
+    Request(Request),
     /// Client of remote endpoint has been dropped.
     ClientDropped,
 }
@@ -106,6 +146,11 @@ impl RawListener {
         Self { wait_rx, no_wait_rx, port_allocator, closed: false }
     }
 
+    /// Obtains the port allocator.
+    pub fn port_allocator(&self) -> PortAllocator {
+        self.port_allocator.clone()
+    }
+
     /// Accept a connection returning the raw sender and raw receiver for the opened port.
     ///
     /// Returns [None] when the client of the remote endpoint has been dropped and
@@ -118,18 +163,9 @@ impl RawListener {
         loop {
             tokio::select! {
                 local_port = self.port_allocator.allocate() => {
-                    let req_opt = tokio::select! {
-                        req_opt = self.wait_rx.recv() => req_opt,
-                        req_opt = self.no_wait_rx.recv() => req_opt,
-                    };
-
-                    match req_opt {
-                        Some(RemoteConnectMsg::Request(req)) => break Ok(Some(req.accept(local_port).await?)),
-                        Some(RemoteConnectMsg::ClientDropped) => {
-                            self.closed = true;
-                            break Ok(None);
-                        },
-                        None => break Err(ListenerError::MultiplexerError),
+                    match self.inspect().await? {
+                        Some(req) => break Ok(Some(req.accept_from(local_port).await?)),
+                        None => break Ok(None),
                     }
                 },
 
@@ -137,7 +173,7 @@ impl RawListener {
                     match no_wait_req_opt {
                         Some(RemoteConnectMsg::Request(no_wait_req)) => {
                             match self.port_allocator.try_allocate() {
-                                Some(local_port) => break Ok(Some(no_wait_req.accept(local_port).await?)),
+                                Some(local_port) => break Ok(Some(no_wait_req.accept_from(local_port).await?)),
                                 None => no_wait_req.reject(true).await,
                             }
                         },
@@ -149,6 +185,35 @@ impl RawListener {
                     }
                 },
             }
+        }
+    }
+
+    /// Obtains the next connection request from the remote endpoint.
+    ///
+    /// Connection requests can be stored and accepted or rejected at a later time.
+    /// The maximum number of unanswered connection requests is specified in the
+    /// configuration. If this number is reached, the remote endpoint will
+    /// not send any more connection requests.
+    ///
+    /// Returns [None] when the client of the remote endpoint has been dropped and
+    /// no more connection requests can be made.
+    pub async fn inspect(&mut self) -> Result<Option<Request>, ListenerError> {
+        if self.closed {
+            return Ok(None);
+        }
+
+        let req_opt = tokio::select! {
+            req_opt = self.wait_rx.recv() => req_opt,
+            req_opt = self.no_wait_rx.recv() => req_opt,
+        };
+
+        match req_opt {
+            Some(RemoteConnectMsg::Request(req)) => Ok(Some(req)),
+            Some(RemoteConnectMsg::ClientDropped) => {
+                self.closed = true;
+                Ok(None)
+            }
+            None => Err(ListenerError::MultiplexerError),
         }
     }
 

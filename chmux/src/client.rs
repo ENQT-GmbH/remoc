@@ -169,16 +169,28 @@ impl RawClient {
         RawClient { tx, crediter: ConntectRequestCrediter::new(limit), port_allocator, listener_dropped }
     }
 
+    /// Obtains the port allocator.
+    pub fn port_allocator(&self) -> PortAllocator {
+        self.port_allocator.clone()
+    }
+
     /// Opens a new raw port.
     ///
     /// If `wait` is true, this function waits until a local and remote port become available.
     /// Otherwise it returns the appropriate error if no ports are available.
-    async fn connect_int(&self, wait: bool) -> Result<(RawSender, RawReceiver), ConnectError> {
+    async fn connect_int(
+        &self, local_port: Option<PortNumber>, wait: bool,
+    ) -> Result<(RawSender, RawReceiver), ConnectError> {
         // Obtain local port.
-        let local_port = if wait {
-            self.port_allocator.allocate().await
-        } else {
-            self.port_allocator.try_allocate().ok_or(ConnectError::LocalPortsExhausted)?
+        let local_port = match local_port {
+            Some(local_port) => local_port,
+            None => {
+                if wait {
+                    self.port_allocator.allocate().await
+                } else {
+                    self.port_allocator.try_allocate().ok_or(ConnectError::LocalPortsExhausted)?
+                }
+            }
         };
 
         // Obtain credit for connection request.
@@ -224,19 +236,36 @@ impl RawClient {
         .map_err(|_| ConnectError::MultiplexerError)?
     }
 
-    /// Opens a new raw port.
+    /// Connects to a newly allocated remote port from a newly allocated local port.
     ///
     /// This function waits until a local and remote port become available.
     pub async fn connect(&self) -> Result<(RawSender, RawReceiver), ConnectError> {
-        self.connect_int(true).await
+        self.connect_int(None, true).await
     }
 
-    /// Opens a new raw port.
+    /// Connects to a newly allocated remote port from the specified local port.
+    ///
+    /// This function waits until a remote port becomes available.
+    pub async fn connect_from(&self, local_port: PortNumber) -> Result<(RawSender, RawReceiver), ConnectError> {
+        self.connect_int(Some(local_port), true).await
+    }
+
+    /// Tries to connect to a newly allocated remote port from a newly allocated local port.
     ///
     /// This function does not wait until a local and remote port becomes available.
     /// However, it still waits until the listener on the remote endpoint accepts or rejects the connection.
     pub async fn try_connect(&self) -> Result<(RawSender, RawReceiver), ConnectError> {
-        self.connect_int(false).await
+        self.connect_int(None, false).await
+    }
+
+    /// Tries to connect to a newly allocated remote port from the specified local port.
+    ///
+    /// This function does not wait until a remote port becomes available.
+    /// However, it still waits until the listener on the remote endpoint accepts or rejects the connection.
+    pub async fn try_connect_from(
+        &self, local_port: PortNumber,
+    ) -> Result<(RawSender, RawReceiver), ConnectError> {
+        self.connect_int(Some(local_port), false).await
     }
 }
 

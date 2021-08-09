@@ -32,7 +32,7 @@ use crate::{
         credit_monitor_pair, credit_send_pair, ChannelCreditMonitor, CreditProvider, GlobalCreditMonitor,
         GlobalCredits,
     },
-    listener::{Listener, RawListener, RemoteConnectMsg, RemoteConnectRequest},
+    listener::{Listener, RawListener, RemoteConnectMsg, Request},
     msg::{Credit, MultiplexMsg},
     port_allocator::{PortAllocator, PortNumber},
     receiver::{PortReceiveMsg, RawReceiver, ReceivedData},
@@ -204,6 +204,8 @@ pub struct Multiplexer<TransportSink, TransportStream> {
     connect_rx: Option<mpsc::UnboundedReceiver<ConnectRequest>>,
     /// Channels for connection requests from remote endpoint with wait set and not set.
     listen_tx: Option<(mpsc::Sender<RemoteConnectMsg>, mpsc::Sender<RemoteConnectMsg>)>,
+    /// Port allocator.
+    port_allocator: PortAllocator,
     /// Open local ports.
     ports: HashMap<PortNumber, PortState>,
     /// Sender from channels to event loop.
@@ -284,6 +286,7 @@ where
         let (connect_tx, connect_rx) = mpsc::unbounded_channel();
 
         // Create user objects.
+        let port_allocator = PortAllocator::new(cfg.max_ports.get());
         let (global_rx_credits_return_tx, global_rx_credits_return_rx) = mpsc::unbounded_channel();
         let remote_listener_dropped = Arc::new(AtomicBool::new(false));
         let multiplexer = Multiplexer {
@@ -293,6 +296,7 @@ where
             remote_cfg: remote_cfg.clone(),
             connect_rx: Some(connect_rx),
             listen_tx: Some((listen_wait_tx, listen_no_wait_tx)),
+            port_allocator: port_allocator.clone(),
             ports: HashMap::new(),
             channel_tx,
             channel_rx: Some(channel_rx),
@@ -311,7 +315,6 @@ where
             transport_stream: Some(transport_stream),
         };
 
-        let port_allocator = PortAllocator::new(cfg.max_ports.get());
         let raw_client = RawClient::new(
             connect_tx,
             remote_cfg.connect_queue.get(),
@@ -912,8 +915,12 @@ where
 
             // Open port request from remote endpoint.
             MultiplexMsg::OpenPort { client_port, wait } => {
-                let req =
-                    RemoteConnectMsg::Request(RemoteConnectRequest::new(client_port, self.channel_tx.clone()));
+                let req = RemoteConnectMsg::Request(Request::new(
+                    client_port,
+                    wait,
+                    self.port_allocator.clone(),
+                    self.channel_tx.clone(),
+                ));
                 if let Some((listen_wait_tx, listen_no_wait_tx)) = &self.listen_tx {
                     let res = if wait { listen_wait_tx.try_send(req) } else { listen_no_wait_tx.try_send(req) };
                     if let Err(mpsc::error::TrySendError::Full(_)) = res {
