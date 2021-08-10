@@ -21,7 +21,7 @@ pub mod serde_map;
 use std::{error::Error, fmt};
 
 pub use channel::Channel;
-pub use client::{Client, ConnectError, RawClient};
+pub use client::{Client, Connect, ConnectError, RawClient};
 pub use codec::{CodecFactory, Deserializer, Serializer};
 pub use listener::{Listener, ListenerError, ListenerStream, RawListener, RawListenerStream, Request};
 pub use msg::Cfg;

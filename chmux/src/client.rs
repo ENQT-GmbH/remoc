@@ -1,14 +1,20 @@
+use futures::{ready, Future, FutureExt};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{
     clone::Clone,
     error::Error,
     fmt, mem,
+    pin::Pin,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
     },
+    task::{Context, Poll},
 };
-use tokio::sync::{mpsc, oneshot};
+use tokio::{
+    sync::{mpsc, oneshot},
+    task::JoinHandle,
+};
 
 use crate::{
     codec::{BoxError, CodecFactory},
@@ -125,6 +131,8 @@ impl Drop for ConnectRequestCredit {
 pub(crate) struct ConnectRequest {
     /// Local port.
     pub local_port: PortNumber,
+    /// Notification that request has been queued for sending.
+    pub sent_tx: mpsc::Sender<()>,
     /// Response channel sender.
     pub response_tx: oneshot::Sender<ConnectResponse>,
     /// Wait for port to become available.
@@ -141,6 +149,36 @@ pub(crate) enum ConnectResponse {
         /// Remote endpoint had not ports available.
         no_ports: bool,
     },
+}
+
+/// An outstanding connection request.
+///
+/// Await it to obtain the result of the connection request.
+pub struct Connect {
+    sent_rx: mpsc::Receiver<()>,
+    response: JoinHandle<Result<(RawSender, RawReceiver), ConnectError>>,
+}
+
+impl Connect {
+    /// Returns once the connect request has been sent.
+    ///
+    /// It is guaranteed that the connect request will be made available via
+    /// the [Listener](crate::Listener) at the remote endpoint before messages 
+    /// sent on any port after this function returns will arrive.
+    ///
+    /// This will also return when the multiplexer has been terminated.
+    pub async fn sent(&mut self) {
+        let _ = self.sent_rx.recv().await;
+    }
+}
+
+impl Future for Connect {
+    type Output = Result<(RawSender, RawReceiver), ConnectError>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let result = ready!(Pin::into_inner(self).response.poll_unpin(cx));
+        Poll::Ready(result.map_err(|_| ConnectError::MultiplexerError)?)
+    }
 }
 
 /// Raw multiplexer client.
@@ -174,13 +212,25 @@ impl RawClient {
         self.port_allocator.clone()
     }
 
-    /// Opens a new raw port.
+    /// Connects to a newly allocated remote port from a newly allocated local port.
+    ///
+    /// This function waits until a local and remote port become available.
+    pub async fn connect(&self) -> Result<(RawSender, RawReceiver), ConnectError> {
+        self.connect_ext(None, true).await?.await
+    }
+
+    /// Start opening a new port to the remote endpoint with extended options.
+    ///
+    /// If `local_port` is [None] a new local port number is allocated.
+    /// Otherwise the specified port is used.
     ///
     /// If `wait` is true, this function waits until a local and remote port become available.
-    /// Otherwise it returns the appropriate error if no ports are available.
-    async fn connect_int(
-        &self, local_port: Option<PortNumber>, wait: bool,
-    ) -> Result<(RawSender, RawReceiver), ConnectError> {
+    /// Otherwise it returns the appropriate [ConnectError] if no ports are available.
+    /// If `wait` is false, it still waits until the listener on the remote endpoint accepts
+    /// or rejects the connection.
+    ///
+    /// This returns a [Connect] that must be awaited to obtain the result.
+    pub async fn connect_ext(&self, local_port: Option<PortNumber>, wait: bool) -> Result<Connect, ConnectError> {
         // Obtain local port.
         let local_port = match local_port {
             Some(local_port) => local_port,
@@ -204,12 +254,13 @@ impl RawClient {
         };
 
         // Build and send request.
+        let (sent_tx, sent_rx) = mpsc::channel(1);
         let (response_tx, response_rx) = oneshot::channel();
-        let req = ConnectRequest { local_port, response_tx, wait };
+        let req = ConnectRequest { local_port, sent_tx, response_tx, wait };
         let _ = self.tx.send(req);
 
         let listener_dropped = self.listener_dropped.clone();
-        tokio::spawn(async move {
+        let response = tokio::spawn(async move {
             // Credit must be kept until response is received.
             let _credit = credit;
 
@@ -231,41 +282,9 @@ impl RawClient {
                     }
                 }
             }
-        })
-        .await
-        .map_err(|_| ConnectError::MultiplexerError)?
-    }
+        });
 
-    /// Connects to a newly allocated remote port from a newly allocated local port.
-    ///
-    /// This function waits until a local and remote port become available.
-    pub async fn connect(&self) -> Result<(RawSender, RawReceiver), ConnectError> {
-        self.connect_int(None, true).await
-    }
-
-    /// Connects to a newly allocated remote port from the specified local port.
-    ///
-    /// This function waits until a remote port becomes available.
-    pub async fn connect_from(&self, local_port: PortNumber) -> Result<(RawSender, RawReceiver), ConnectError> {
-        self.connect_int(Some(local_port), true).await
-    }
-
-    /// Tries to connect to a newly allocated remote port from a newly allocated local port.
-    ///
-    /// This function does not wait until a local and remote port becomes available.
-    /// However, it still waits until the listener on the remote endpoint accepts or rejects the connection.
-    pub async fn try_connect(&self) -> Result<(RawSender, RawReceiver), ConnectError> {
-        self.connect_int(None, false).await
-    }
-
-    /// Tries to connect to a newly allocated remote port from the specified local port.
-    ///
-    /// This function does not wait until a remote port becomes available.
-    /// However, it still waits until the listener on the remote endpoint accepts or rejects the connection.
-    pub async fn try_connect_from(
-        &self, local_port: PortNumber,
-    ) -> Result<(RawSender, RawReceiver), ConnectError> {
-        self.connect_int(Some(local_port), false).await
+        Ok(Connect { sent_rx, response })
     }
 }
 
@@ -325,7 +344,7 @@ where
         SendItem: Serialize + 'static,
         ReceiveItem: DeserializeOwned + 'static,
     {
-        self.raw.try_connect().await.map(|(raw_sender, raw_receiver)| {
+        self.raw.connect_ext(None, false).await?.await.map(|(raw_sender, raw_receiver)| {
             (
                 Sender::new(raw_sender, self.codec.serializer()),
                 Receiver::new(raw_receiver, self.codec.deserializer()),

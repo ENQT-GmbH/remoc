@@ -768,7 +768,7 @@ where
 
         match event {
             // Process local connect request.
-            GlobalEvt::ConnectReq(ConnectRequest { local_port, response_tx, wait }) => {
+            GlobalEvt::ConnectReq(ConnectRequest { local_port, sent_tx: _sent_tx, response_tx, wait }) => {
                 if !self.remote_listener_dropped.load(Ordering::SeqCst) {
                     let local_port_num = *local_port;
                     if self.ports.insert(local_port, PortState::Connecting { response_tx }).is_some() {
