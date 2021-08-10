@@ -1,6 +1,6 @@
 use byteorder::{ReadBytesExt, WriteBytesExt, LE};
 use std::{
-    io,
+    io::{self, ErrorKind},
     num::{NonZeroU16, NonZeroU32, NonZeroUsize},
     time::Duration,
 };
@@ -71,6 +71,18 @@ pub enum MultiplexMsg {
         /// Flow-control credit.
         credit: Credit,
     },
+    /// Ports sent over a port.
+    PortData {
+        /// Port of side that receives this message.
+        port: u32,
+        // Flags u8.
+        /// Wait for server port to become available.
+        wait: bool,
+        /// Flow-control credit.
+        credit: Credit,
+        /// Ports
+        ports: Vec<u32>,
+    },
     /// Give flow credits to a port.
     PortCredits {
         /// Port of side that receives this message.
@@ -115,14 +127,15 @@ pub const MSG_OPEN_PORT: u8 = 4;
 pub const MSG_PORT_OPENED: u8 = 5;
 pub const MSG_REJECTED: u8 = 6;
 pub const MSG_DATA: u8 = 7;
-pub const MSG_PORT_CREDITS: u8 = 8;
-pub const MSG_SEND_FINISH: u8 = 9;
-pub const MSG_RECEIVE_CLOSE: u8 = 10;
-pub const MSG_RECEIVE_FINISH: u8 = 11;
-pub const MSG_GLOBAL_CREDITS: u8 = 12;
-pub const MSG_CLIENT_FINISH: u8 = 13;
-pub const MSG_LISTENER_FINISH: u8 = 14;
-pub const MSG_GOODBYE: u8 = 15;
+pub const MSG_PORT_DATA: u8 = 8;
+pub const MSG_PORT_CREDITS: u8 = 9;
+pub const MSG_SEND_FINISH: u8 = 10;
+pub const MSG_RECEIVE_CLOSE: u8 = 11;
+pub const MSG_RECEIVE_FINISH: u8 = 12;
+pub const MSG_GLOBAL_CREDITS: u8 = 13;
+pub const MSG_CLIENT_FINISH: u8 = 14;
+pub const MSG_LISTENER_FINISH: u8 = 15;
+pub const MSG_GOODBYE: u8 = 16;
 
 pub const MSG_OPEN_PORT_FLAG_WAIT: u8 = 0b00000001;
 
@@ -131,6 +144,9 @@ pub const MSG_REJECTED_FLAG_NO_PORTS: u8 = 0b00000001;
 pub const MSG_DATA_FLAG_FIRST: u8 = 0b00000001;
 pub const MSG_DATA_FLAG_LAST: u8 = 0b00000010;
 pub const MSG_DATA_CREDIT_GLOBAL: u8 = 0b00000100;
+
+pub const MSG_PORT_DATA_CREDIT_GLOBAL: u8 = 0b00000010;
+pub const MSG_PORT_DATA_FLAG_WAIT: u8 = 0b00000001;
 
 impl MultiplexMsg {
     pub(crate) fn write(&self, mut writer: impl io::Write) -> Result<(), io::Error> {
@@ -176,6 +192,21 @@ impl MultiplexMsg {
                     flags |= MSG_DATA_CREDIT_GLOBAL;
                 }
                 writer.write_u8(flags)?;
+            }
+            MultiplexMsg::PortData { port, wait, credit, ports } => {
+                writer.write_u8(MSG_PORT_DATA)?;
+                let mut flags = 0;
+                if *wait {
+                    flags |= MSG_PORT_DATA_FLAG_WAIT;
+                }
+                if let Credit::Global = credit {
+                    flags |= MSG_PORT_DATA_CREDIT_GLOBAL;
+                }
+                writer.write_u8(flags)?;
+                writer.write_u32::<LE>(*port)?;
+                for p in ports {
+                    writer.write_u32::<LE>(*p)?;
+                }
             }
             MultiplexMsg::PortCredits { port, credits } => {
                 writer.write_u8(MSG_PORT_CREDITS)?;
@@ -243,6 +274,21 @@ impl MultiplexMsg {
                     last: flags & MSG_DATA_FLAG_LAST != 0,
                     credit: if flags & MSG_DATA_CREDIT_GLOBAL != 0 { Credit::Global } else { Credit::Port },
                 }
+            }
+            MSG_PORT_DATA => {
+                let port = reader.read_u32::<LE>()?;
+                let flags = reader.read_u8()?;
+                let wait = flags & MSG_PORT_DATA_FLAG_WAIT != 0;
+                let credit = if flags & MSG_PORT_DATA_CREDIT_GLOBAL != 0 { Credit::Global } else { Credit::Port };
+                let mut ports = Vec::new();
+                loop {
+                    match reader.read_u32::<LE>() {
+                        Ok(p) => ports.push(p),
+                        Err(err) if err.kind() == ErrorKind::UnexpectedEof => break,
+                        Err(err) => return Err(err),
+                    }
+                }
+                Self::PortData { port, wait, credit, ports }
             }
             MSG_PORT_CREDITS => {
                 Self::PortCredits { port: reader.read_u32::<LE>()?, credits: reader.read_u16::<LE>()? }

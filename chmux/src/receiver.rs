@@ -12,6 +12,7 @@ use crate::{
     codec::Deserializer,
     credit::{ChannelCreditReturner, UsedCredit},
     multiplexer::PortEvt,
+    Request,
 };
 
 /// An error occured during receiving a message.
@@ -67,10 +68,20 @@ pub(crate) struct ReceivedData {
     pub credit: UsedCredit,
 }
 
+/// Container for received port open requests.
+pub(crate) struct ReceivedPortRequests {
+    /// Port open requests.
+    pub requests: Vec<Request>,
+    /// Flow-control credit.
+    pub credit: UsedCredit,
+}
+
 /// Port receive message.
 pub(crate) enum PortReceiveMsg {
     /// Data has been received.
     Data(ReceivedData),
+    /// Ports have been received.
+    PortRequests(ReceivedPortRequests),
     /// Sender has closed its end.
     Finished,
 }
@@ -184,6 +195,14 @@ impl From<Bytes> for DataBuf {
     }
 }
 
+/// Received entity.
+pub enum Received {
+    /// Binary data.
+    Data(DataBuf),
+    /// Port open requests.
+    Requests(Vec<Request>),
+}
+
 /// Receives byte data over a channel.
 pub struct RawReceiver {
     local_port: u32,
@@ -245,10 +264,10 @@ impl RawReceiver {
         self.remote_port
     }
 
-    /// Receives data over the channel.
+    /// Receives data or ports over the channel.
     ///
     /// Waits for data to become available.
-    pub async fn recv(&mut self) -> Result<Option<DataBuf>, ReceiveError> {
+    pub async fn recv_any(&mut self) -> Result<Option<Received>, ReceiveError> {
         if self.finished {
             return Ok(None);
         }
@@ -258,6 +277,11 @@ impl RawReceiver {
 
             let data = match self.rx.recv().await {
                 Some(PortReceiveMsg::Data(data)) => data,
+                Some(PortReceiveMsg::PortRequests(req)) => {
+                    self.data_buf = DataBuf::new();
+                    self.credits.start_return_one(req.credit, self.remote_port, &self.tx);
+                    return Ok(Some(Received::Requests(req.requests)));
+                }
                 Some(PortReceiveMsg::Finished) => {
                     self.finished = true;
                     return Ok(None);
@@ -278,13 +302,27 @@ impl RawReceiver {
             }
 
             if data.last {
-                return Ok(Some(mem::take(&mut self.data_buf)));
+                return Ok(Some(Received::Data(mem::take(&mut self.data_buf))));
             }
         }
     }
 
-    /// Polls to receive the next data on this channel.
-    pub fn poll_recv(&mut self, cx: &mut Context) -> Poll<Result<Option<DataBuf>, ReceiveError>> {
+    /// Receives data over the channel.
+    ///
+    /// Waits for data to become available.
+    /// Received ports are silently rejected.
+    pub async fn recv(&mut self) -> Result<Option<DataBuf>, ReceiveError> {
+        loop {
+            match self.recv_any().await? {
+                Some(Received::Data(data)) => break Ok(Some(data)),
+                Some(Received::Requests(_)) => (),
+                None => break Ok(None),
+            }
+        }
+    }
+
+    /// Polls to receive data or ports on this channel.
+    pub fn poll_recv_any(&mut self, cx: &mut Context) -> Poll<Result<Option<Received>, ReceiveError>> {
         if self.finished {
             return Poll::Ready(Ok(None));
         }
@@ -294,6 +332,11 @@ impl RawReceiver {
 
             let data = match ready!(self.rx.poll_recv(cx)) {
                 Some(PortReceiveMsg::Data(data)) => data,
+                Some(PortReceiveMsg::PortRequests(req)) => {
+                    self.data_buf = DataBuf::new();
+                    self.credits.start_return_one(req.credit, self.remote_port, &self.tx);
+                    return Poll::Ready(Ok(Some(Received::Requests(req.requests))));
+                }
                 Some(PortReceiveMsg::Finished) => {
                     self.finished = true;
                     return Poll::Ready(Ok(None));
@@ -314,7 +357,20 @@ impl RawReceiver {
             }
 
             if data.last {
-                return Poll::Ready(Ok(Some(mem::take(&mut self.data_buf))));
+                return Poll::Ready(Ok(Some(Received::Data(mem::take(&mut self.data_buf)))));
+            }
+        }
+    }
+
+    /// Polls to receive on this channel.
+    ///
+    /// Received ports are silently rejected.
+    pub fn poll_recv(&mut self, cx: &mut Context) -> Poll<Result<Option<DataBuf>, ReceiveError>> {
+        loop {
+            match ready!(self.poll_recv_any(cx))? {
+                Some(Received::Data(data)) => break Poll::Ready(Ok(Some(data))),
+                Some(Received::Requests(_)) => (),
+                None => break Poll::Ready(Ok(None)),
             }
         }
     }

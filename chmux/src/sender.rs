@@ -10,6 +10,7 @@ use serde::Serialize;
 use std::{
     error::Error,
     fmt,
+    mem::size_of,
     pin::Pin,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -19,9 +20,11 @@ use std::{
 use tokio::sync::{mpsc, oneshot, Mutex};
 
 use crate::{
+    client::ConnectResponse,
     codec::Serializer,
     credit::{AssignedCredits, CreditUser},
     multiplexer::PortEvt,
+    Connect, ConnectError, PortNumber,
 };
 
 /// An error occured during sending of a message.
@@ -44,6 +47,13 @@ pub enum SendError {
         data_size: usize,
         /// Maximum allowed data size.
         max_size: usize,
+    },
+    /// Port count exceeds limit.
+    ExceedsMaxPortCount {
+        /// Actual port count.
+        port_count: usize,
+        /// Maximum allowed port count.
+        max_count: usize,
     },
 }
 
@@ -68,6 +78,9 @@ impl fmt::Display for SendError {
             Self::SerializationError(err) => write!(f, "serialization error: {}", err),
             Self::ExceedsMaxDataSize { data_size, max_size } => {
                 write!(f, "data ({} bytes) exceeds maximum allowed size ({} bytes)", data_size, max_size)
+            }
+            Self::ExceedsMaxPortCount { port_count, max_count } => {
+                write!(f, "port count ({}) exceeds maximum allowed port count ({})", port_count, max_count)
             }
         }
     }
@@ -219,6 +232,16 @@ impl RawSender {
         self.remote_port
     }
 
+    /// Maximum allowed size of data to be sent in one request.
+    pub fn max_data_size(&self) -> usize {
+        self.max_data_size
+    }
+
+    /// Maximum number of ports that can be sent in one request.
+    pub fn max_port_count(&self) -> usize {
+        (self.max_data_size / size_of::<u32>()).max(1)
+    }
+
     /// Sends data over the channel.
     ///
     /// Waits until send space becomes available.
@@ -317,6 +340,56 @@ impl RawSender {
                 None => Err(TrySendError::Full),
             }
         }
+    }
+
+    /// Connect to new ports over this port.
+    pub async fn connect(&mut self, ports: Vec<PortNumber>, wait: bool) -> Result<Vec<Connect>, SendError> {
+        if ports.len() > self.max_port_count() {
+            return Err(SendError::ExceedsMaxPortCount {
+                port_count: ports.len(),
+                max_count: self.max_port_count(),
+            });
+        }
+
+        let mut credits = self.credits.request(1).await?;
+
+        let mut ports_response = Vec::new();
+        let mut sent_txs = Vec::new();
+        let mut connects = Vec::new();
+
+        for port in ports {
+            let (response_tx, response_rx) = oneshot::channel();
+            ports_response.push((port, response_tx));
+
+            let response = tokio::spawn(async move {
+                match response_rx.await {
+                    Ok(ConnectResponse::Accepted(sender, receiver)) => Ok((sender, receiver)),
+                    Ok(ConnectResponse::Rejected { no_ports }) => {
+                        if no_ports {
+                            Err(ConnectError::RemotePortsExhausted)
+                        } else {
+                            Err(ConnectError::Rejected)
+                        }
+                    }
+                    Err(_) => Err(ConnectError::MultiplexerError),
+                }
+            });
+
+            let (sent_tx, sent_rx) = mpsc::channel(1);
+            sent_txs.push(sent_tx);
+
+            connects.push(Connect { sent_rx, response });
+        }
+
+        let msg = PortEvt::SendPorts {
+            remote_port: self.remote_port,
+            credit: credits.take_one(),
+            wait,
+            ports: ports_response,
+        };
+        self.tx.send(msg).await?;
+
+        Ok(connects)
     }
 
     /// True, once the remote endpoint has closed its receiver.

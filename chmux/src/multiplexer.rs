@@ -35,7 +35,7 @@ use crate::{
     listener::{Listener, RawListener, RemoteConnectMsg, Request},
     msg::{Credit, MultiplexMsg},
     port_allocator::{PortAllocator, PortNumber},
-    receiver::{PortReceiveMsg, RawReceiver, ReceivedData},
+    receiver::{PortReceiveMsg, RawReceiver, ReceivedData, ReceivedPortRequests},
     sender::RawSender,
     Cfg, MultiplexError, PROTOCOL_VERSION,
 };
@@ -116,6 +116,17 @@ pub(crate) enum PortEvt {
         last: bool,
         /// Flow-control credit.
         credit: Credit,
+    },
+    /// Send ports.
+    SendPorts {
+        /// Remote port that will receive ports.
+        remote_port: u32,
+        /// Flow-control credit.
+        credit: Credit,
+        /// Wait for remote port to become available.
+        wait: bool,
+        /// Ports to send, together with response channel.
+        ports: Vec<(PortNumber, oneshot::Sender<ConnectResponse>)>,
     },
     /// Return channel-specific flow control credits.
     ReturnCredits {
@@ -804,6 +815,19 @@ where
                 )));
             }
 
+            // Send ports from port.
+            GlobalEvt::Port(PortEvt::SendPorts { remote_port, ports, credit, wait }) => {
+                let mut port_nums = Vec::new();
+                for (port, response_tx) in ports {
+                    let port_num = *port;
+                    if self.ports.insert(port, PortState::Connecting { response_tx }).is_some() {
+                        panic!("SendPorts with already used local port {}", port_num);
+                    }
+                    port_nums.push(port_num);
+                }
+                send_msg(permit, MultiplexMsg::PortData { port: remote_port, wait, credit, ports: port_nums });
+            }
+
             // Return port credits to remote endpoint.
             GlobalEvt::Port(PortEvt::ReturnCredits { remote_port, credits }) => {
                 send_msg(permit, MultiplexMsg::PortCredits { port: remote_port, credits });
@@ -977,6 +1001,37 @@ where
                 } else {
                     return Err(protocol_err!(format!(
                         "received data for non-connected or finished local port {}",
+                        &port
+                    )));
+                }
+            }
+
+            MultiplexMsg::PortData { port, wait, credit, ports } => {
+                if let Some(PortState::Connected {
+                    receiver_tx_data: Some(receiver_tx_data),
+                    receiver_credit_monitor,
+                    ..
+                }) = self.ports.get_mut(&port)
+                {
+                    let used_credit = match credit {
+                        Credit::Global => self.global_rx_credits_monitor.use_one()?,
+                        Credit::Port => receiver_credit_monitor.use_one()?,
+                    };
+                    let port_allocator = self.port_allocator.clone();
+                    let channel_tx = self.channel_tx.clone();
+                    let requests = ports
+                        .into_iter()
+                        .map(|remote_port| {
+                            Request::new(remote_port, wait, port_allocator.clone(), channel_tx.clone())
+                        })
+                        .collect();
+                    let _ = receiver_tx_data.send(PortReceiveMsg::PortRequests(ReceivedPortRequests {
+                        requests,
+                        credit: used_credit,
+                    }));
+                } else {
+                    return Err(protocol_err!(format!(
+                        "received port data for non-connected or finished local port {}",
                         &port
                     )));
                 }
