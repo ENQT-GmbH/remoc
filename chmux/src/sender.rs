@@ -24,7 +24,7 @@ use crate::{
     codec::Serializer,
     credit::{AssignedCredits, CreditUser},
     multiplexer::PortEvt,
-    Connect, ConnectError, PortNumber,
+    Connect, ConnectError, PortNumber, SerializationError,
 };
 
 /// An error occured during sending of a message.
@@ -40,7 +40,7 @@ pub enum SendError {
     /// This side has been closed.
     SinkClosed,
     /// A serialization error occured.
-    SerializationError(Box<dyn Error + Send + Sync + 'static>),
+    SerializationError(SerializationError),
     /// Data exceeds maximum size.
     ExceedsMaxDataSize {
         /// Actual data size.
@@ -342,7 +342,7 @@ impl RawSender {
         }
     }
 
-    /// Connect to new ports over this port.
+    /// Sends port open requests over this port and returns the connect requests.
     pub async fn connect(&mut self, ports: Vec<PortNumber>, wait: bool) -> Result<Vec<Connect>, SendError> {
         if ports.len() > self.max_port_count() {
             return Err(SendError::ExceedsMaxPortCount {
@@ -510,7 +510,7 @@ where
     ///
     /// Does not wait until send space becomes available.
     pub fn try_send(&mut self, item: &Item) -> Result<(), TrySendError> {
-        let data = self.serializer.serialize(item).map_err(|err| SendError::SerializationError(err))?;
+        let data = self.serializer.serialize(item).map_err(SendError::SerializationError)?;
         self.raw.try_send(&data)
     }
 

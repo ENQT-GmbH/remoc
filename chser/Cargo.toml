@@ -11,3 +11,5 @@ serde = {version="1", features=["derive"]}
 serde_json = {version="1"}
 futures = "0.3"
 tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
+async-trait = "0.1"
+bytes = "1"

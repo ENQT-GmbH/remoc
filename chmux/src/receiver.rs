@@ -12,7 +12,7 @@ use crate::{
     codec::Deserializer,
     credit::{ChannelCreditReturner, UsedCredit},
     multiplexer::PortEvt,
-    Request,
+    DeserializationError, Request,
 };
 
 /// An error occured during receiving a message.
@@ -28,7 +28,7 @@ pub enum ReceiveError {
         max_size: usize,
     },
     /// A deserialization error occured.
-    DeserializationError(Box<dyn Error + Send + Sync + 'static>),
+    DeserializationError(DeserializationError),
 }
 
 impl ReceiveError {
@@ -310,7 +310,7 @@ impl RawReceiver {
     /// Receives data over the channel.
     ///
     /// Waits for data to become available.
-    /// Received ports are silently rejected.
+    /// Received port open requests are silently rejected.
     pub async fn recv(&mut self) -> Result<Option<DataBuf>, ReceiveError> {
         loop {
             match self.recv_any().await? {
@@ -364,7 +364,7 @@ impl RawReceiver {
 
     /// Polls to receive on this channel.
     ///
-    /// Received ports are silently rejected.
+    /// Received port open requests are silently rejected.
     pub fn poll_recv(&mut self, cx: &mut Context) -> Poll<Result<Option<DataBuf>, ReceiveError>> {
         loop {
             match ready!(self.poll_recv_any(cx))? {

@@ -4,10 +4,11 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{any::type_name, fmt, marker::PhantomData};
 
-use super::BoxError;
+use super::SerializationError;
 use crate::{
     codec::{CodecFactory, Deserializer, Serializer},
     receiver::DataBuf,
+    DeserializationError,
 };
 
 /// Serializes items into JSON format.
@@ -25,9 +26,9 @@ impl<Item> Serializer<Item> for JsonSerializer<Item>
 where
     Item: Serialize,
 {
-    fn serialize(&self, item: &Item) -> Result<Bytes, BoxError> {
+    fn serialize(&self, item: &Item) -> Result<Bytes, SerializationError> {
         let mut writer = BytesMut::new().writer();
-        serde_json::to_writer(&mut writer, &item).map_err(|err| Box::new(err) as BoxError)?;
+        serde_json::to_writer(&mut writer, &item).map_err(SerializationError::new)?;
         Ok(writer.into_inner().freeze())
     }
 }
@@ -47,8 +48,8 @@ impl<Item> Deserializer<Item> for JsonDeserializer<Item>
 where
     Item: DeserializeOwned,
 {
-    fn deserialize(&self, data: DataBuf) -> Result<Item, BoxError> {
-        serde_json::from_reader(data.reader()).map_err(|err| Box::new(err) as BoxError)
+    fn deserialize(&self, data: DataBuf) -> Result<Item, DeserializationError> {
+        serde_json::from_reader(data.reader()).map_err(DeserializationError::new)
     }
 }
 

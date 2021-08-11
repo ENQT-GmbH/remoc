@@ -18,7 +18,7 @@ use crate::{
 };
 
 /// An multiplexer listener error.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ListenerError {
     /// All local ports are in use.
     LocalPortsExhausted,

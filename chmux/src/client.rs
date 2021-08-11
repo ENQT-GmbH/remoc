@@ -24,7 +24,7 @@ use crate::{
 };
 
 /// An error occured during connecting to a remote service.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ConnectError {
     /// All local ports are in use.
     LocalPortsExhausted,
@@ -36,8 +36,6 @@ pub enum ConnectError {
     Rejected,
     /// A multiplexer error has occured or it has been terminated.
     MultiplexerError,
-    /// Error serializing the service request.
-    SerializationError(BoxError),
 }
 
 impl fmt::Display for ConnectError {
@@ -48,7 +46,6 @@ impl fmt::Display for ConnectError {
             Self::TooManyPendingConnectionRequests => write!(f, "too many connection requests are pending"),
             Self::Rejected => write!(f, "connection has been rejected by server"),
             Self::MultiplexerError => write!(f, "multiplexer error"),
-            Self::SerializationError(err) => write!(f, "serialization error: {}", err),
         }
     }
 }

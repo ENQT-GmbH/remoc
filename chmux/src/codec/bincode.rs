@@ -6,10 +6,10 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{any::type_name, fmt, marker::PhantomData, sync::Arc};
 
-use super::BoxError;
 use crate::{
     codec::{CodecFactory, Deserializer, Serializer},
     receiver::DataBuf,
+    DeserializationError, SerializationError,
 };
 
 /// Serializes items into Bincode format.
@@ -31,9 +31,9 @@ impl<Item> Serializer<Item> for BincodeSerializer<Item>
 where
     Item: Serialize,
 {
-    fn serialize(&self, item: &Item) -> Result<Bytes, BoxError> {
+    fn serialize(&self, item: &Item) -> Result<Bytes, SerializationError> {
         let mut writer = BytesMut::new().writer();
-        self.config.serialize_into(&mut writer, &item).map_err(|err| Box::new(err) as BoxError)?;
+        self.config.serialize_into(&mut writer, &item).map_err(SerializationError::new)?;
         Ok(writer.into_inner().freeze())
     }
 }
@@ -57,8 +57,8 @@ impl<Item> Deserializer<Item> for BincodeDeserializer<Item>
 where
     Item: DeserializeOwned,
 {
-    fn deserialize(&self, data: DataBuf) -> Result<Item, BoxError> {
-        self.config.deserialize_from(data.reader()).map_err(|err| Box::new(err) as BoxError)
+    fn deserialize(&self, data: DataBuf) -> Result<Item, DeserializationError> {
+        self.config.deserialize_from(data.reader()).map_err(DeserializationError::new)
     }
 }
 

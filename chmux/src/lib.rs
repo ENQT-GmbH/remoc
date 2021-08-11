@@ -22,12 +22,12 @@ use std::{error::Error, fmt};
 
 pub use channel::Channel;
 pub use client::{Client, Connect, ConnectError, RawClient};
-pub use codec::{CodecFactory, Deserializer, Serializer};
+pub use codec::{CodecFactory, DeserializationError, Deserializer, SerializationError, Serializer};
 pub use listener::{Listener, ListenerError, ListenerStream, RawListener, RawListenerStream, Request};
 pub use msg::Cfg;
 pub use multiplexer::Multiplexer;
 pub use port_allocator::{PortAllocator, PortNumber};
-pub use receiver::{DataBuf, RawReceiver, RawReceiverStream, ReceiveError, Receiver, ReceiverStream};
+pub use receiver::{DataBuf, RawReceiver, RawReceiverStream, ReceiveError, Receiver, Received, ReceiverStream};
 pub use sender::{Closed, RawSender, RawSenderSink, SendError, Sender, SenderSink, TrySendError};
 
 /// Channel multiplexer protocol version.
