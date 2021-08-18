@@ -4,54 +4,62 @@ use std::{
     rc::{Rc, Weak},
 };
 
-use futures::{future::BoxFuture, Future, FutureExt};
+use futures::future::BoxFuture;
 use serde::{ser, Serialize};
 
-use crate::{
-    codec::{CodecT, SerializationError},
-    Obtainer,
-};
-use chmux::{
-    Connect, DataBuf, ListenerError, PortAllocator, PortNumber, RawReceiver, RawSender, Received, Request,
-};
+use super::Obtainer;
+use crate::codec::{CodecT, SerializationError};
 
 /// Error obtaining a remote sender.
 #[derive(Clone, Debug)]
-pub(crate) enum ObtainSenderError {
+pub enum ObtainSenderError {
     Dropped,
-    Listener(ListenerError),
+    Listener(chmux::ListenerError),
+    Connect(chmux::ConnectError),
 }
 
-impl From<ListenerError> for ObtainSenderError {
-    fn from(err: ListenerError) -> Self {
+impl From<chmux::ListenerError> for ObtainSenderError {
+    fn from(err: chmux::ListenerError) -> Self {
         Self::Listener(err)
+    }
+}
+
+impl From<chmux::ConnectError> for ObtainSenderError {
+    fn from(err: chmux::ConnectError) -> Self {
+        Self::Connect(err)
     }
 }
 
 pub struct SendError<T> {
     pub kind: SendErrorKind,
-    pub item: T
+    pub item: T,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum SendErrorKind {
     Closed,
     PortsExhausted,
     Serialize(SerializationError),
     Send(chmux::SendError),
     Obtain(ObtainSenderError),
+    Connect(chmux::ConnectError),
+    Forward,
 }
 
 impl<T> SendError<T> {
     pub fn new(kind: SendErrorKind, item: T) -> Self {
-        Self { kind, item}
+        Self { kind, item }
     }
 }
 
 /// Gathers ports to send to the remote endpoint during object serialization.
 pub(crate) struct PortSerializer {
-    allocator: PortAllocator,
-    requests: Vec<(PortNumber, Box<dyn FnOnce(Connect, PortAllocator) -> BoxFuture<'static, ()>>)>,
+    allocator: chmux::PortAllocator,
+    #[allow(clippy::type_complexity)]
+    requests: Vec<(
+        chmux::PortNumber,
+        Box<dyn FnOnce(chmux::Connect, chmux::PortAllocator) -> BoxFuture<'static, ()> + Send + 'static>,
+    )>,
 }
 
 impl PortSerializer {
@@ -60,7 +68,7 @@ impl PortSerializer {
     }
 
     /// Create a new port serializer and register it as active.
-    fn start(allocator: PortAllocator) -> Rc<RefCell<Self>> {
+    fn start(allocator: chmux::PortAllocator) -> Rc<RefCell<Self>> {
         let this = Rc::new(RefCell::new(Self { allocator, requests: Vec::new() }));
         let weak = Rc::downgrade(&this);
         Self::INSTANCE.with(move |i| i.replace(weak));
@@ -79,7 +87,7 @@ impl PortSerializer {
     ///
     /// Returns the local port number and calls the specified function with the connect object.
     pub(crate) fn connect<E>(
-        callback: impl FnOnce(Connect, PortAllocator) -> BoxFuture<'static, ()> + 'static,
+        callback: impl FnOnce(chmux::Connect, chmux::PortAllocator) -> BoxFuture<'static, ()> + Send + 'static,
     ) -> Result<u32, E>
     where
         E: serde::ser::Error,
@@ -88,10 +96,10 @@ impl PortSerializer {
             Some(this) => this,
             None => return Err(ser::Error::custom("a channel can only be serialized for sending")),
         };
-        let this =
+        let mut this =
             this.try_borrow_mut().expect("PortSerializer is referenced multiple times during serialization");
 
-        let local_port = this.allocator.try_allocate().ok_or(ser::Error::custom("ports exhausted"))?;
+        let local_port = this.allocator.try_allocate().ok_or_else(|| ser::Error::custom("ports exhausted"))?;
         let local_port_num = *local_port;
         this.requests.push((local_port, Box::new(callback)));
 
@@ -102,31 +110,34 @@ impl PortSerializer {
 /// Sends data to a remote endpoint.
 ///
 /// Can serialize a base sender and a base receiver.
-pub(crate) struct RemoteSender<T, Codec> {
-    sender: Obtainer<RawSender, ObtainSenderError>,
+pub(crate) struct Sender<T, Codec> {
+    sender: Obtainer<chmux::Sender, ObtainSenderError>,
     allocator: chmux::PortAllocator,
     _data: PhantomData<T>,
     _codec: PhantomData<Codec>,
 }
 
-impl<T, Codec> RemoteSender<T, Codec>
+impl<T, Codec> Sender<T, Codec>
 where
-    T: Serialize,
+    T: Serialize + Send + 'static,
     Codec: CodecT,
 {
-    pub fn new(sender: Obtainer<RawSender, ObtainSenderError>, allocator: PortAllocator) -> Self {
+    pub fn new(sender: Obtainer<chmux::Sender, ObtainSenderError>, allocator: chmux::PortAllocator) -> Self {
         Self { sender, allocator, _data: PhantomData, _codec: PhantomData }
     }
 
     pub async fn send(&mut self, item: T) -> Result<(), SendError<T>> {
         // Serialize item while gathering port requests from embedded
         // BaseSenders and BaseReceivers.
-        let requestor = PortSerializer::start(self.allocator.clone());
-        let data = match Codec::serialize(&item) {
-            Ok(data) => data,
-            Err(err) => return Err(SendError::new(SendErrorKind::Serialize(err), item))
+        let data;
+        let requestor = {
+            let requestor_ref = PortSerializer::start(self.allocator.clone());
+            data = match Codec::serialize(&item) {
+                Ok(data) => data,
+                Err(err) => return Err(SendError::new(SendErrorKind::Serialize(err), item)),
+            };
+            PortSerializer::finish(requestor_ref)
         };
-        let requestor = PortSerializer::finish(requestor);
 
         // Send the serialized item data.
         let sender = match self.sender.get().await {
@@ -152,11 +163,19 @@ where
             Err(err) => return Err(SendError::new(SendErrorKind::Send(err), item)),
         };
 
+        // Ensure that item is dropped before calling connection callbacks.
+        drop(item);
+
         // Call callbacks of BaseSenders and BaseReceivers with obtained
         // chmux connect requests.
-        for (callback, connect) in callbacks.into_iter().zip(connects.into_iter()) {
-            callback(connect, self.allocator.clone()).await;
-        }
+        //
+        // We have to spawn a task for this to ensure cancellation safety.
+        let allocator = self.allocator.clone();
+        tokio::spawn(async move {
+            for (callback, connect) in callbacks.into_iter().zip(connects.into_iter()) {
+                callback(connect, allocator.clone()).await;
+            }
+        });
 
         Ok(())
     }

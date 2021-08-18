@@ -2,8 +2,8 @@
 resolver = "2"
 members = [
     "chmux",
-    "chrpc",
-    "chrpc_macro",
+    #"chrpc",
+    #"chrpc_macro",
     "chser",
 ]
 

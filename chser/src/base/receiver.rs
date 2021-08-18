@@ -16,7 +16,7 @@ use std::{
     sync::Arc,
 };
 
-use chmux::{Connect, DataBuf, ListenerError, PortAllocator, PortNumber, RawReceiver, Received, Request};
+use chmux::{Connect, DataBuf, ListenerError, PortAllocator, PortNumber, Receiver, Received, Request};
 use futures::{future::BoxFuture, Future, FutureExt};
 use serde::{de::DeserializeOwned, ser, Deserialize, Serialize};
 use tokio::sync::{oneshot, Mutex};
@@ -120,6 +120,11 @@ where
             // So it would have to be similar to close?
             // Question is what to send...
             // Maybe a lock is not avoidable
+            // So do we have a possible solution here?
+            // All received data would have to be forwarded.
+            // And then after forwarding, the send target can be switched.
+            // But the question is if we really need that?
+            // Probably not
         }
     }
 }

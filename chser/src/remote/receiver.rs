@@ -5,38 +5,40 @@ use std::{
     rc::{Rc, Weak},
 };
 
-use futures::{future::BoxFuture, Future, FutureExt};
-use serde::{de::DeserializeOwned, ser, Deserialize, Serialize};
+use futures::future::BoxFuture;
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
-use crate::{Obtainer, codec::{CodecT, DeserializationError, SerializationError}};
-use chmux::{Connect, ConnectError, DataBuf, ListenerError, PortAllocator, PortNumber, RawReceiver, RawSender, Received, Request};
+use super::Obtainer;
+use crate::codec::{CodecT, DeserializationError};
 
 /// Error obtaining a remote receiver.
 #[derive(Clone)]
-enum ObtainReceiverError {
+pub enum ObtainReceiverError {
     Dropped,
-    Listener(ListenerError),
-    Connect(ConnectError),
+    Listener(chmux::ListenerError),
+    Connect(chmux::ConnectError),
 }
 
-impl From<ListenerError> for ObtainReceiverError {
-    fn from(err: ListenerError) -> Self {
+impl From<chmux::ListenerError> for ObtainReceiverError {
+    fn from(err: chmux::ListenerError) -> Self {
         Self::Listener(err)
     }
 }
 
-impl From<ConnectError> for ObtainReceiverError {
-    fn from(err: ConnectError) -> Self {
+impl From<chmux::ConnectError> for ObtainReceiverError {
+    fn from(err: chmux::ConnectError) -> Self {
         Self::Connect(err)
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum ReceiveError {
     Receive(chmux::ReceiveError),
     Deserialize(DeserializationError),
     UnmatchedPort(u32),
     MissingPorts(Vec<u32>),
+    Connect(chmux::ConnectError),
+    Listen(chmux::ListenerError),
 }
 
 impl From<chmux::ReceiveError> for ReceiveError {
@@ -59,9 +61,20 @@ impl From<ObtainReceiverError> for ReceiveError {
 
 /// Gathers ports sent from the remote endpoint during deserialization.
 pub(crate) struct PortDeserializer {
-    allocator: PortAllocator,
+    allocator: chmux::PortAllocator,
     /// Callbacks by remote port.
-    expected: HashMap<u32, Box<dyn FnOnce(Request) + Send + 'static>>,
+    #[allow(clippy::type_complexity)]
+    expected: HashMap<
+        u32,
+        (
+            chmux::PortNumber,
+            Box<
+                dyn FnOnce(chmux::PortNumber, chmux::Request, chmux::PortAllocator) -> BoxFuture<'static, ()>
+                    + Send
+                    + 'static,
+            >,
+        ),
+    >,
 }
 
 impl PortDeserializer {
@@ -70,7 +83,7 @@ impl PortDeserializer {
     }
 
     /// Create a new port deserializer and register it as active.
-    fn start(allocator: PortAllocator) -> Rc<RefCell<PortDeserializer>> {
+    fn start(allocator: chmux::PortAllocator) -> Rc<RefCell<PortDeserializer>> {
         let this = Rc::new(RefCell::new(Self { allocator, expected: HashMap::new() }));
         let weak = Rc::downgrade(&this);
         Self::INSTANCE.with(move |i| i.replace(weak));
@@ -87,11 +100,13 @@ impl PortDeserializer {
 
     /// Accept the chmux port with the specified remote port number sent from the remote endpoint.
     ///
-    /// Returns the port allocator and local port number.
-    /// Calls the specified function with the connect request.
+    /// Returns the local port number and calls the specified function with the received connect request.
     pub fn accept<E>(
-        remote_port: u32, callback: impl FnOnce(Request) + Send + 'static,
-    ) -> Result<(PortAllocator, PortNumber), E>
+        remote_port: u32,
+        callback: impl FnOnce(chmux::PortNumber, chmux::Request, chmux::PortAllocator) -> BoxFuture<'static, ()>
+            + Send
+            + 'static,
+    ) -> Result<u32, E>
     where
         E: serde::de::Error,
     {
@@ -99,34 +114,38 @@ impl PortDeserializer {
             Some(this) => this,
             None => return Err(serde::de::Error::custom("a channel can only be deserialized during receiving")),
         };
-        let this =
-            this.try_borrow_mut().expect("PortDeserializer is referenced multiple times during serialization");
-        this.expected.insert(remote_port, Box::new(callback));
 
-        let local_port = this.allocator.try_allocate().ok_or(serde::de::Error::custom("ports exhausted"))?;
-        Ok((this.allocator.clone(), local_port))
+        let mut this =
+            this.try_borrow_mut().expect("PortDeserializer is referenced multiple times during serialization");
+        let local_port =
+            this.allocator.try_allocate().ok_or_else(|| serde::de::Error::custom("ports exhausted"))?;
+        let local_port_num = *local_port;
+        this.expected.insert(remote_port, (local_port, Box::new(callback)));
+
+        Ok(local_port_num)
     }
 }
 
 /// Receives data from remote endpoint.
 ///
 /// Can deserialize a base send and a base receiver.
-pub(crate) struct RemoteReceiver<T, Codec> {
-    receiver: Obtainer<chmux::RawReceiver, ObtainReceiverError>,
+pub(crate) struct Receiver<T, Codec> {
+    receiver: Obtainer<chmux::Receiver, ObtainReceiverError>,
     allocator: chmux::PortAllocator,
-    data: Option<DataBuf>,
+    data: Option<chmux::DataBuf>,
     item: Option<T>,
     gatherer: Option<PortDeserializer>,
     _codec: PhantomData<Codec>,
 }
 
-impl<T, Codec> RemoteReceiver<T, Codec>
+impl<T, Codec> Receiver<T, Codec>
 where
     T: DeserializeOwned + Send + 'static,
     Codec: CodecT,
 {
-
-    pub fn new(receiver: Obtainer<RawReceiver, ObtainReceiverError>, allocator: PortAllocator) -> Self {
+    pub fn new(
+        receiver: Obtainer<chmux::Receiver, ObtainReceiverError>, allocator: chmux::PortAllocator,
+    ) -> Self {
         Self { receiver, allocator, data: None, item: None, gatherer: None, _codec: PhantomData }
     }
 
@@ -156,8 +175,8 @@ where
                 // Receive port requests from chmux.
                 // TODO: reassemble ports if more ports than allowed per message
                 let requests = match receiver.recv_any().await? {
-                    Some(Received::Requests(requests)) => requests,
-                    Some(Received::Data(data)) => {
+                    Some(chmux::Received::Requests(requests)) => requests,
+                    Some(chmux::Received::Data(data)) => {
                         // Current send operation has been aborted and this is data from
                         // next send operation, so we restart.
                         self.data = Some(data);
@@ -177,7 +196,9 @@ where
                 let mut expected = self.gatherer.take().unwrap().expected;
                 for request in requests {
                     match expected.remove(&request.remote_port()) {
-                        Some(callback) => callback(request),
+                        Some((local_port, callback)) => {
+                            callback(local_port, request, self.allocator.clone()).await
+                        }
                         None => return Err(ReceiveError::UnmatchedPort(request.remote_port())),
                     }
                 }
@@ -191,6 +212,7 @@ where
         }
     }
 
+    #[allow(dead_code)]
     pub async fn close(&mut self) {
         if let Ok(receiver) = self.receiver.get().await {
             receiver.close().await

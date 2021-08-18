@@ -14,7 +14,8 @@ use crate::{
 };
 
 /// An error occured during receiving a message.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ReceiveError {
     /// Multiplexer terminated.
     Multiplexer,

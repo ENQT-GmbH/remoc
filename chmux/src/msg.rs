@@ -330,6 +330,7 @@ pub enum Credit {
 
 /// Multiplexer configuration.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Cfg {
     /// Time after which connection is closed when no data is.
     ///

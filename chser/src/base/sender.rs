@@ -10,7 +10,7 @@ use std::{
     sync::Arc,
 };
 
-use chmux::{Connect, DataBuf, ListenerError, PortAllocator, PortNumber, RawReceiver, Received, Request};
+use chmux::{Connect, DataBuf, ListenerError, PortAllocator, PortNumber, Receiver, Received, Request};
 use futures::{future::BoxFuture, Future, FutureExt};
 use serde::{de::DeserializeOwned, ser, Deserialize, Serialize};
 use tokio::sync::{oneshot, Mutex};

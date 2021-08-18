@@ -23,6 +23,7 @@ use crate::{
 
 /// An error occured during connecting to a remote service.
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ConnectError {
     /// All local ports are in use.
     LocalPortsExhausted,

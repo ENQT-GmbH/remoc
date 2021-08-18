@@ -26,7 +26,8 @@ use crate::{
 };
 
 /// An error occured during sending of a message.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SendError {
     /// The multiplexer terminated.
     Multiplexer,
