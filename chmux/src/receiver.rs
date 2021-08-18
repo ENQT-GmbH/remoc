@@ -198,7 +198,7 @@ pub enum Received {
 }
 
 /// Receives byte data over a channel.
-pub struct RawReceiver {
+pub struct Receiver {
     local_port: u32,
     remote_port: u32,
     max_data_size: usize,
@@ -211,9 +211,9 @@ pub struct RawReceiver {
     _drop_tx: oneshot::Sender<()>,
 }
 
-impl fmt::Debug for RawReceiver {
+impl fmt::Debug for Receiver {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("RawReceiver")
+        f.debug_struct("Receiver")
             .field("local_port", &self.local_port)
             .field("remote_port", &self.remote_port)
             .field("closed", &self.closed)
@@ -222,7 +222,7 @@ impl fmt::Debug for RawReceiver {
     }
 }
 
-impl RawReceiver {
+impl Receiver {
     pub(crate) fn new(
         local_port: u32, remote_port: u32, max_data_size: usize, tx: mpsc::Sender<PortEvt>,
         rx: mpsc::UnboundedReceiver<PortReceiveMsg>, credits: ChannelCreditReturner,
@@ -379,21 +379,21 @@ impl RawReceiver {
     }
 
     /// Convert this into a stream.
-    pub fn into_stream(self) -> RawReceiverStream {
-        RawReceiverStream(self)
+    pub fn into_stream(self) -> ReceiverStream {
+        ReceiverStream(self)
     }
 }
 
-impl Drop for RawReceiver {
+impl Drop for Receiver {
     fn drop(&mut self) {
         // required for correct drop order
     }
 }
 
 /// A stream receiving byte data over a channel.
-pub struct RawReceiverStream(RawReceiver);
+pub struct ReceiverStream(Receiver);
 
-impl RawReceiverStream {
+impl ReceiverStream {
     /// Closes the sender at the remote endpoint, preventing it from sending new data.
     /// Already sent message will still be received.
     pub async fn close(&mut self) {
@@ -401,7 +401,7 @@ impl RawReceiverStream {
     }
 }
 
-impl Stream for RawReceiverStream {
+impl Stream for ReceiverStream {
     type Item = Result<DataBuf, ReceiveError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {

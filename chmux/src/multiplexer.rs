@@ -26,16 +26,16 @@ use tokio::{
 };
 
 use crate::{
-    client::{ConnectRequest, ConnectResponse, RawClient},
+    client::{Client, ConnectRequest, ConnectResponse},
     credit::{
         credit_monitor_pair, credit_send_pair, ChannelCreditMonitor, CreditProvider, GlobalCreditMonitor,
         GlobalCredits,
     },
-    listener::{RawListener, RemoteConnectMsg, Request},
+    listener::{Listener, RemoteConnectMsg, Request},
     msg::{Credit, MultiplexMsg},
     port_allocator::{PortAllocator, PortNumber},
-    receiver::{PortReceiveMsg, RawReceiver, ReceivedData, ReceivedPortRequests},
-    sender::RawSender,
+    receiver::{PortReceiveMsg, ReceivedData, ReceivedPortRequests, Receiver},
+    sender::Sender,
     Cfg, MultiplexError, PROTOCOL_VERSION,
 };
 
@@ -94,7 +94,7 @@ pub(crate) enum PortEvt {
         /// Remote port.
         remote_port: u32,
         /// Reply with port sender and receiver.
-        port_tx: oneshot::Sender<(RawSender, RawReceiver)>,
+        port_tx: oneshot::Sender<(Sender, Receiver)>,
     },
     /// Connection was rejected.
     Rejected {
@@ -269,7 +269,7 @@ where
     /// After creation use the `run` method of the multiplexer to launch the dispatch task.
     pub async fn new(
         cfg: &Cfg, mut transport_sink: TransportSink, mut transport_stream: TransportStream,
-    ) -> Result<(Self, RawClient, RawListener), MultiplexError<TransportSinkError, TransportStreamError>> {
+    ) -> Result<(Self, Client, Listener), MultiplexError<TransportSinkError, TransportStreamError>> {
         // Check configuration.
         if cfg.max_ports.get() > 2u32.pow(31) {
             return Err(MultiplexError::TooManyPorts);
@@ -325,16 +325,16 @@ where
             transport_stream: Some(transport_stream),
         };
 
-        let raw_client = RawClient::new(
+        let client = Client::new(
             connect_tx,
             remote_cfg.connect_queue.get(),
             port_allocator.clone(),
             remote_listener_dropped,
         );
-        let raw_server = RawListener::new(listen_wait_rx, listen_no_wait_rx, port_allocator);
+        let listener = Listener::new(listen_wait_rx, listen_no_wait_rx, port_allocator);
 
         log::trace!("{}: multiplexer created", &multiplexer.trace_id);
-        Ok((multiplexer, raw_client, raw_server))
+        Ok((multiplexer, client, listener))
     }
 
     /// Feed transport message to sink and log it.
@@ -440,7 +440,7 @@ where
     }
 
     /// Create port in port registry and return associated sender and receiver.
-    fn create_port(&mut self, local_port: PortNumber, remote_port: u32) -> (RawSender, RawReceiver) {
+    fn create_port(&mut self, local_port: PortNumber, remote_port: u32) -> (Sender, Receiver) {
         let local_port_num = *local_port;
         log::trace!(
             "{}: created port {} connected to remote port {}",
@@ -482,7 +482,7 @@ where
             );
         }
 
-        let raw_sender = RawSender::new(
+        let sender = Sender::new(
             local_port_num,
             remote_port,
             self.remote_cfg.max_data_size.get(),
@@ -493,7 +493,7 @@ where
             Arc::downgrade(&hangup_notify),
         );
 
-        let raw_receiver = RawReceiver::new(
+        let receiver = Receiver::new(
             local_port_num,
             remote_port,
             self.local_cfg.max_data_size.get(),
@@ -502,7 +502,7 @@ where
             receiver_credit_returner,
         );
 
-        (raw_sender, raw_receiver)
+        (sender, receiver)
     }
 
     /// Releases a port if no more local requests to it are possible
@@ -778,8 +778,8 @@ where
                     permit,
                     MultiplexMsg::PortOpened { client_port: remote_port, server_port: local_port_num },
                 );
-                let (raw_sender, raw_receiver) = self.create_port(local_port, remote_port);
-                let _ = port_tx.send((raw_sender, raw_receiver));
+                let (sender, receiver) = self.create_port(local_port, remote_port);
+                let _ = port_tx.send((sender, receiver));
             }
 
             // Remote connect request was rejected by local listener.
@@ -938,8 +938,8 @@ where
                 if let Some((local_port, PortState::Connecting { response_tx })) =
                     self.ports.remove_entry(&client_port)
                 {
-                    let (raw_sender, raw_receiver) = self.create_port(local_port, server_port);
-                    let _ = response_tx.send(ConnectResponse::Accepted(raw_sender, raw_receiver));
+                    let (sender, receiver) = self.create_port(local_port, server_port);
+                    let _ = response_tx.send(ConnectResponse::Accepted(sender, receiver));
                 } else {
                     return Err(protocol_err!(format!(
                         "received PortOpened message for port {} not in connecting state",

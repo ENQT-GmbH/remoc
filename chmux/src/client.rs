@@ -17,8 +17,8 @@ use tokio::{
 
 use crate::{
     port_allocator::{PortAllocator, PortNumber},
-    receiver::RawReceiver,
-    sender::RawSender,
+    receiver::Receiver,
+    sender::Sender,
 };
 
 /// An error occured during connecting to a remote service.
@@ -138,7 +138,7 @@ pub(crate) struct ConnectRequest {
 #[derive(Debug)]
 pub(crate) enum ConnectResponse {
     /// Connection accepted and channel opened.
-    Accepted(RawSender, RawReceiver),
+    Accepted(Sender, Receiver),
     /// Connection was rejected.
     Rejected {
         /// Remote endpoint had not ports available.
@@ -151,7 +151,7 @@ pub(crate) enum ConnectResponse {
 /// Await it to obtain the result of the connection request.
 pub struct Connect {
     pub(crate) sent_rx: mpsc::Receiver<()>,
-    pub(crate) response: JoinHandle<Result<(RawSender, RawReceiver), ConnectError>>,
+    pub(crate) response: JoinHandle<Result<(Sender, Receiver), ConnectError>>,
 }
 
 impl Connect {
@@ -168,7 +168,7 @@ impl Connect {
 }
 
 impl Future for Connect {
-    type Output = Result<(RawSender, RawReceiver), ConnectError>;
+    type Output = Result<(Sender, Receiver), ConnectError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let result = ready!(Pin::into_inner(self).response.poll_unpin(cx));
@@ -176,30 +176,30 @@ impl Future for Connect {
     }
 }
 
-/// Raw multiplexer client.
+/// Multiplexer client.
 ///
-/// Use to request a new port for raw sending and raw receiving.
+/// Use to request a new port for sending and receiving.
 /// This can be cloned to make simultaneous requests.
 #[derive(Clone)]
-pub struct RawClient {
+pub struct Client {
     tx: mpsc::UnboundedSender<ConnectRequest>,
     crediter: ConntectRequestCrediter,
     port_allocator: PortAllocator,
     listener_dropped: Arc<AtomicBool>,
 }
 
-impl fmt::Debug for RawClient {
+impl fmt::Debug for Client {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("RawClient").field("port_allocator", &self.port_allocator).finish()
+        f.debug_struct("Client").field("port_allocator", &self.port_allocator).finish()
     }
 }
 
-impl RawClient {
+impl Client {
     pub(crate) fn new(
         tx: mpsc::UnboundedSender<ConnectRequest>, limit: u16, port_allocator: PortAllocator,
         listener_dropped: Arc<AtomicBool>,
-    ) -> RawClient {
-        RawClient { tx, crediter: ConntectRequestCrediter::new(limit), port_allocator, listener_dropped }
+    ) -> Client {
+        Client { tx, crediter: ConntectRequestCrediter::new(limit), port_allocator, listener_dropped }
     }
 
     /// Obtains the port allocator.
@@ -210,7 +210,7 @@ impl RawClient {
     /// Connects to a newly allocated remote port from a newly allocated local port.
     ///
     /// This function waits until a local and remote port become available.
-    pub async fn connect(&self) -> Result<(RawSender, RawReceiver), ConnectError> {
+    pub async fn connect(&self) -> Result<(Sender, Receiver), ConnectError> {
         self.connect_ext(None, true).await?.await
     }
 

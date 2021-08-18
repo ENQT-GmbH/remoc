@@ -11,8 +11,8 @@ use tokio::sync::{mpsc, oneshot, Mutex};
 use crate::{
     multiplexer::PortEvt,
     port_allocator::{PortAllocator, PortNumber},
-    receiver::RawReceiver,
-    sender::RawSender,
+    receiver::Receiver,
+    sender::Sender,
 };
 
 /// An multiplexer listener error.
@@ -71,7 +71,7 @@ impl Request {
     }
 
     /// Accepts the request using a newly allocated local port.
-    pub async fn accept(self) -> Result<(RawSender, RawReceiver), ListenerError> {
+    pub async fn accept(self) -> Result<(Sender, Receiver), ListenerError> {
         let local_port = if self.wait {
             self.allocator.allocate().await
         } else {
@@ -88,9 +88,7 @@ impl Request {
     }
 
     /// Accepts the request using the specified local port.
-    pub async fn accept_from(
-        mut self, local_port: PortNumber,
-    ) -> Result<(RawSender, RawReceiver), ListenerError> {
+    pub async fn accept_from(mut self, local_port: PortNumber) -> Result<(Sender, Receiver), ListenerError> {
         let (port_tx, port_rx) = oneshot::channel();
         let _ = self.tx.send(PortEvt::Accepted { local_port, remote_port: self.remote_port, port_tx }).await;
         let _ = self.done_tx.take().unwrap().send(());
@@ -122,21 +120,21 @@ pub(crate) enum RemoteConnectMsg {
     ClientDropped,
 }
 
-/// Raw multiplexer listener.
-pub struct RawListener {
+/// Multiplexer listener.
+pub struct Listener {
     wait_rx: mpsc::Receiver<RemoteConnectMsg>,
     no_wait_rx: mpsc::Receiver<RemoteConnectMsg>,
     port_allocator: PortAllocator,
     closed: bool,
 }
 
-impl fmt::Debug for RawListener {
+impl fmt::Debug for Listener {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("RawListener").field("port_allocator", &self.port_allocator).finish()
+        f.debug_struct("Listener").field("port_allocator", &self.port_allocator).finish()
     }
 }
 
-impl RawListener {
+impl Listener {
     pub(crate) fn new(
         wait_rx: mpsc::Receiver<RemoteConnectMsg>, no_wait_rx: mpsc::Receiver<RemoteConnectMsg>,
         port_allocator: PortAllocator,
@@ -149,11 +147,11 @@ impl RawListener {
         self.port_allocator.clone()
     }
 
-    /// Accept a connection returning the raw sender and raw receiver for the opened port.
+    /// Accept a connection returning the sender and receiver for the opened port.
     ///
     /// Returns [None] when the client of the remote endpoint has been dropped and
     /// no more connection requests can be made.
-    pub async fn accept(&mut self) -> Result<Option<(RawSender, RawReceiver)>, ListenerError> {
+    pub async fn accept(&mut self) -> Result<Option<(Sender, Receiver)>, ListenerError> {
         if self.closed {
             return Ok(None);
         }
@@ -215,38 +213,38 @@ impl RawListener {
         }
     }
 
-    /// Convert this into a raw server stream.
-    pub fn into_stream(self) -> RawListenerStream {
-        RawListenerStream::new(self)
+    /// Convert this into a listener stream.
+    pub fn into_stream(self) -> ListenerStream {
+        ListenerStream::new(self)
     }
 }
 
-impl Drop for RawListener {
+impl Drop for Listener {
     fn drop(&mut self) {
         // required for correct drop order
     }
 }
 
-/// A stream accepting connections and returning raw senders and raw receivers.
+/// A stream accepting connections and returning senders and receivers.
 ///
 /// Ends when the client is dropped at the remote endpoint.
-pub struct RawListenerStream {
-    server: Arc<Mutex<RawListener>>,
+pub struct ListenerStream {
+    server: Arc<Mutex<Listener>>,
     #[allow(clippy::type_complexity)]
-    accept_fut: Option<BoxFuture<'static, Option<Result<(RawSender, RawReceiver), ListenerError>>>>,
+    accept_fut: Option<BoxFuture<'static, Option<Result<(Sender, Receiver), ListenerError>>>>,
 }
 
-impl RawListenerStream {
-    fn new(server: RawListener) -> Self {
+impl ListenerStream {
+    fn new(server: Listener) -> Self {
         Self { server: Arc::new(Mutex::new(server)), accept_fut: None }
     }
 
-    async fn accept(server: Arc<Mutex<RawListener>>) -> Option<Result<(RawSender, RawReceiver), ListenerError>> {
+    async fn accept(server: Arc<Mutex<Listener>>) -> Option<Result<(Sender, Receiver), ListenerError>> {
         let mut server = server.lock().await;
         server.accept().await.transpose()
     }
 
-    fn poll_next(&mut self, cx: &mut Context) -> Poll<Option<Result<(RawSender, RawReceiver), ListenerError>>> {
+    fn poll_next(&mut self, cx: &mut Context) -> Poll<Option<Result<(Sender, Receiver), ListenerError>>> {
         if self.accept_fut.is_none() {
             self.accept_fut = Some(Self::accept(self.server.clone()).boxed());
         }
@@ -259,8 +257,8 @@ impl RawListenerStream {
     }
 }
 
-impl Stream for RawListenerStream {
-    type Item = Result<(RawSender, RawReceiver), ListenerError>;
+impl Stream for ListenerStream {
+    type Item = Result<(Sender, Receiver), ListenerError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
         Pin::into_inner(self).poll_next(cx)

@@ -361,7 +361,7 @@ pub struct Cfg {
     /// Length of global send queue.
     /// Each element holds a chunk.
     ///
-    /// This limit the number of chunks sendable by using [RawSender::try_send].
+    /// This limit the number of chunks sendable by using [Sender::try_send].
     /// By default this is 32.
     pub shared_send_queue: NonZeroU16,
     /// Length of connection request queue.

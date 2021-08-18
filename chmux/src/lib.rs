@@ -16,13 +16,13 @@ mod sender;
 
 use std::{error::Error, fmt};
 
-pub use client::{Connect, ConnectError, RawClient};
-pub use listener::{ListenerError, RawListener, RawListenerStream, Request};
+pub use client::{Client, Connect, ConnectError};
+pub use listener::{Listener, ListenerError, ListenerStream, Request};
 pub use msg::Cfg;
 pub use multiplexer::Multiplexer;
 pub use port_allocator::{PortAllocator, PortNumber};
-pub use receiver::{DataBuf, RawReceiver, RawReceiverStream, ReceiveError, Received};
-pub use sender::{Closed, RawSender, RawSenderSink, SendError, TrySendError};
+pub use receiver::{DataBuf, ReceiveError, Received, Receiver, ReceiverStream};
+pub use sender::{Closed, SendError, Sender, SenderSink, TrySendError};
 
 /// Channel multiplexer protocol version.
 pub const PROTOCOL_VERSION: u8 = 2;

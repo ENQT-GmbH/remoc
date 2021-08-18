@@ -48,7 +48,7 @@ fn cfg2(trace_id: &str) -> chmux::Cfg {
 }
 
 #[tokio::test]
-async fn raw_test() {
+async fn basic() {
     init();
 
     let queue_length = 0;
@@ -118,7 +118,7 @@ async fn raw_test() {
 
     {
         println!("A client connecting 1...");
-        let ret: Result<(chmux::RawSender, chmux::RawReceiver), _> = a_client.connect().await;
+        let ret: Result<(chmux::Sender, chmux::Receiver), _> = a_client.connect().await;
         println!("A client connect result: {:?}", &ret);
     }
 
@@ -126,7 +126,7 @@ async fn raw_test() {
     sleep(Duration::from_secs(3)).await;
 
     println!("A client connecting 2...");
-    let (mut tx, mut rx): (chmux::RawSender, chmux::RawReceiver) = a_client.connect().await.unwrap();
+    let (mut tx, mut rx): (chmux::Sender, chmux::Receiver) = a_client.connect().await.unwrap();
     println!("A client connected.");
 
     let mut n_recv = 0;
@@ -159,7 +159,7 @@ async fn raw_test() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-async fn hangup_test() {
+async fn hangup() {
     init();
 
     let queue_length = 10;
@@ -217,7 +217,7 @@ async fn hangup_test() {
     });
 
     println!("A client connecting to service...");
-    let (mut tx, mut rx): (chmux::RawSender, chmux::RawReceiver) = a_client.connect().await.unwrap();
+    let (mut tx, mut rx): (chmux::Sender, chmux::Receiver) = a_client.connect().await.unwrap();
     println!("A client connected.");
 
     let hn = tx.closed();

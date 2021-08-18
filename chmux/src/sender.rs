@@ -158,7 +158,7 @@ impl Future for Closed {
 }
 
 /// Sends byte data over a channel.
-pub struct RawSender {
+pub struct Sender {
     local_port: u32,
     remote_port: u32,
     max_data_size: usize,
@@ -170,9 +170,9 @@ pub struct RawSender {
     _drop_tx: oneshot::Sender<()>,
 }
 
-impl fmt::Debug for RawSender {
+impl fmt::Debug for Sender {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("RawSender")
+        f.debug_struct("Sender")
             .field("local_port", &self.local_port)
             .field("remote_port", &self.remote_port)
             .field("is_closed", &self.is_closed())
@@ -180,8 +180,8 @@ impl fmt::Debug for RawSender {
     }
 }
 
-impl RawSender {
-    /// Create a new raw sender.
+impl Sender {
+    /// Create a new sender.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         local_port: u32, remote_port: u32, max_data_size: usize, chunk_size: usize, tx: mpsc::Sender<PortEvt>,
@@ -398,29 +398,29 @@ impl RawSender {
     }
 
     /// Convert this into a sink.
-    pub fn into_sink(self) -> RawSenderSink {
-        RawSenderSink::new(self)
+    pub fn into_sink(self) -> SenderSink {
+        SenderSink::new(self)
     }
 }
 
-impl Drop for RawSender {
+impl Drop for Sender {
     fn drop(&mut self) {
         // required for correct drop order
     }
 }
 
 /// A sink sending byte data over a channel.
-pub struct RawSenderSink {
-    sender: Option<Arc<Mutex<RawSender>>>,
+pub struct SenderSink {
+    sender: Option<Arc<Mutex<Sender>>>,
     send_fut: Option<BoxFuture<'static, Result<(), SendError>>>,
 }
 
-impl RawSenderSink {
-    fn new(sender: RawSender) -> Self {
+impl SenderSink {
+    fn new(sender: Sender) -> Self {
         Self { sender: Some(Arc::new(Mutex::new(sender))), send_fut: None }
     }
 
-    async fn send(sender: Arc<Mutex<RawSender>>, data: Bytes) -> Result<(), SendError> {
+    async fn send(sender: Arc<Mutex<Sender>>, data: Bytes) -> Result<(), SendError> {
         let mut sender = sender.lock().await;
         sender.send(data).await
     }
@@ -455,7 +455,7 @@ impl RawSenderSink {
     }
 }
 
-impl Sink<Bytes> for RawSenderSink {
+impl Sink<Bytes> for SenderSink {
     type Error = SendError;
 
     fn poll_ready(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
