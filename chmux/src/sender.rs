@@ -1,12 +1,11 @@
 use bytes::Bytes;
 use futures::{
-    future::{BoxFuture, LocalBoxFuture},
+    future::BoxFuture,
     ready,
     sink::Sink,
     task::{Context, Poll},
     Future, FutureExt,
 };
-use serde::Serialize;
 use std::{
     error::Error,
     fmt,
@@ -21,10 +20,9 @@ use tokio::sync::{mpsc, oneshot, Mutex};
 
 use crate::{
     client::ConnectResponse,
-    codec::Serializer,
     credit::{AssignedCredits, CreditUser},
     multiplexer::PortEvt,
-    Connect, ConnectError, PortNumber, SerializationError,
+    Connect, ConnectError, PortNumber,
 };
 
 /// An error occured during sending of a message.
@@ -39,8 +37,6 @@ pub enum SendError {
     },
     /// This side has been closed.
     SinkClosed,
-    /// A serialization error occured.
-    SerializationError(SerializationError),
     /// Data exceeds maximum size.
     ExceedsMaxDataSize {
         /// Actual data size.
@@ -75,7 +71,6 @@ impl fmt::Display for SendError {
                 if *gracefully { " but still processes sent messages" } else { "" }
             ),
             Self::SinkClosed => write!(f, "sink has been closed"),
-            Self::SerializationError(err) => write!(f, "serialization error: {}", err),
             Self::ExceedsMaxDataSize { data_size, max_size } => {
                 write!(f, "data ({} bytes) exceeds maximum allowed size ({} bytes)", data_size, max_size)
             }
@@ -468,138 +463,6 @@ impl Sink<Bytes> for RawSenderSink {
     }
 
     fn start_send(self: Pin<&mut Self>, item: Bytes) -> Result<(), Self::Error> {
-        Pin::into_inner(self).start_send(item)
-    }
-
-    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
-        Pin::into_inner(self).poll_send(cx)
-    }
-
-    fn poll_close(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
-        ready!(Pin::into_inner(self.as_mut()).poll_send(cx))?;
-        Pin::into_inner(self).close();
-        Poll::Ready(Ok(()))
-    }
-}
-
-/// Sends items in serialized form over a channel.
-#[derive(Debug)]
-pub struct Sender<Item> {
-    raw: RawSender,
-    serializer: Box<dyn Serializer<Item>>,
-}
-
-impl<Item> Sender<Item>
-where
-    Item: Serialize,
-{
-    /// Create a sender that serializes items and sends them over a channel.
-    pub fn new(raw: RawSender, serializer: Box<dyn Serializer<Item>>) -> Self {
-        Self { raw, serializer }
-    }
-
-    /// Sends an items over the channel.
-    ///
-    /// Waits until send space becomes available.
-    pub async fn send(&mut self, item: &Item) -> Result<(), SendError> {
-        let data = self.serializer.serialize(item).map_err(SendError::SerializationError)?;
-        self.raw.send(data).await
-    }
-
-    /// Tries to send an item over the channel.
-    ///
-    /// Does not wait until send space becomes available.
-    pub fn try_send(&mut self, item: &Item) -> Result<(), TrySendError> {
-        let data = self.serializer.serialize(item).map_err(SendError::SerializationError)?;
-        self.raw.try_send(&data)
-    }
-
-    /// True, once the remote endpoint has closed its receiver.
-    pub fn is_closed(&self) -> bool {
-        self.raw.is_closed()
-    }
-
-    /// Returns a Future that will resolve when the remote endpoint has closed its receiver.
-    ///
-    /// It will resolve immediately when the remote endpoint has already hung up.    
-    pub fn closed(&self) -> Closed {
-        self.raw.closed()
-    }
-
-    /// Convert this into a sink.
-    pub fn into_sink(self) -> SenderSink<Item> {
-        SenderSink::new(self)
-    }
-
-    /// Convert this into a raw sender.
-    pub fn into_raw(self) -> RawSender {
-        self.raw
-    }
-}
-
-/// A sink sending items over a channel.
-pub struct SenderSink<Item>
-where
-    Item: Serialize + 'static,
-{
-    sender: Option<Arc<Mutex<Sender<Item>>>>,
-    send_fut: Option<LocalBoxFuture<'static, Result<(), SendError>>>,
-}
-
-impl<Item> SenderSink<Item>
-where
-    Item: Serialize + 'static,
-{
-    fn new(sender: Sender<Item>) -> Self {
-        Self { sender: Some(Arc::new(Mutex::new(sender))), send_fut: None }
-    }
-
-    async fn send(sender: Arc<Mutex<Sender<Item>>>, item: Item) -> Result<(), SendError> {
-        let mut sender = sender.lock().await;
-        sender.send(&item).await
-    }
-
-    fn start_send(&mut self, item: Item) -> Result<(), SendError> {
-        if self.send_fut.is_some() {
-            panic!("sink is not ready for sending");
-        }
-
-        match self.sender.clone() {
-            Some(sender) => {
-                self.send_fut = Some(Self::send(sender, item).boxed_local());
-                Ok(())
-            }
-            None => Err(SendError::SinkClosed),
-        }
-    }
-
-    fn poll_send(&mut self, cx: &mut Context) -> Poll<Result<(), SendError>> {
-        match &mut self.send_fut {
-            Some(fut) => {
-                let res = ready!(fut.as_mut().poll(cx));
-                self.send_fut = None;
-                Poll::Ready(res)
-            }
-            None => Poll::Ready(Ok(())),
-        }
-    }
-
-    fn close(&mut self) {
-        self.sender = None;
-    }
-}
-
-impl<Item> Sink<Item> for SenderSink<Item>
-where
-    Item: Serialize,
-{
-    type Error = SendError;
-
-    fn poll_ready(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
-        Pin::into_inner(self).poll_send(cx)
-    }
-
-    fn start_send(self: Pin<&mut Self>, item: Item) -> Result<(), Self::Error> {
         Pin::into_inner(self).start_send(item)
     }
 

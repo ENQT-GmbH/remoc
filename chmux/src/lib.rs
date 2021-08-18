@@ -5,7 +5,6 @@
 
 #![warn(missing_docs)]
 
-mod channel;
 mod client;
 mod credit;
 mod listener;
@@ -15,20 +14,15 @@ mod port_allocator;
 mod receiver;
 mod sender;
 
-pub mod codec;
-pub mod serde_map;
-
 use std::{error::Error, fmt};
 
-pub use channel::Channel;
-pub use client::{Client, Connect, ConnectError, RawClient};
-pub use codec::{CodecFactory, DeserializationError, Deserializer, SerializationError, Serializer};
-pub use listener::{Listener, ListenerError, ListenerStream, RawListener, RawListenerStream, Request};
+pub use client::{Connect, ConnectError, RawClient};
+pub use listener::{ListenerError, RawListener, RawListenerStream, Request};
 pub use msg::Cfg;
 pub use multiplexer::Multiplexer;
 pub use port_allocator::{PortAllocator, PortNumber};
-pub use receiver::{DataBuf, RawReceiver, RawReceiverStream, ReceiveError, Receiver, Received, ReceiverStream};
-pub use sender::{Closed, RawSender, RawSenderSink, SendError, Sender, SenderSink, TrySendError};
+pub use receiver::{DataBuf, RawReceiver, RawReceiverStream, ReceiveError, Received};
+pub use sender::{Closed, RawSender, RawSenderSink, SendError, TrySendError};
 
 /// Channel multiplexer protocol version.
 pub const PROTOCOL_VERSION: u8 = 2;

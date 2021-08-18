@@ -4,15 +4,13 @@ use futures::{
     stream::Stream,
     task::{Context, Poll},
 };
-use serde::de::DeserializeOwned;
 use std::{collections::VecDeque, error::Error, fmt, mem, pin::Pin};
 use tokio::sync::{mpsc, oneshot};
 
 use crate::{
-    codec::Deserializer,
     credit::{ChannelCreditReturner, UsedCredit},
     multiplexer::PortEvt,
-    DeserializationError, Request,
+    Request,
 };
 
 /// An error occured during receiving a message.
@@ -27,8 +25,6 @@ pub enum ReceiveError {
         /// Maximum allowed data size.
         max_size: usize,
     },
-    /// A deserialization error occured.
-    DeserializationError(DeserializationError),
 }
 
 impl ReceiveError {
@@ -37,7 +33,6 @@ impl ReceiveError {
         match self {
             Self::Multiplexer => true,
             Self::ExceedsMaxDataSize { .. } => false,
-            Self::DeserializationError(_) => false,
         }
     }
 }
@@ -49,7 +44,6 @@ impl fmt::Display for ReceiveError {
             Self::ExceedsMaxDataSize { data_size, max_size } => {
                 write!(f, "data (at least {} bytes) exceeds maximum allowed size ({} bytes)", data_size, max_size)
             }
-            Self::DeserializationError(err) => write!(f, "deserialization error: {}", err),
         }
     }
 }
@@ -409,84 +403,6 @@ impl RawReceiverStream {
 
 impl Stream for RawReceiverStream {
     type Item = Result<DataBuf, ReceiveError>;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
-        Poll::Ready(ready!(Pin::into_inner(self).0.poll_recv(cx)).transpose())
-    }
-}
-
-/// Receive end of a multiplexer channel.
-#[derive(Debug)]
-pub struct Receiver<Item> {
-    raw: RawReceiver,
-    deserializer: Box<dyn Deserializer<Item>>,
-}
-
-/// Receive end of a multiplexer channel.
-///
-/// Implements a `Stream`.
-impl<Item> Receiver<Item>
-where
-    Item: DeserializeOwned,
-{
-    /// Creates a receiver that deserializes items received over a channel.
-    pub fn new(raw: RawReceiver, deserializer: Box<dyn Deserializer<Item>>) -> Self {
-        Self { raw, deserializer }
-    }
-
-    /// Receives an item over the channel.
-    ///
-    /// Waits for an item to become available.
-    pub async fn recv(&mut self) -> Result<Option<Item>, ReceiveError> {
-        match self.raw.recv().await? {
-            Some(data) => {
-                Ok(Some(self.deserializer.deserialize(data).map_err(ReceiveError::DeserializationError)?))
-            }
-            None => Ok(None),
-        }
-    }
-
-    /// Polls to receive the next item on this channel.
-    pub fn poll_recv(&mut self, cx: &mut Context) -> Poll<Result<Option<Item>, ReceiveError>> {
-        match ready!(self.raw.poll_recv(cx))? {
-            Some(data) => Poll::Ready(Ok(Some(
-                self.deserializer.deserialize(data).map_err(ReceiveError::DeserializationError)?,
-            ))),
-            None => Poll::Ready(Ok(None)),
-        }
-    }
-
-    /// Closes the sender at the remote endpoint, preventing it from sending new data.
-    /// Already sent message will still be received.
-    pub async fn close(&mut self) {
-        self.raw.close().await
-    }
-
-    /// Convert this into a stream.
-    pub fn into_stream(self) -> ReceiverStream<Item> {
-        ReceiverStream(self)
-    }
-}
-
-/// A stream receiving items over a channel.
-pub struct ReceiverStream<Item>(Receiver<Item>);
-
-impl<Item> ReceiverStream<Item>
-where
-    Item: DeserializeOwned,
-{
-    /// Closes the sender at the remote endpoint, preventing it from sending new data.
-    /// Already sent message will still be received.
-    pub async fn close(&mut self) {
-        self.0.close().await
-    }
-}
-
-impl<Item> Stream for ReceiverStream<Item>
-where
-    Item: DeserializeOwned,
-{
-    type Item = Result<Item, ReceiveError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
         Poll::Ready(ready!(Pin::into_inner(self).0.poll_recv(cx)).transpose())

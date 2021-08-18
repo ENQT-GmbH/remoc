@@ -60,8 +60,8 @@ async fn raw_test() {
 
     println!("Connecting...");
     let ((a_mux, a_client, a_server), (b_mux, b_client, mut b_server)) = try_join(
-        chmux::Multiplexer::raw(&cfg("a_mux"), a_tx, a_rx),
-        chmux::Multiplexer::raw(&cfg2("b_mux"), b_tx, b_rx),
+        chmux::Multiplexer::new(&cfg("a_mux"), a_tx, a_rx),
+        chmux::Multiplexer::new(&cfg2("b_mux"), b_tx, b_rx),
     )
     .await
     .unwrap();
@@ -171,8 +171,8 @@ async fn hangup_test() {
 
     println!("Connecting...");
     let ((a_mux, a_client, a_server), (b_mux, b_client, mut b_server)) = try_join(
-        chmux::Multiplexer::raw(&cfg("a_mux"), a_tx, a_rx),
-        chmux::Multiplexer::raw(&cfg2("b_mux"), b_tx, b_rx),
+        chmux::Multiplexer::new(&cfg("a_mux"), a_tx, a_rx),
+        chmux::Multiplexer::new(&cfg2("b_mux"), b_tx, b_rx),
     )
     .await
     .unwrap();

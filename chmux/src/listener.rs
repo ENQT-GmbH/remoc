@@ -5,16 +5,14 @@ use futures::{
     task::{Context, Poll},
     FutureExt,
 };
-use serde::{de::DeserializeOwned, Serialize};
 use std::{error::Error, fmt, pin::Pin, sync::Arc};
 use tokio::sync::{mpsc, oneshot, Mutex};
 
 use crate::{
-    codec::CodecFactory,
     multiplexer::PortEvt,
     port_allocator::{PortAllocator, PortNumber},
-    receiver::{RawReceiver, Receiver},
-    sender::{RawSender, Sender},
+    receiver::RawReceiver,
+    sender::RawSender,
 };
 
 /// An multiplexer listener error.
@@ -263,122 +261,6 @@ impl RawListenerStream {
 
 impl Stream for RawListenerStream {
     type Item = Result<(RawSender, RawReceiver), ListenerError>;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
-        Pin::into_inner(self).poll_next(cx)
-    }
-}
-
-/// Multiplexer listener.
-#[derive(Debug)]
-pub struct Listener<Codec>
-where
-    Codec: CodecFactory,
-{
-    raw: RawListener,
-    codec: Codec,
-}
-
-impl<Codec> Listener<Codec>
-where
-    Codec: CodecFactory,
-{
-    /// Creates a new listener.
-    pub fn new(raw: RawListener, codec: Codec) -> Self {
-        Self { raw, codec }
-    }
-
-    /// Convert this into a raw listener.
-    pub fn into_raw(self) -> RawListener {
-        self.raw
-    }
-
-    /// Accept a connection returning the sender and receiver for the opened port.
-    ///
-    /// Returns [None] when the client of the remote endpoint has been dropped and
-    /// no more connection requests can be made.
-    pub async fn accept<SendItem, ReceiveItem>(
-        &mut self,
-    ) -> Result<Option<(Sender<SendItem>, Receiver<ReceiveItem>)>, ListenerError>
-    where
-        SendItem: Serialize + 'static,
-        ReceiveItem: DeserializeOwned + 'static,
-    {
-        self.raw.accept().await.map(|res| {
-            res.map(|(raw_sender, raw_receiver)| {
-                (
-                    Sender::new(raw_sender, self.codec.serializer()),
-                    Receiver::new(raw_receiver, self.codec.deserializer()),
-                )
-            })
-        })
-    }
-
-    /// Convert this into a server stream.
-    pub fn into_stream<SendItem, ReceiveItem>(self) -> ListenerStream<Codec, SendItem, ReceiveItem>
-    where
-        SendItem: Serialize + 'static,
-        ReceiveItem: DeserializeOwned + 'static,
-    {
-        ListenerStream::new(self)
-    }
-}
-
-/// A stream accepting connections and returning senders raw receivers.
-///
-/// Ends when the client is dropped at the remote endpoint.
-pub struct ListenerStream<Codec, SendItem, ReceiveItem>
-where
-    Codec: CodecFactory,
-    SendItem: Serialize + 'static,
-    ReceiveItem: DeserializeOwned + 'static,
-{
-    server: Arc<Mutex<Listener<Codec>>>,
-    #[allow(clippy::type_complexity)]
-    accept_fut:
-        Option<BoxFuture<'static, Option<Result<(Sender<SendItem>, Receiver<ReceiveItem>), ListenerError>>>>,
-}
-
-impl<Codec, SendItem, ReceiveItem> ListenerStream<Codec, SendItem, ReceiveItem>
-where
-    Codec: CodecFactory,
-    SendItem: Serialize + 'static,
-    ReceiveItem: DeserializeOwned + 'static,
-{
-    fn new(server: Listener<Codec>) -> Self {
-        Self { server: Arc::new(Mutex::new(server)), accept_fut: None }
-    }
-
-    async fn accept(
-        server: Arc<Mutex<Listener<Codec>>>,
-    ) -> Option<Result<(Sender<SendItem>, Receiver<ReceiveItem>), ListenerError>> {
-        let mut server = server.lock().await;
-        server.accept().await.transpose()
-    }
-
-    #[allow(clippy::type_complexity)]
-    fn poll_next(
-        &mut self, cx: &mut Context,
-    ) -> Poll<Option<Result<(Sender<SendItem>, Receiver<ReceiveItem>), ListenerError>>> {
-        if self.accept_fut.is_none() {
-            self.accept_fut = Some(Self::accept(self.server.clone()).boxed());
-        }
-
-        let accept_fut = self.accept_fut.as_mut().unwrap();
-        let res = ready!(accept_fut.as_mut().poll(cx));
-
-        self.accept_fut = None;
-        Poll::Ready(res)
-    }
-}
-
-impl<Codec, SendItem, ReceiveItem> Stream for ListenerStream<Codec, SendItem, ReceiveItem>
-where
-    Codec: CodecFactory,
-    SendItem: Serialize + 'static,
-    ReceiveItem: DeserializeOwned + 'static,
-{
-    type Item = Result<(Sender<SendItem>, Receiver<ReceiveItem>), ListenerError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
         Pin::into_inner(self).poll_next(cx)

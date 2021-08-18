@@ -26,13 +26,12 @@ use tokio::{
 };
 
 use crate::{
-    client::{Client, ConnectRequest, ConnectResponse, RawClient},
-    codec::CodecFactory,
+    client::{ConnectRequest, ConnectResponse, RawClient},
     credit::{
         credit_monitor_pair, credit_send_pair, ChannelCreditMonitor, CreditProvider, GlobalCreditMonitor,
         GlobalCredits,
     },
-    listener::{Listener, RawListener, RemoteConnectMsg, Request},
+    listener::{RawListener, RemoteConnectMsg, Request},
     msg::{Credit, MultiplexMsg},
     port_allocator::{PortAllocator, PortNumber},
     receiver::{PortReceiveMsg, RawReceiver, ReceivedData, ReceivedPortRequests},
@@ -268,7 +267,7 @@ where
     /// Creates a new multiplexer.
     ///
     /// After creation use the `run` method of the multiplexer to launch the dispatch task.
-    pub async fn raw(
+    pub async fn new(
         cfg: &Cfg, mut transport_sink: TransportSink, mut transport_stream: TransportStream,
     ) -> Result<(Self, RawClient, RawListener), MultiplexError<TransportSinkError, TransportStreamError>> {
         // Check configuration.
@@ -336,25 +335,6 @@ where
 
         log::trace!("{}: multiplexer created", &multiplexer.trace_id);
         Ok((multiplexer, raw_client, raw_server))
-    }
-
-    /// Creates a new multiplexer.
-    ///
-    /// After creation use the `run` method of the multiplexer to launch the dispatch task.
-    pub async fn new<Codec>(
-        cfg: &Cfg, codec: Codec, transport_sink: TransportSink, transport_stream: TransportStream,
-    ) -> Result<
-        (Multiplexer<TransportSink, TransportStream>, Client<Codec>, Listener<Codec>),
-        MultiplexError<TransportSinkError, TransportStreamError>,
-    >
-    where
-        Codec: CodecFactory,
-    {
-        let (multiplexer, raw_client, raw_server) = Self::raw(cfg, transport_sink, transport_stream).await?;
-        let client = Client::new(raw_client, codec.clone());
-        let listener = Listener::new(raw_server, codec);
-
-        Ok((multiplexer, client, listener))
     }
 
     /// Feed transport message to sink and log it.

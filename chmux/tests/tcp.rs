@@ -7,8 +7,6 @@ use tokio::{
 };
 use tokio_util::codec::{length_delimited::LengthDelimitedCodec, FramedRead, FramedWrite};
 
-use chmux::{self, codec::json::JsonCodec};
-
 async fn tcp_server() {
     let listener = TcpListener::bind((Ipv4Addr::new(127, 0, 0, 1), 9876)).await.unwrap();
 
@@ -19,16 +17,14 @@ async fn tcp_server() {
     let framed_rx = framed_rx.map(|data| data.map(|b| b.freeze()));
 
     let mux_cfg = chmux::Cfg::default();
-    let codec = JsonCodec::new();
-
-    let (mux, _, mut server) = chmux::Multiplexer::new(&mux_cfg, codec, framed_tx, framed_rx).await.unwrap();
+    let (mux, _, mut server) = chmux::Multiplexer::new(&mux_cfg, framed_tx, framed_rx).await.unwrap();
 
     let mux_run = tokio::spawn(async move { mux.run().await.unwrap() });
 
-    while let Some((mut tx, mut rx)) = server.accept::<String, String>().await.unwrap() {
+    while let Some((mut tx, mut rx)) = server.accept().await.unwrap() {
         println!("Server accepted request.");
 
-        tx.send(&"Hi from server".to_string()).await.unwrap();
+        tx.send("Hi from server".into()).await.unwrap();
         println!("Server sent Hi message");
 
         println!("Server dropping sender");
@@ -36,7 +32,7 @@ async fn tcp_server() {
         println!("Server dropped sender");
 
         while let Some(msg) = rx.recv().await.unwrap() {
-            println!("Server received: {}", &msg);
+            println!("Server received: {}", String::from_utf8_lossy(&Vec::from(msg)));
         }
     }
 
@@ -53,19 +49,17 @@ async fn tcp_client() {
     let framed_rx = framed_rx.map(|data| data.map(|b| b.freeze()));
 
     let mux_cfg = chmux::Cfg::default();
-    let codec = JsonCodec::new();
-
-    let (mux, client, _) = chmux::Multiplexer::new(&mux_cfg, codec, framed_tx, framed_rx).await.unwrap();
+    let (mux, client, _) = chmux::Multiplexer::new(&mux_cfg, framed_tx, framed_rx).await.unwrap();
     let mux_run = tokio::spawn(async move { mux.run().await.unwrap() });
 
     {
         let client = client;
 
         println!("Client connecting...");
-        let (mut tx, mut rx) = client.connect::<String, String>().await.unwrap();
+        let (mut tx, mut rx) = client.connect().await.unwrap();
         println!("Client connected");
 
-        tx.send(&"Hi from client".to_string()).await.unwrap();
+        tx.send("Hi from client".into()).await.unwrap();
         println!("Client sent Hi message");
 
         println!("Client dropping sender");
@@ -73,7 +67,7 @@ async fn tcp_client() {
         println!("Client dropped sender");
 
         while let Some(msg) = rx.recv().await.unwrap() {
-            println!("Client received: {}", &msg);
+            println!("Client received: {}", String::from_utf8_lossy(&Vec::from(msg)));
         }
 
         println!("Client closing connection...");

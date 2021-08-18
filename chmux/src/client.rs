@@ -1,5 +1,4 @@
 use futures::{ready, Future, FutureExt};
-use serde::{de::DeserializeOwned, Serialize};
 use std::{
     clone::Clone,
     error::Error,
@@ -17,10 +16,9 @@ use tokio::{
 };
 
 use crate::{
-    codec::{BoxError, CodecFactory},
     port_allocator::{PortAllocator, PortNumber},
-    receiver::{RawReceiver, Receiver},
-    sender::{RawSender, Sender},
+    receiver::RawReceiver,
+    sender::RawSender,
 };
 
 /// An error occured during connecting to a remote service.
@@ -282,70 +280,5 @@ impl RawClient {
         });
 
         Ok(Connect { sent_rx, response })
-    }
-}
-
-/// Multiplexer client.
-///
-/// Use to request a new port for raw sending and raw receiving.
-/// This can be cloned to make simultaneous requests.
-#[derive(Clone, Debug)]
-pub struct Client<Codec>
-where
-    Codec: CodecFactory,
-{
-    raw: RawClient,
-    codec: Codec,
-}
-
-impl<Codec> Client<Codec>
-where
-    Codec: CodecFactory,
-{
-    /// Creates a new client.
-    pub fn new(raw: RawClient, codec: Codec) -> Self {
-        Self { raw, codec }
-    }
-
-    /// Convert this into a raw client.
-    pub fn into_raw(self) -> RawClient {
-        self.raw
-    }
-
-    /// Opens a new port.
-    ///
-    /// This function waits until a local and remote port become available.
-    pub async fn connect<SendItem, ReceiveItem>(
-        &self,
-    ) -> Result<(Sender<SendItem>, Receiver<ReceiveItem>), ConnectError>
-    where
-        SendItem: Serialize + 'static,
-        ReceiveItem: DeserializeOwned + 'static,
-    {
-        self.raw.connect().await.map(|(raw_sender, raw_receiver)| {
-            (
-                Sender::new(raw_sender, self.codec.serializer()),
-                Receiver::new(raw_receiver, self.codec.deserializer()),
-            )
-        })
-    }
-
-    /// Opens a new port.
-    ///
-    /// This function does not wait until a local and remote port becomes available.
-    /// However, it still waits until the listener on the remote endpoint accepts or rejects the connection.
-    pub async fn try_connect<SendItem, ReceiveItem>(
-        &self,
-    ) -> Result<(Sender<SendItem>, Receiver<ReceiveItem>), ConnectError>
-    where
-        SendItem: Serialize + 'static,
-        ReceiveItem: DeserializeOwned + 'static,
-    {
-        self.raw.connect_ext(None, false).await?.await.map(|(raw_sender, raw_receiver)| {
-            (
-                Sender::new(raw_sender, self.codec.serializer()),
-                Receiver::new(raw_receiver, self.codec.deserializer()),
-            )
-        })
     }
 }
