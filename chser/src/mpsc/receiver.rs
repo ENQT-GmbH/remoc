@@ -17,26 +17,40 @@ pub enum ReceiveError {
 ///
 /// Instances are created by the [channel] function.
 pub struct Receiver<T, Codec, const BUFFER: usize> {
-    pub(crate) inner: Option<ReceiverInner<T, Codec, BUFFER>>,
+    inner: Option<ReceiverInner<T, Codec, BUFFER>>,
     #[allow(clippy::type_complexity)]
-    pub(crate) successor_tx: Mutex<Option<tokio::sync::oneshot::Sender<ReceiverInner<T, Codec, BUFFER>>>>,
+    successor_tx: Mutex<Option<tokio::sync::oneshot::Sender<ReceiverInner<T, Codec, BUFFER>>>>,
 }
 
 pub(crate) struct ReceiverInner<T, Codec, const BUFFER: usize> {
-    pub(crate) rx: tokio::sync::mpsc::Receiver<Result<T, remote::ReceiveError>>,
-    pub(crate) closed_tx: tokio::sync::watch::Sender<bool>,
-    pub(crate) remote_send_err_tx: tokio::sync::watch::Sender<Option<remote::SendErrorKind>>,
-    pub(crate) _codec: PhantomData<Codec>,
+    rx: tokio::sync::mpsc::Receiver<Result<T, remote::ReceiveError>>,
+    closed_tx: tokio::sync::watch::Sender<bool>,
+    remote_send_err_tx: tokio::sync::watch::Sender<Option<remote::SendErrorKind>>,
+    _codec: PhantomData<Codec>,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct TransportedReceiver<T, Codec> {
+    /// chmux port number.
     port: u32,
-    _data: PhantomData<T>,
-    _codec: PhantomData<Codec>,
+    /// Data type.
+    data: PhantomData<T>,
+    /// Data codec.
+    codec: PhantomData<Codec>,
 }
 
 impl<T, Codec, const BUFFER: usize> Receiver<T, Codec, BUFFER> {
+    pub(crate) fn new(
+        rx: tokio::sync::mpsc::Receiver<Result<T, remote::ReceiveError>>,
+        closed_tx: tokio::sync::watch::Sender<bool>,
+        remote_send_err_tx: tokio::sync::watch::Sender<Option<remote::SendErrorKind>>,
+    ) -> Self {
+        Self {
+            inner: Some(ReceiverInner { rx, closed_tx, remote_send_err_tx, _codec: PhantomData }),
+            successor_tx: Mutex::new(None),
+        }
+    }
+
     /// Receives the next value for this receiver.
     pub async fn recv(&mut self) -> Result<Option<T>, ReceiveError> {
         match self.inner.as_mut().unwrap().rx.recv().await {
@@ -141,7 +155,7 @@ where
         })?;
 
         // Encode chmux port number in transport type and serialize it.
-        let transported = TransportedReceiver::<T, Codec> { port, _data: PhantomData, _codec: PhantomData };
+        let transported = TransportedReceiver::<T, Codec> { port, data: PhantomData, codec: PhantomData };
         transported.serialize(serializer)
     }
 }
@@ -228,9 +242,6 @@ where
             .boxed()
         })?;
 
-        Ok(Self {
-            inner: Some(ReceiverInner { rx, closed_tx, remote_send_err_tx, _codec: PhantomData }),
-            successor_tx: Mutex::new(None),
-        })
+        Ok(Self::new(rx, closed_tx, remote_send_err_tx))
     }
 }
