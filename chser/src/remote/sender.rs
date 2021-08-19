@@ -157,11 +157,21 @@ where
         }
 
         // Request connecting chmux ports.
-        // TODO: split over multiple messages if too many ports.
-        let connects = match sender.connect(ports, true).await {
-            Ok(connects) => connects,
-            Err(err) => return Err(SendError::new(SendErrorKind::Send(err), item)),
-        };
+        let mut connects = Vec::new();
+        while !ports.is_empty() {
+            let next_ports = if ports.len() > sender.max_port_count() {
+                ports.split_off(sender.max_port_count())
+            } else {
+                Vec::new()
+            };
+
+            match sender.connect(ports, true).await {
+                Ok(cs) => connects.extend(cs),
+                Err(err) => return Err(SendError::new(SendErrorKind::Send(err), item)),
+            };
+
+            ports = next_ports;
+        }
 
         // Ensure that item is dropped before calling connection callbacks.
         drop(item);

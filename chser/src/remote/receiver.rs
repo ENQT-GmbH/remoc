@@ -5,6 +5,7 @@ use std::{
     rc::{Rc, Weak},
 };
 
+use chmux::Request;
 use futures::future::BoxFuture;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
@@ -152,8 +153,8 @@ where
     pub async fn recv(&mut self) -> Result<Option<T>, ReceiveError> {
         let receiver = self.receiver.get().await?;
 
-        loop {
-            if self.item.is_none() || self.gatherer.is_none() {
+        'restart: loop {
+            if self.item.is_none() {
                 // Receive data.
                 if self.data.is_none() {
                     // This will automatically drop all port messages up to the
@@ -170,10 +171,10 @@ where
                 self.gatherer = Some(PortDeserializer::finish(gatherer));
             }
 
-            // Connnect ports, if there are any.
-            if !self.gatherer.as_ref().unwrap().expected.is_empty() {
+            // Connnect received ports.
+            let gatherer = self.gatherer.as_mut().unwrap();
+            while !gatherer.expected.is_empty() {
                 // Receive port requests from chmux.
-                // TODO: reassemble ports if more ports than allowed per message
                 let requests = match receiver.recv_any().await? {
                     Some(chmux::Received::Requests(requests)) => requests,
                     Some(chmux::Received::Data(data)) => {
@@ -181,8 +182,7 @@ where
                         // next send operation, so we restart.
                         self.data = Some(data);
                         self.item = None;
-                        self.gatherer = None;
-                        continue;
+                        continue 'restart;
                     }
                     None => {
                         self.data = None;
@@ -193,18 +193,13 @@ where
                 };
 
                 // Call port callbacks from received objects.
-                let mut expected = self.gatherer.take().unwrap().expected;
                 for request in requests {
-                    match expected.remove(&request.remote_port()) {
+                    match gatherer.expected.remove(&request.remote_port()) {
                         Some((local_port, callback)) => {
-                            callback(local_port, request, self.allocator.clone()).await
+                            tokio::spawn(callback(local_port, request, self.allocator.clone()));
                         }
                         None => return Err(ReceiveError::UnmatchedPort(request.remote_port())),
                     }
-                }
-
-                if !expected.is_empty() {
-                    return Err(ReceiveError::MissingPorts(expected.into_iter().map(|(port, _)| port).collect()));
                 }
             }
 

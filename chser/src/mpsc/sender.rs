@@ -24,7 +24,7 @@ pub struct Sender<T, Codec, const BUFFER: usize> {
     tx: Weak<tokio::sync::mpsc::Sender<Result<T, remote::ReceiveError>>>,
     closed_rx: tokio::sync::watch::Receiver<bool>,
     remote_send_err_rx: tokio::sync::watch::Receiver<Option<remote::SendErrorKind>>,
-    dropped_tx: tokio::sync::oneshot::Sender<()>,
+    _dropped_tx: tokio::sync::oneshot::Sender<()>,
     _codec: PhantomData<Codec>,
 }
 
@@ -55,7 +55,7 @@ where
             tx: Arc::downgrade(&tx),
             closed_rx: closed_rx.clone(),
             remote_send_err_rx,
-            dropped_tx,
+            _dropped_tx: dropped_tx,
             _codec: PhantomData,
         };
 
@@ -84,7 +84,7 @@ where
             tx: Weak::new(),
             closed_rx: tokio::sync::watch::channel(true).1,
             remote_send_err_rx: tokio::sync::watch::channel(None).1,
-            dropped_tx: tokio::sync::oneshot::channel().0,
+            _dropped_tx: tokio::sync::oneshot::channel().0,
             _codec: PhantomData,
         }
     }

@@ -3,8 +3,12 @@
 //! Multiplexes multiple channels over a single channel (or anything that implements Sink and Stream).
 //!
 
+#![deny(unsafe_code)]
 #![warn(missing_docs)]
 
+use std::{error::Error, fmt};
+
+mod cfg;
 mod client;
 mod credit;
 mod listener;
@@ -14,11 +18,9 @@ mod port_allocator;
 mod receiver;
 mod sender;
 
-use std::{error::Error, fmt};
-
 pub use client::{Client, Connect, ConnectError};
 pub use listener::{Listener, ListenerError, ListenerStream, Request};
-pub use msg::Cfg;
+pub use cfg::Cfg;
 pub use multiplexer::Multiplexer;
 pub use port_allocator::{PortAllocator, PortNumber};
 pub use receiver::{DataBuf, ReceiveError, Received, Receiver, ReceiverStream};

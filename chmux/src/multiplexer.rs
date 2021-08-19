@@ -6,38 +6,19 @@ use futures::{
     Future, FutureExt,
 };
 use lazy_static::lazy_static;
-use std::{
-    collections::HashMap,
-    error::Error,
-    fmt,
-    marker::PhantomData,
-    pin::Pin,
-    sync::{
+use std::{collections::HashMap, error::Error, fmt, marker::PhantomData, mem::size_of, pin::Pin, sync::{
         atomic::{AtomicBool, AtomicU16, Ordering},
         Arc,
-    },
-    task::{Context, Poll},
-    time::Duration,
-};
+    }, task::{Context, Poll}, time::Duration};
 use tokio::{
     sync::{mpsc, mpsc::Permit, oneshot, Mutex},
     time::{sleep, timeout},
     try_join,
 };
 
-use crate::{
-    client::{Client, ConnectRequest, ConnectResponse},
-    credit::{
-        credit_monitor_pair, credit_send_pair, ChannelCreditMonitor, CreditProvider, GlobalCreditMonitor,
-        GlobalCredits,
-    },
-    listener::{Listener, RemoteConnectMsg, Request},
-    msg::{Credit, MultiplexMsg},
-    port_allocator::{PortAllocator, PortNumber},
-    receiver::{PortReceiveMsg, ReceivedData, ReceivedPortRequests, Receiver},
-    sender::Sender,
-    Cfg, MultiplexError, PROTOCOL_VERSION,
-};
+use crate::{Cfg, MultiplexError, PROTOCOL_VERSION, client::{Client, ConnectRequest, ConnectResponse}, credit::{
+        credit_monitor_pair, credit_send_pair, ChannelCreditMonitor, CreditProvider, 
+    }, listener::{Listener, RemoteConnectMsg, Request}, msg::{ExchangedCfg, MultiplexMsg}, port_allocator::{PortAllocator, PortNumber}, receiver::{PortReceiveMsg, ReceivedData, ReceivedPortRequests, Receiver}, sender::Sender};
 
 /// Multiplexer protocol error.
 macro_rules! protocol_err {
@@ -111,17 +92,17 @@ pub(crate) enum PortEvt {
         data: Bytes,
         /// First chunk of data.
         first: bool,
-        /// Last part of data.
+        /// Last chunk of data.
         last: bool,
-        /// Flow-control credit.
-        credit: Credit,
     },
     /// Send ports.
     SendPorts {
         /// Remote port that will receive ports.
         remote_port: u32,
-        /// Flow-control credit.
-        credit: Credit,
+        /// First chunk of ports.
+        first: bool,
+        /// Last chunk of ports.
+        last: bool,
         /// Wait for remote port to become available.
         wait: bool,
         /// Ports to send, together with response channel.
@@ -131,8 +112,8 @@ pub(crate) enum PortEvt {
     ReturnCredits {
         /// Remote port that will receive credits.
         remote_port: u32,
-        /// Number of credits.
-        credits: u16,
+        /// Number of credits in bytes.
+        credits: u32,
     },
     /// Sender has been dropped.
     SenderDropped {
@@ -162,8 +143,6 @@ enum GlobalEvt {
     ListenerDropped,
     /// Event from an open port.
     Port(PortEvt),
-    /// Return global credits.
-    ReturnGlobalCredits(u16),
     /// Send Goodbye message.
     SendGoodbye,
     /// Flush transport send queue.
@@ -207,7 +186,7 @@ pub struct Multiplexer<TransportSink, TransportStream> {
     /// Our configuration.
     local_cfg: Cfg,
     /// Remote configuration.
-    remote_cfg: Cfg,
+    remote_cfg: ExchangedCfg,
     /// Remote protocol version.
     remote_protocol_version: u8,
     /// Channel for connection requests from local client.
@@ -222,6 +201,8 @@ pub struct Multiplexer<TransportSink, TransportStream> {
     channel_tx: mpsc::Sender<PortEvt>,
     /// Channel receiver of event loop.
     channel_rx: Option<mpsc::Receiver<PortEvt>>,
+    /// Force termination request.
+    terminate_rx: Option<mpsc::UnboundedReceiver<()>>,
     /// All user clients have been dropped.
     all_clients_dropped: bool,
     /// Remote client has been dropped.
@@ -232,12 +213,6 @@ pub struct Multiplexer<TransportSink, TransportStream> {
     goodbye_sent: bool,
     /// Goodbye message has been received.
     goodbye_received: bool,
-    /// Global transmission credits.
-    global_tx_credits: GlobalCredits,
-    /// Global received credits returner.
-    global_rx_credits_monitor: GlobalCreditMonitor,
-    /// Receive end of channel for returning received global credits.
-    global_rx_credits_return_rx: Option<mpsc::UnboundedReceiver<u16>>,
     /// Transport sender.
     transport_sink: Option<TransportSink>,
     /// Transport receiver.
@@ -294,10 +269,10 @@ where
         let (listen_wait_tx, listen_wait_rx) = mpsc::channel(usize::from(cfg.connect_queue.get()) + 1);
         let (listen_no_wait_tx, listen_no_wait_rx) = mpsc::channel(usize::from(cfg.connect_queue.get()) + 1);
         let (connect_tx, connect_rx) = mpsc::unbounded_channel();
+        let (terminate_tx, terminate_rx) = mpsc::unbounded_channel();
 
         // Create user objects.
         let port_allocator = PortAllocator::new(cfg.max_ports.get());
-        let (global_rx_credits_return_tx, global_rx_credits_return_rx) = mpsc::unbounded_channel();
         let remote_listener_dropped = Arc::new(AtomicBool::new(false));
         let multiplexer = Multiplexer {
             trace_id,
@@ -310,17 +285,12 @@ where
             ports: HashMap::new(),
             channel_tx,
             channel_rx: Some(channel_rx),
+            terminate_rx: Some(terminate_rx),
             remote_client_dropped: false,
             remote_listener_dropped: remote_listener_dropped.clone(),
             all_clients_dropped: false,
             goodbye_sent: false,
             goodbye_received: false,
-            global_tx_credits: GlobalCredits::new(remote_cfg.shared_receive_queue),
-            global_rx_credits_monitor: GlobalCreditMonitor::new(
-                cfg.shared_receive_queue,
-                global_rx_credits_return_tx,
-            ),
-            global_rx_credits_return_rx: Some(global_rx_credits_return_rx),
             transport_sink: Some(transport_sink),
             transport_stream: Some(transport_stream),
         };
@@ -330,8 +300,9 @@ where
             remote_cfg.connect_queue.get(),
             port_allocator.clone(),
             remote_listener_dropped,
+            terminate_tx.clone(),
         );
-        let listener = Listener::new(listen_wait_rx, listen_no_wait_rx, port_allocator);
+        let listener = Listener::new(listen_wait_rx, listen_no_wait_rx, port_allocator, terminate_tx);
 
         log::trace!("{}: multiplexer created", &multiplexer.trace_id);
         Ok((multiplexer, client, listener))
@@ -392,14 +363,14 @@ where
     /// Exchange Hello message with remote endpoint.
     async fn exchange_hello(
         trace_id: &str, cfg: &Cfg, sink: &mut TransportSink, stream: &mut TransportStream,
-    ) -> Result<(u8, Cfg), MultiplexError<TransportSinkError, TransportStreamError>> {
+    ) -> Result<(u8, ExchangedCfg), MultiplexError<TransportSinkError, TransportStreamError>> {
         // Say hello to remote endpoint and send our configuration.
         let send_task = async {
             Self::feed_msg(trace_id, TransportMsg::new(MultiplexMsg::Reset), sink).await?;
             Self::flush(trace_id, sink).await?;
             Self::feed_msg(
                 trace_id,
-                TransportMsg::new(MultiplexMsg::Hello { version: PROTOCOL_VERSION, cfg: cfg.clone() }),
+                TransportMsg::new(MultiplexMsg::Hello { version: PROTOCOL_VERSION, cfg: cfg.into() }),
                 sink,
             )
             .await?;
@@ -435,6 +406,12 @@ where
         terminate &= self.all_clients_dropped || self.remote_listener_dropped.load(Ordering::SeqCst);
         // Ensures that local listener or all remote clients are dropped.
         terminate &= self.listen_tx.is_none() || self.remote_client_dropped;
+        // If goodbye has been sent, we request connection termination,
+        // possibly even with still connected ports.
+        terminate |= self.goodbye_sent;
+        // If goodbye has been received, remote endpoint requests connection termination,
+        // possibly even with still connected ports.
+        terminate |= self.goodbye_received;
 
         terminate
     }
@@ -451,12 +428,12 @@ where
 
         let sender_tx = self.channel_tx.clone();
         let (sender_credit_provider, sender_credit_user) =
-            credit_send_pair(self.remote_cfg.port_receive_queue.get(), &self.global_tx_credits);
+            credit_send_pair(self.remote_cfg.port_receive_buffer.get());
 
         let receiver_tx = self.channel_tx.clone();
         let (receiver_tx_data, receiver_rx_data) = mpsc::unbounded_channel();
         let (receiver_credit_monitor, receiver_credit_returner) =
-            credit_monitor_pair(self.local_cfg.port_receive_queue.get());
+            credit_monitor_pair(self.local_cfg.port_receive_buffer.get());
 
         let hangup_notify = Arc::new(Mutex::new(Some(Vec::new())));
         let hangup_recved = Arc::new(AtomicBool::new(false));
@@ -661,7 +638,7 @@ where
         // Setup channels.
         let mut channel_rx = self.channel_rx.take().unwrap();
         let mut connect_rx = self.connect_rx.take().unwrap();
-        let mut global_rx_credits_return_rx = self.global_rx_credits_return_rx.take().unwrap();
+        let mut terminate_rx = self.terminate_rx.take().unwrap();
         let mut flushed = false;
         let mut send_task_ended = false;
 
@@ -676,12 +653,6 @@ where
                 // Select local request for processing.
                 let event = tokio::select! {
                     biased;
-
-                    // Global credit return.
-                    Some(credits) = global_rx_credits_return_rx.recv() => {
-                        flushed = false;
-                        GlobalEvt::ReturnGlobalCredits(credits)
-                    },
 
                     // Server dropped.
                     () = async { match &self.listen_tx {
@@ -707,6 +678,11 @@ where
                         flushed = false;
                         GlobalEvt::Port(msg)
                     },
+
+                    // Local request to terminate forcibly.
+                    Some(()) = terminate_rx.recv(), if !self.goodbye_sent => {
+                        GlobalEvt::SendGoodbye
+                    }
 
                     // Send Goodbye message and terminate.
                     () = future::ready(()), if self.should_terminate() && !self.goodbye_sent => {
@@ -788,15 +764,15 @@ where
             }
 
             // Send data from port.
-            GlobalEvt::Port(PortEvt::SendData { remote_port, data, first, last, credit }) => {
+            GlobalEvt::Port(PortEvt::SendData { remote_port, data, first, last }) => {
                 permit.send(SendCmd::Send(TransportMsg::with_data(
-                    MultiplexMsg::Data { port: remote_port, first, last, credit },
+                    MultiplexMsg::Data { port: remote_port, first, last },
                     data,
                 )));
             }
 
             // Send ports from port.
-            GlobalEvt::Port(PortEvt::SendPorts { remote_port, ports, credit, wait }) => {
+            GlobalEvt::Port(PortEvt::SendPorts { remote_port, ports, first, last, wait }) => {
                 let mut port_nums = Vec::new();
                 for (port, response_tx) in ports {
                     let port_num = *port;
@@ -805,7 +781,7 @@ where
                     }
                     port_nums.push(port_num);
                 }
-                send_msg(permit, MultiplexMsg::PortData { port: remote_port, wait, credit, ports: port_nums });
+                send_msg(permit, MultiplexMsg::PortData { port: remote_port, first, last, wait, ports: port_nums });
             }
 
             // Return port credits to remote endpoint.
@@ -862,11 +838,6 @@ where
                     panic!("PortEvt ReceiverDropped for port {} in invalid state.", &local_port);
                 }
             },
-
-            // Return global credits to remote endpoint.
-            GlobalEvt::ReturnGlobalCredits(credits) => {
-                send_msg(permit, MultiplexMsg::GlobalCredits { credits });
-            }
 
             // Process that all clients has been dropped.
             GlobalEvt::AllClientsDropped => {
@@ -961,19 +932,20 @@ where
             }
 
             // Data from remote endpoint.
-            MultiplexMsg::Data { port, first, last, credit } => {
+            MultiplexMsg::Data { port, first, last } => {
                 if let Some(PortState::Connected {
                     receiver_tx_data: Some(receiver_tx_data),
                     receiver_credit_monitor,
                     ..
                 }) = self.ports.get_mut(&port)
                 {
-                    let used_credit = match credit {
-                        Credit::Global => self.global_rx_credits_monitor.use_one()?,
-                        Credit::Port => receiver_credit_monitor.use_one()?,
-                    };
+                    let data = data.unwrap();
+                    if data.len() > self.local_cfg.chunk_size.get() as usize {
+                        return Err(protocol_err!(format!("received data exceeds maximum chunk size on port {}", &port)));
+                    }
+                    let used_credit = receiver_credit_monitor.use_credits(data.len() as u32)?;
                     let _ = receiver_tx_data.send(PortReceiveMsg::Data(ReceivedData {
-                        buf: data.unwrap(),
+                        buf: data,
                         first,
                         last,
                         credit: used_credit,
@@ -986,17 +958,19 @@ where
                 }
             }
 
-            MultiplexMsg::PortData { port, wait, credit, ports } => {
+            // Ports from remote endpoint.
+            MultiplexMsg::PortData { port, first, last, wait, ports } => {
                 if let Some(PortState::Connected {
                     receiver_tx_data: Some(receiver_tx_data),
                     receiver_credit_monitor,
                     ..
                 }) = self.ports.get_mut(&port)
                 {
-                    let used_credit = match credit {
-                        Credit::Global => self.global_rx_credits_monitor.use_one()?,
-                        Credit::Port => receiver_credit_monitor.use_one()?,
-                    };
+                    let data_len = ports.len() * size_of::<u32>();
+                    if data_len > self.local_cfg.chunk_size.get() as usize {
+                        return Err(protocol_err!(format!("received ports exceeds maximum chunk size on port {}", &port)));
+                    }
+                    let used_credit = receiver_credit_monitor.use_credits(data_len as u32)?;
                     let port_allocator = self.port_allocator.clone();
                     let channel_tx = self.channel_tx.clone();
                     let requests = ports
@@ -1007,6 +981,7 @@ where
                         .collect();
                     let _ = receiver_tx_data.send(PortReceiveMsg::PortRequests(ReceivedPortRequests {
                         requests,
+                        first, last,
                         credit: used_credit,
                     }));
                 } else {
@@ -1116,11 +1091,6 @@ where
                 }
             }
 
-            // Give global flow credits.
-            MultiplexMsg::GlobalCredits { credits } => {
-                self.global_tx_credits.provide(credits)?;
-            }
-
             // Remote endpoint will send no more connect requests.
             MultiplexMsg::ClientFinish => {
                 if let Some((listen_wait_tx, listen_no_wait_tx)) = &self.listen_tx {
@@ -1154,11 +1124,7 @@ where
 
             // Remote endpoint terminates connection.
             MultiplexMsg::Goodbye => {
-                if self.should_terminate() {
-                    self.goodbye_received = true;
-                } else {
-                    return Err(protocol_err!("received Goodbye prematurely"));
-                }
+                self.goodbye_received = true;
             }
         }
 

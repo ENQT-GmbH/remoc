@@ -1,52 +1,30 @@
-use std::{marker::PhantomData, sync::{Arc, Mutex}};
+use std::sync::{Arc, Mutex};
 
 use futures::FutureExt;
 use serde::{ser, Deserialize, Serialize};
 
 use super::{ConnectError, Interlock, Location};
-use crate::remote::{self, PortDeserializer, PortSerializer};
+use crate::remote::{PortDeserializer, PortSerializer};
 
-enum ReceivableSender<T, Codec> {
-    ToReceive (tokio::sync::mpsc::UnboundedReceiver<Result<remote::Sender<T, Codec>, ConnectError>>),
-    Received (Result<remote::Sender<T, Codec>, ConnectError>)
-}
-
-impl<T, Codec> ReceivableSender<T, Codec> {
-    async fn get(&mut self) -> Result<&mut remote::Sender<T, Codec>, ConnectError> {
-        if let Self::ToReceive(rx) = self {
-            *self = Self::Received(rx.recv().await.unwrap_or(Err(ConnectError::Dropped)));
-        }
-
-        if let Self::Received(sender) = self {
-            sender.as_mut().map_err(|err| err.clone())
-        } else {
-            unreachable!()
-        }
-    }
-}
-
-/// A local-remote channel sender.
-pub struct Sender<T, Codec> {
-    pub(super) sender: ReceivableSender<T, Codec>,
-    pub(super) receiver_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<remote::Receiver<T, Codec>, ConnectError>>>,
+/// A raw chmux channel sender.
+pub struct Sender {
+    pub(super) sender_rx: tokio::sync::mpsc::UnboundedReceiver<Result<chmux::Sender, ConnectError>>,
+    pub(super) receiver_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<chmux::Receiver, ConnectError>>>,
     pub(super) interlock: Arc<Mutex<Interlock>>,
 }
 
-/// A local-remote channel sender in transport.
+/// A raw chmux channel sender in transport.
 #[derive(Debug, Serialize, Deserialize)]
-pub struct TransportedSender<T, Codec> {
+pub struct TransportedSender {
     /// chmux port number.
     pub port: u32,
-    /// Data type.
-    pub data: PhantomData<T>,
-    /// Data codec.
-    pub codec: PhantomData<Codec>,
 }
 
-impl<T, Codec> Sender<T, Codec> {
-    /// Sends a value over this channel to the remote endpoint.
-    pub async fn send(&mut self, value: T) -> Result<(), SendError<T>> {
-        self.sender.get().await?.send(value)
+impl Sender {
+    /// Establishes the connection and returns the chmux sender channel
+    /// to the remote endpoint.
+    pub async fn connect(mut self) -> Result<chmux::Sender, ConnectError> {
+        self.sender_rx.recv().await.unwrap_or(Err(ConnectError::Dropped))
     }
 }
 

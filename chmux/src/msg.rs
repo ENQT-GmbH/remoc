@@ -5,7 +5,7 @@ use std::{
     time::Duration,
 };
 
-use crate::MultiplexError;
+use crate::{Cfg, MultiplexError};
 
 macro_rules! invalid_data {
     ($msg:expr) => {
@@ -27,7 +27,7 @@ pub enum MultiplexMsg {
         /// Protocol version of side that sends the message.
         version: u8,
         /// Configuration of side that sends the message.
-        cfg: Cfg,
+        cfg: ExchangedCfg,
     },
     /// Ping to keep connection alive when there is no data to send.
     Ping,
@@ -66,20 +66,23 @@ pub enum MultiplexMsg {
         /// If there are chunks buffered at the moment, they are from a cancelled transmission
         /// and should be dropped.
         first: bool,
-        /// Last part of data.
+        /// Last chunk of data.
         last: bool,
-        /// Flow-control credit.
-        credit: Credit,
     },
     /// Ports sent over a port.
     PortData {
         /// Port of side that receives this message.
         port: u32,
         // Flags u8.
+        /// First chunk of ports.
+        ///
+        /// If there are chunks buffered at the moment, they are from a cancelled transmission
+        /// and should be dropped.
+        first: bool,
+        /// Last chunk of ports.
+        last: bool,
         /// Wait for server port to become available.
         wait: bool,
-        /// Flow-control credit.
-        credit: Credit,
         /// Ports
         ports: Vec<u32>,
     },
@@ -87,8 +90,8 @@ pub enum MultiplexMsg {
     PortCredits {
         /// Port of side that receives this message.
         port: u32,
-        /// Number of credits.
-        credits: u16,
+        /// Number of credits in bytes.
+        credits: u32,
     },
     /// No more data will be sent to specifed remote port.
     SendFinish {
@@ -106,17 +109,11 @@ pub enum MultiplexMsg {
         /// Port of side that receives this message.
         port: u32,
     },
-    /// Give global flow credits.
-    GlobalCredits {
-        /// Number of credits.
-        credits: u16,
-    },
     /// All clients have been dropped, therefore no more OpenPort requests will occur.
     ClientFinish,
     /// Listener has been dropped, therefore no more OpenPort requests will be handled.
     ListenerFinish,
-    /// Multiplexer is terminating because all clients are dropped,
-    /// server is dropped and no ports are open.
+    /// Terminate connection.
     Goodbye,
 }
 
@@ -132,10 +129,9 @@ pub const MSG_PORT_CREDITS: u8 = 9;
 pub const MSG_SEND_FINISH: u8 = 10;
 pub const MSG_RECEIVE_CLOSE: u8 = 11;
 pub const MSG_RECEIVE_FINISH: u8 = 12;
-pub const MSG_GLOBAL_CREDITS: u8 = 13;
-pub const MSG_CLIENT_FINISH: u8 = 14;
-pub const MSG_LISTENER_FINISH: u8 = 15;
-pub const MSG_GOODBYE: u8 = 16;
+pub const MSG_CLIENT_FINISH: u8 = 13;
+pub const MSG_LISTENER_FINISH: u8 = 14;
+pub const MSG_GOODBYE: u8 = 15;
 
 pub const MSG_OPEN_PORT_FLAG_WAIT: u8 = 0b00000001;
 
@@ -143,10 +139,10 @@ pub const MSG_REJECTED_FLAG_NO_PORTS: u8 = 0b00000001;
 
 pub const MSG_DATA_FLAG_FIRST: u8 = 0b00000001;
 pub const MSG_DATA_FLAG_LAST: u8 = 0b00000010;
-pub const MSG_DATA_CREDIT_GLOBAL: u8 = 0b00000100;
 
-pub const MSG_PORT_DATA_CREDIT_GLOBAL: u8 = 0b00000010;
-pub const MSG_PORT_DATA_FLAG_WAIT: u8 = 0b00000001;
+pub const MSG_PORT_DATA_FLAG_FIRST: u8 = 0b00000001;
+pub const MSG_PORT_DATA_FLAG_LAST: u8 = 0b00000010;
+pub const MSG_PORT_DATA_FLAG_WAIT: u8 = 0b00000100;
 
 impl MultiplexMsg {
     pub(crate) fn write(&self, mut writer: impl io::Write) -> Result<(), io::Error> {
@@ -178,7 +174,7 @@ impl MultiplexMsg {
                 writer.write_u32::<LE>(*client_port)?;
                 writer.write_u8(if *no_ports { MSG_REJECTED_FLAG_NO_PORTS } else { 0 })?;
             }
-            MultiplexMsg::Data { port, first, last, credit } => {
+            MultiplexMsg::Data { port, first, last } => {
                 writer.write_u8(MSG_DATA)?;
                 writer.write_u32::<LE>(*port)?;
                 let mut flags = 0;
@@ -188,19 +184,19 @@ impl MultiplexMsg {
                 if *last {
                     flags |= MSG_DATA_FLAG_LAST;
                 }
-                if let Credit::Global = credit {
-                    flags |= MSG_DATA_CREDIT_GLOBAL;
-                }
                 writer.write_u8(flags)?;
             }
-            MultiplexMsg::PortData { port, wait, credit, ports } => {
+            MultiplexMsg::PortData { port, first, last, wait, ports } => {
                 writer.write_u8(MSG_PORT_DATA)?;
                 let mut flags = 0;
+                if *first {
+                    flags |= MSG_PORT_DATA_FLAG_FIRST;
+                }
+                if *last {
+                    flags |= MSG_PORT_DATA_FLAG_LAST;
+                }
                 if *wait {
                     flags |= MSG_PORT_DATA_FLAG_WAIT;
-                }
-                if let Credit::Global = credit {
-                    flags |= MSG_PORT_DATA_CREDIT_GLOBAL;
                 }
                 writer.write_u8(flags)?;
                 writer.write_u32::<LE>(*port)?;
@@ -211,7 +207,7 @@ impl MultiplexMsg {
             MultiplexMsg::PortCredits { port, credits } => {
                 writer.write_u8(MSG_PORT_CREDITS)?;
                 writer.write_u32::<LE>(*port)?;
-                writer.write_u16::<LE>(*credits)?;
+                writer.write_u32::<LE>(*credits)?;
             }
             MultiplexMsg::SendFinish { port } => {
                 writer.write_u8(MSG_SEND_FINISH)?;
@@ -224,10 +220,6 @@ impl MultiplexMsg {
             MultiplexMsg::ReceiveFinish { port } => {
                 writer.write_u8(MSG_RECEIVE_FINISH)?;
                 writer.write_u32::<LE>(*port)?;
-            }
-            MultiplexMsg::GlobalCredits { credits } => {
-                writer.write_u8(MSG_GLOBAL_CREDITS)?;
-                writer.write_u16::<LE>(*credits)?;
             }
             MultiplexMsg::ClientFinish => {
                 writer.write_u8(MSG_CLIENT_FINISH)?;
@@ -251,7 +243,7 @@ impl MultiplexMsg {
                 if magic != MAGIC {
                     return Err(invalid_data!("invalid magic"));
                 }
-                Self::Hello { version: reader.read_u8()?, cfg: Cfg::read(&mut reader)? }
+                Self::Hello { version: reader.read_u8()?, cfg: ExchangedCfg::read(&mut reader)? }
             }
             MSG_PING => Self::Ping,
             MSG_OPEN_PORT => Self::OpenPort {
@@ -272,14 +264,14 @@ impl MultiplexMsg {
                     port,
                     first: flags & MSG_DATA_FLAG_FIRST != 0,
                     last: flags & MSG_DATA_FLAG_LAST != 0,
-                    credit: if flags & MSG_DATA_CREDIT_GLOBAL != 0 { Credit::Global } else { Credit::Port },
                 }
             }
             MSG_PORT_DATA => {
                 let port = reader.read_u32::<LE>()?;
                 let flags = reader.read_u8()?;
+                let first = flags & MSG_PORT_DATA_FLAG_FIRST != 0;
+                let last = flags & MSG_PORT_DATA_FLAG_LAST != 0;
                 let wait = flags & MSG_PORT_DATA_FLAG_WAIT != 0;
-                let credit = if flags & MSG_PORT_DATA_CREDIT_GLOBAL != 0 { Credit::Global } else { Credit::Port };
                 let mut ports = Vec::new();
                 loop {
                     match reader.read_u32::<LE>() {
@@ -288,12 +280,11 @@ impl MultiplexMsg {
                         Err(err) => return Err(err),
                     }
                 }
-                Self::PortData { port, wait, credit, ports }
+                Self::PortData { port, first, last, wait, ports }
             }
             MSG_PORT_CREDITS => {
-                Self::PortCredits { port: reader.read_u32::<LE>()?, credits: reader.read_u16::<LE>()? }
+                Self::PortCredits { port: reader.read_u32::<LE>()?, credits: reader.read_u32::<LE>()? }
             }
-            MSG_GLOBAL_CREDITS => Self::GlobalCredits { credits: reader.read_u16::<LE>()? },
             MSG_SEND_FINISH => Self::SendFinish { port: reader.read_u32::<LE>()? },
             MSG_RECEIVE_CLOSE => Self::ReceiveClose { port: reader.read_u32::<LE>()? },
             MSG_RECEIVE_FINISH => Self::ReceiveFinish { port: reader.read_u32::<LE>()? },
@@ -318,86 +309,29 @@ impl MultiplexMsg {
     }
 }
 
-/// Flow control credit.
-#[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Credit {
-    /// Global credit.
-    Global,
-    /// Channel-specific credit.
-    Port,
-}
-
-/// Multiplexer configuration.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct Cfg {
+/// Multiplexer configuration exchanged with remote endpoint.
+#[derive(Clone, Debug)]
+pub struct ExchangedCfg {
     /// Time after which connection is closed when no data is.
-    ///
-    /// Pings are send automatically when this is enabled and no data is transmitted.
     pub connection_timeout: Option<Duration>,
-    /// Maximum number of open port.
-    ///
-    /// This must not exceed 2^31 = 2147483648.
-    /// By default this is 16384.
-    pub max_ports: NonZeroU32,
-    /// Maximum receive data size in bytes.
-    ///
-    /// By default this is 128 MB.
+    /// Maximum buffered receive data size in bytes.
     pub max_data_size: NonZeroUsize,
     /// Size of a chunk of data in bytes.
-    ///
-    /// By default this is 16 kB.
     pub chunk_size: NonZeroU32,
-    /// Length of receive queue of each port.
-    /// Each element holds a chunk.
-    ///
-    /// By default this is 8.
-    pub port_receive_queue: NonZeroU16,
-    /// Length of receive queue shared between all ports.
-    /// Each element holds a chunk.
-    ///
-    /// By default this is 1024.
-    pub shared_receive_queue: u16,
-    /// Length of global send queue.
-    /// Each element holds a chunk.
-    ///
-    /// This limit the number of chunks sendable by using [Sender::try_send].
-    /// By default this is 32.
-    pub shared_send_queue: NonZeroU16,
+    /// Size of receive buffer of each port in bytes.
+    pub port_receive_buffer: NonZeroU32,
     /// Length of connection request queue.
-    ///
-    /// By default this is 128,
     pub connect_queue: NonZeroU16,
-    /// Identifier for trace logging.
-    // Not exchanged.
-    pub trace_id: Option<String>,
 }
 
-impl Cfg {
-    /// Default multiplexer configuration.
-    pub const DEFAULT: Self = Self {
-        connection_timeout: Some(Duration::from_secs(60)),
-        max_ports: unsafe { NonZeroU32::new_unchecked(16384) },
-        max_data_size: unsafe { NonZeroUsize::new_unchecked(134_217_728) },
-        chunk_size: unsafe { NonZeroU32::new_unchecked(16384) },
-        port_receive_queue: unsafe { NonZeroU16::new_unchecked(8) },
-        shared_receive_queue: 1024,
-        shared_send_queue: unsafe { NonZeroU16::new_unchecked(32) },
-        connect_queue: unsafe { NonZeroU16::new_unchecked(128) },
-        trace_id: None,
-    };
-
+impl ExchangedCfg {
     pub(crate) fn write(&self, mut writer: impl io::Write) -> Result<(), io::Error> {
         writer.write_u64::<LE>(
             self.connection_timeout.unwrap_or_default().as_millis().min(u64::MAX as u128) as u64
         )?;
-        writer.write_u32::<LE>(self.max_ports.get())?;
         writer.write_u64::<LE>(self.max_data_size.get() as u64)?;
         writer.write_u32::<LE>(self.chunk_size.get())?;
-        writer.write_u16::<LE>(self.port_receive_queue.get())?;
-        writer.write_u16::<LE>(self.shared_receive_queue)?;
-        writer.write_u16::<LE>(self.shared_send_queue.get())?;
+        writer.write_u32::<LE>(self.port_receive_buffer.get())?;
         writer.write_u16::<LE>(self.connect_queue.get())?;
         Ok(())
     }
@@ -408,25 +342,27 @@ impl Cfg {
                 0 => None,
                 millis => Some(Duration::from_millis(millis)),
             },
-            max_ports: NonZeroU32::new(reader.read_u32::<LE>()?).ok_or_else(|| invalid_data!("max_ports"))?,
             max_data_size: NonZeroUsize::new(reader.read_u64::<LE>()?.min(usize::MAX as u64) as usize)
                 .ok_or_else(|| invalid_data!("max_data_size"))?,
             chunk_size: NonZeroU32::new(reader.read_u32::<LE>()?).ok_or_else(|| invalid_data!("chunk_size"))?,
-            port_receive_queue: NonZeroU16::new(reader.read_u16::<LE>()?)
+            port_receive_buffer: NonZeroU32::new(reader.read_u32::<LE>()?)
                 .ok_or_else(|| invalid_data!("port_receive_queue"))?,
-            shared_receive_queue: reader.read_u16::<LE>()?,
-            shared_send_queue: NonZeroU16::new(reader.read_u16::<LE>()?)
-                .ok_or_else(|| invalid_data!("shared_send_queue"))?,
             connect_queue: NonZeroU16::new(reader.read_u16::<LE>()?)
                 .ok_or_else(|| invalid_data!("connect_queue"))?,
-            trace_id: None,
         };
         Ok(this)
     }
 }
 
-impl Default for Cfg {
-    fn default() -> Self {
-        Self::DEFAULT
+
+impl From<&Cfg> for ExchangedCfg {
+    fn from(cfg: &Cfg) -> Self {
+        Self {
+            connection_timeout: cfg.connection_timeout,
+            max_data_size: cfg.max_data_size,
+            chunk_size: cfg.chunk_size,
+            port_receive_buffer: cfg.port_receive_buffer,
+            connect_queue: cfg.connect_queue
+        }
     }
 }

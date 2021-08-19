@@ -187,6 +187,7 @@ pub struct Client {
     crediter: ConntectRequestCrediter,
     port_allocator: PortAllocator,
     listener_dropped: Arc<AtomicBool>,
+    terminate_tx: mpsc::UnboundedSender<()>,
 }
 
 impl fmt::Debug for Client {
@@ -198,9 +199,9 @@ impl fmt::Debug for Client {
 impl Client {
     pub(crate) fn new(
         tx: mpsc::UnboundedSender<ConnectRequest>, limit: u16, port_allocator: PortAllocator,
-        listener_dropped: Arc<AtomicBool>,
+        listener_dropped: Arc<AtomicBool>,     terminate_tx: mpsc::UnboundedSender<()>,
     ) -> Client {
-        Client { tx, crediter: ConntectRequestCrediter::new(limit), port_allocator, listener_dropped }
+        Client { tx, crediter: ConntectRequestCrediter::new(limit), port_allocator, listener_dropped, terminate_tx }
     }
 
     /// Obtains the port allocator.
@@ -281,5 +282,10 @@ impl Client {
         });
 
         Ok(Connect { sent_rx, response })
+    }
+
+    /// Terminates the multiplexer, forcibly closing all open ports.
+    pub fn terminate(&self) {
+        self.terminate()
     }
 }

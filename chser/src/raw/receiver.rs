@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use futures::FutureExt;
 use serde::{ser, Deserialize, Serialize};
 
-use super::{Interlock, Location};
+use super::{ConnectError, Interlock, Location};
 use crate::remote::{PortDeserializer, PortSerializer};
 
 /// A raw chmux channel receiver.

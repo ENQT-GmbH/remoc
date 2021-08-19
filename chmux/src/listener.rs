@@ -126,6 +126,7 @@ pub struct Listener {
     wait_rx: mpsc::Receiver<RemoteConnectMsg>,
     no_wait_rx: mpsc::Receiver<RemoteConnectMsg>,
     port_allocator: PortAllocator,
+    terminate_tx: mpsc::UnboundedSender<()>,
     closed: bool,
 }
 
@@ -138,9 +139,9 @@ impl fmt::Debug for Listener {
 impl Listener {
     pub(crate) fn new(
         wait_rx: mpsc::Receiver<RemoteConnectMsg>, no_wait_rx: mpsc::Receiver<RemoteConnectMsg>,
-        port_allocator: PortAllocator,
+        port_allocator: PortAllocator, terminate_tx: mpsc::UnboundedSender<()>
     ) -> Self {
-        Self { wait_rx, no_wait_rx, port_allocator, closed: false }
+        Self { wait_rx, no_wait_rx, port_allocator, terminate_tx, closed: false }
     }
 
     /// Obtains the port allocator.
@@ -218,6 +219,11 @@ impl Listener {
     pub fn into_stream(self) -> ListenerStream {
         ListenerStream::new(self)
     }
+
+    /// Terminates the multiplexer, forcibly closing all open ports.
+    pub fn terminate(&self) {
+        self.terminate()
+    }    
 }
 
 impl Drop for Listener {
