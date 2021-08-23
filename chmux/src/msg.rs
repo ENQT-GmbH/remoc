@@ -1,7 +1,6 @@
 use byteorder::{ReadBytesExt, WriteBytesExt, LE};
 use std::{
     io::{self, ErrorKind},
-    num::NonZeroU16,
     time::Duration,
 };
 
@@ -319,7 +318,7 @@ pub struct ExchangedCfg {
     /// Size of receive buffer of each port in bytes.
     pub port_receive_buffer: u32,
     /// Length of connection request queue.
-    pub connect_queue: NonZeroU16,
+    pub connect_queue: u16,
 }
 
 impl ExchangedCfg {
@@ -329,7 +328,7 @@ impl ExchangedCfg {
         )?;
         writer.write_u32::<LE>(self.chunk_size)?;
         writer.write_u32::<LE>(self.port_receive_buffer)?;
-        writer.write_u16::<LE>(self.connect_queue.get())?;
+        writer.write_u16::<LE>(self.connect_queue)?;
         Ok(())
     }
 
@@ -347,8 +346,7 @@ impl ExchangedCfg {
                 prb if prb >= 4 => prb,
                 _ => return Err(invalid_data!("port_receive_buffer")),
             },
-            connect_queue: NonZeroU16::new(reader.read_u16::<LE>()?)
-                .ok_or_else(|| invalid_data!("connect_queue"))?,
+            connect_queue: reader.read_u16::<LE>()?,
         };
         Ok(this)
     }

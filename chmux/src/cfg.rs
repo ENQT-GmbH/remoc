@@ -1,10 +1,8 @@
-use std::{
-    num::{NonZeroU16, NonZeroU32},
-    time::Duration,
-};
+use std::time::Duration;
 
 /// Behavior when ports are exhausted and a connect is requested.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[non_exhaustive]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PortsExhausted {
     /// Immediately fail connect request.
@@ -28,7 +26,7 @@ pub struct Cfg {
     ///
     /// This must not exceed 2^31 = 2147483648.
     /// By default this is 16384.
-    pub max_ports: NonZeroU32,
+    pub max_ports: u32,
     /// Default behavior when ports are exhausted and a connect is requested.
     ///
     /// This can be overridden on a per-request basis.
@@ -63,11 +61,15 @@ pub struct Cfg {
     ///
     /// This limit the number of chunks sendable by using [Sender::try_send].
     /// By default this is 32.
-    pub shared_send_queue: NonZeroU16,
-    /// Length of connection request queue.
+    /// This must not be zero.
+    pub shared_send_queue: usize,
+    /// Maximum number of outstanding connection requests.
     ///
     /// By default this is 128,
-    pub connect_queue: NonZeroU16,
+    /// This must not be zero.
+    pub connect_queue: u16,
+    #[doc(hidden)]
+    pub _non_exhaustive: (),
 }
 
 impl Default for Cfg {
@@ -75,14 +77,40 @@ impl Default for Cfg {
         Self {
             trace_id: None,
             connection_timeout: Some(Duration::from_secs(60)),
-            max_ports: NonZeroU32::new(16384).unwrap(),
+            max_ports: 16384,
             ports_exhausted: PortsExhausted::Wait(Some(Duration::from_secs(60))),
             max_data_size: 65_536,
             max_received_ports: 128,
             chunk_size: 16384,
             receive_buffer: 65536,
-            shared_send_queue: NonZeroU16::new(32).unwrap(),
-            connect_queue: NonZeroU16::new(128).unwrap(),
+            shared_send_queue: 32,
+            connect_queue: 128,
+            _non_exhaustive: (),
+        }
+    }
+}
+
+impl Cfg {
+    /// Checks the configuration
+    pub(crate) fn check(&self) {
+        if self.max_ports > 2u32.pow(31) {
+            panic!("maximum ports must not exceed 2^31");
+        }
+
+        if self.chunk_size < 4 {
+            panic!("chunk size must be at least 4");
+        }
+
+        if self.receive_buffer < 4 {
+            panic!("receive buffer must be at least 4 bytes");
+        }
+
+        if self.shared_send_queue == 0 {
+            panic!("shared send queue length must not be zero");
+        }
+
+        if self.connect_queue == 0 {
+            panic!("connect queue length must not be zero");
         }
     }
 }

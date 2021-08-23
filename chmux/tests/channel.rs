@@ -5,12 +5,7 @@ use futures::{
     future::try_join,
     stream::StreamExt,
 };
-use std::{
-    io,
-    num::{NonZeroU16, NonZeroU32, NonZeroUsize},
-    sync::Once,
-    time::Duration,
-};
+use std::{io, sync::Once, time::Duration};
 use tokio::time::sleep;
 
 static INIT: Once = Once::new();
@@ -22,30 +17,32 @@ fn init() {
 fn cfg(trace_id: &str) -> chmux::Cfg {
     chmux::Cfg {
         connection_timeout: Some(Duration::from_secs(1)),
-        max_ports: NonZeroU32::new(20).unwrap(),
+        max_ports: 20,
         ports_exhausted: PortsExhausted::Fail,
         max_data_size: 1_000_000,
         max_received_ports: 100,
         chunk_size: 9,
         receive_buffer: 4,
-        shared_send_queue: NonZeroU16::new(3).unwrap(),
-        connect_queue: NonZeroU16::new(2).unwrap(),
+        shared_send_queue: 3,
+        connect_queue: 2,
         trace_id: Some(trace_id.to_string()),
+        ..Default::default()
     }
 }
 
 fn cfg2(trace_id: &str) -> chmux::Cfg {
     chmux::Cfg {
         connection_timeout: Some(Duration::from_secs(1)),
-        max_ports: NonZeroU32::new(20).unwrap(),
+        max_ports: 20,
         ports_exhausted: PortsExhausted::Wait(Some(Duration::from_secs(5))),
         max_data_size: 1_000_000,
         max_received_ports: 100,
         chunk_size: 4,
         receive_buffer: 4,
-        shared_send_queue: NonZeroU16::new(1).unwrap(),
-        connect_queue: NonZeroU16::new(1).unwrap(),
+        shared_send_queue: 1,
+        connect_queue: 1,
         trace_id: Some(trace_id.to_string()),
+        ..Default::default()
     }
 }
 

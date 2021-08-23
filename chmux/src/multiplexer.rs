@@ -267,15 +267,7 @@ where
         cfg: &Cfg, mut transport_sink: TransportSink, mut transport_stream: TransportStream,
     ) -> Result<(Self, Client, Listener), MultiplexError<TransportSinkError, TransportStreamError>> {
         // Check configuration.
-        if cfg.max_ports.get() > 2u32.pow(31) {
-            panic!("maximum ports must not exceed 2^31");
-        }
-        if cfg.chunk_size < 4 {
-            panic!("chunk size must be at least 4");
-        }
-        if cfg.receive_buffer < 4 {
-            panic!("receive buffer must be at least 4 bytes");
-        }
+        cfg.check();
 
         // Get trace id.
         let trace_id = match cfg.trace_id.clone() {
@@ -292,14 +284,14 @@ where
         };
 
         // Create channels.
-        let (channel_tx, channel_rx) = mpsc::channel(cfg.shared_send_queue.get().into());
-        let (listen_wait_tx, listen_wait_rx) = mpsc::channel(usize::from(cfg.connect_queue.get()) + 1);
-        let (listen_no_wait_tx, listen_no_wait_rx) = mpsc::channel(usize::from(cfg.connect_queue.get()) + 1);
+        let (channel_tx, channel_rx) = mpsc::channel(cfg.shared_send_queue);
+        let (listen_wait_tx, listen_wait_rx) = mpsc::channel(usize::from(cfg.connect_queue) + 1);
+        let (listen_no_wait_tx, listen_no_wait_rx) = mpsc::channel(usize::from(cfg.connect_queue) + 1);
         let (connect_tx, connect_rx) = mpsc::unbounded_channel();
         let (terminate_tx, terminate_rx) = mpsc::unbounded_channel();
 
         // Create user objects.
-        let port_allocator = PortAllocator::new(cfg.max_ports.get());
+        let port_allocator = PortAllocator::new(cfg.max_ports);
         let remote_listener_dropped = Arc::new(AtomicBool::new(false));
         let multiplexer = Multiplexer {
             trace_id,
@@ -324,7 +316,7 @@ where
 
         let client = Client::new(
             connect_tx,
-            remote_cfg.connect_queue.get(),
+            remote_cfg.connect_queue,
             port_allocator.clone(),
             remote_listener_dropped,
             terminate_tx.clone(),
