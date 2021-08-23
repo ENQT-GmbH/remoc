@@ -273,6 +273,9 @@ where
         if cfg.chunk_size < 4 {
             panic!("chunk size must be at least 4");
         }
+        if cfg.receive_buffer < 4 {
+            panic!("receive buffer must be at least 4 bytes");
+        }
 
         // Get trace id.
         let trace_id = match cfg.trace_id.clone() {
@@ -451,13 +454,12 @@ where
         );
 
         let sender_tx = self.channel_tx.clone();
-        let (sender_credit_provider, sender_credit_user) =
-            credit_send_pair(self.remote_cfg.port_receive_buffer.get());
+        let (sender_credit_provider, sender_credit_user) = credit_send_pair(self.remote_cfg.port_receive_buffer);
 
         let receiver_tx = self.channel_tx.clone();
         let (receiver_tx_data, receiver_rx_data) = mpsc::unbounded_channel();
         let (receiver_credit_monitor, receiver_credit_returner) =
-            credit_monitor_pair(self.local_cfg.receive_buffer.get());
+            credit_monitor_pair(self.local_cfg.receive_buffer);
 
         let hangup_notify = Arc::new(Mutex::new(Some(Vec::new())));
         let hangup_recved = Arc::new(AtomicBool::new(false));

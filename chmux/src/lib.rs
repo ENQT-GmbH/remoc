@@ -18,13 +18,15 @@ mod port_allocator;
 mod receiver;
 mod sender;
 
-pub use cfg::Cfg;
+pub use cfg::{Cfg, PortsExhausted};
 pub use client::{Client, Connect, ConnectError};
 pub use listener::{Listener, ListenerError, ListenerStream, Request};
 pub use multiplexer::Multiplexer;
 pub use port_allocator::{PortAllocator, PortNumber};
-pub use receiver::{DataBuf, ReceiveError, Received, Receiver, ReceiverStream};
-pub use sender::{Closed, SendError, Sender, SenderSink, TrySendError};
+pub use receiver::{
+    DataBuf, ReceiveAnyError, ReceiveChunkError, ReceiveError, Received, Receiver, ReceiverStream,
+};
+pub use sender::{ChunkSender, Closed, SendError, Sender, SenderSink, TrySendError};
 
 /// Channel multiplexer protocol version.
 pub const PROTOCOL_VERSION: u8 = 2;

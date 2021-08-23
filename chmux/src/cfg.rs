@@ -1,5 +1,5 @@
 use std::{
-    num::{NonZeroU16, NonZeroU32, NonZeroUsize},
+    num::{NonZeroU16, NonZeroU32},
     time::Duration,
 };
 
@@ -50,11 +50,14 @@ pub struct Cfg {
     /// Size of a chunk of data in bytes.
     ///
     /// By default this is 16 kB.
+    /// This must be at least 4 bytes.
     pub chunk_size: u32,
     /// Size of receive buffer of each port in bytes.
+    /// The size of the received data can exceed this value.
     ///
     /// By default this is 64 kB.
-    pub receive_buffer: NonZeroU32,
+    /// This must be at least 4 bytes.
+    pub receive_buffer: u32,
     /// Length of global send queue.
     /// Each element holds a chunk.
     ///
@@ -77,7 +80,7 @@ impl Default for Cfg {
             max_data_size: 65_536,
             max_received_ports: 128,
             chunk_size: 16384,
-            receive_buffer: NonZeroU32::new(65536).unwrap(),
+            receive_buffer: 65536,
             shared_send_queue: NonZeroU16::new(32).unwrap(),
             connect_queue: NonZeroU16::new(128).unwrap(),
         }

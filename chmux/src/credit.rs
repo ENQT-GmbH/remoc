@@ -1,11 +1,7 @@
-use futures::{
-    future::{self, BoxFuture},
-    ready, FutureExt,
-};
+use futures::{future::BoxFuture, FutureExt};
 use std::{
     mem,
     sync::{Arc, Mutex, Weak},
-    task::{Context, Poll},
 };
 use tokio::sync::{
     mpsc::{self, error::TrySendError},
@@ -242,7 +238,11 @@ impl ChannelCreditReturner {
             monitor.used -= credit.0;
             self.to_return += credit.0;
 
-            if self.to_return >= (monitor.limit / 2).max(1) {
+            // Make sure remote endpoint has at least 4 credits (size of u32),
+            // to be able to send a port data message with one port chunk.
+            let threshold = if monitor.limit >= 8 { monitor.limit / 2 } else { 1 };
+
+            if self.to_return >= threshold {
                 let msg = PortEvt::ReturnCredits { remote_port, credits: self.to_return };
                 self.to_return = 0;
 
@@ -265,16 +265,6 @@ impl ChannelCreditReturner {
             return_fut.await;
             self.return_fut = None;
         }
-    }
-
-    /// Polls to complete returning of credits.
-    pub fn poll_return_flush(&mut self, cx: &mut Context) -> Poll<()> {
-        if let Some(return_fut) = &mut self.return_fut {
-            ready!(return_fut.poll_unpin(cx));
-            self.return_fut = None;
-        }
-
-        Poll::Ready(())
     }
 }
 

@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use chmux::SendError;
+use chmux::{PortsExhausted, SendError};
 use futures::{
     channel::{mpsc, oneshot},
     future::try_join,
@@ -23,10 +23,11 @@ fn cfg(trace_id: &str) -> chmux::Cfg {
     chmux::Cfg {
         connection_timeout: Some(Duration::from_secs(1)),
         max_ports: NonZeroU32::new(20).unwrap(),
-        max_data_size: NonZeroUsize::new(1_000_000).unwrap(),
-        chunk_size: NonZeroU32::new(3).unwrap(),
-        receive_buffer: NonZeroU16::new(2).unwrap(),
-        shared_receive_queue: 5,
+        ports_exhausted: PortsExhausted::Fail,
+        max_data_size: 1_000_000,
+        max_received_ports: 100,
+        chunk_size: 9,
+        receive_buffer: 4,
         shared_send_queue: NonZeroU16::new(3).unwrap(),
         connect_queue: NonZeroU16::new(2).unwrap(),
         trace_id: Some(trace_id.to_string()),
@@ -37,10 +38,11 @@ fn cfg2(trace_id: &str) -> chmux::Cfg {
     chmux::Cfg {
         connection_timeout: Some(Duration::from_secs(1)),
         max_ports: NonZeroU32::new(20).unwrap(),
-        max_data_size: NonZeroUsize::new(1_000_000).unwrap(),
-        chunk_size: NonZeroU32::new(1).unwrap(),
-        receive_buffer: NonZeroU16::new(1).unwrap(),
-        shared_receive_queue: 0,
+        ports_exhausted: PortsExhausted::Wait(Some(Duration::from_secs(5))),
+        max_data_size: 1_000_000,
+        max_received_ports: 100,
+        chunk_size: 4,
+        receive_buffer: 4,
         shared_send_queue: NonZeroU16::new(1).unwrap(),
         connect_queue: NonZeroU16::new(1).unwrap(),
         trace_id: Some(trace_id.to_string()),

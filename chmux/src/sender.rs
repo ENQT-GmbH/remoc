@@ -7,7 +7,6 @@ use futures::{
     Future, FutureExt,
 };
 use std::{
-    convert::TryInto,
     error::Error,
     fmt,
     mem::size_of,
@@ -175,15 +174,6 @@ impl Sender {
         Self { local_port, remote_port, chunk_size, tx, credits, hangup_recved, hangup_notify, _drop_tx }
     }
 
-    /// Number of chunks to send data of given size.
-    fn chunks(&self, size: usize) -> usize {
-        let mut n = size / self.chunk_size;
-        if size % self.chunk_size > 0 {
-            n += 1;
-        }
-        n
-    }
-
     /// The local port number.
     pub fn local_port(&self) -> u32 {
         self.local_port
@@ -192,6 +182,11 @@ impl Sender {
     /// The remote port number.
     pub fn remote_port(&self) -> u32 {
         self.remote_port
+    }
+
+    /// Maximum chunk size that can be sent.
+    pub fn chunk_size(&self) -> usize {
+        self.chunk_size
     }
 
     /// Sends data over the channel.
@@ -235,6 +230,11 @@ impl Sender {
         }
 
         Ok(())
+    }
+
+    /// Streams a message by sending individual chunks.
+    pub fn send_chunks(&mut self) -> ChunkSender<'_> {
+        ChunkSender { sender: self, credits: AssignedCredits::default(), first: true }
     }
 
     /// Tries to send data over the channel.
@@ -365,6 +365,79 @@ impl Sender {
 impl Drop for Sender {
     fn drop(&mut self) {
         // required for correct drop order
+    }
+}
+
+/// Sends chunks of a message to the remote endpoint.
+///
+/// You must call [finish] to finalize the sending of the message.
+/// Drop the chunk sender to cancel the message.
+pub struct ChunkSender<'a> {
+    sender: &'a mut Sender,
+    credits: AssignedCredits,
+    first: bool,
+}
+
+impl<'a> ChunkSender<'a> {
+    async fn send_int(&mut self, mut data: Bytes, finish: bool) -> Result<(), SendError> {
+        if data.is_empty() {
+            if self.credits.is_empty() {
+                self.credits = self.sender.credits.request(1, 1).await?;
+            }
+            self.credits.take(1);
+
+            let msg =
+                PortEvt::SendData { remote_port: self.sender.remote_port, data, first: self.first, last: finish };
+            self.sender.tx.send(msg).await?;
+
+            self.first = false;
+        } else {
+            while !data.is_empty() {
+                if self.credits.is_empty() {
+                    self.credits =
+                        self.sender.credits.request(data.len().min(u32::MAX as usize) as u32, 1).await?;
+                }
+
+                let at = data.len().min(self.sender.chunk_size).min(self.credits.available() as usize);
+                let chunk = data.split_to(at);
+
+                self.credits.take(chunk.len() as u32);
+
+                let msg = PortEvt::SendData {
+                    remote_port: self.sender.remote_port,
+                    data: chunk,
+                    first: self.first,
+                    last: data.is_empty() && finish,
+                };
+                self.sender.tx.send(msg).await?;
+
+                self.first = false;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Sends a non-final chunk of a message.
+    ///
+    /// The boundaries of chunks within a message may change during transmission,
+    /// thus there is no guarantee that [Receiver::recv_chunk] will return the
+    /// same chunks as sent.
+    pub async fn send(mut self, chunk: Bytes) -> Result<ChunkSender<'a>, SendError> {
+        self.send_int(chunk, false).await?;
+        Ok(self)
+    }
+
+    /// Send the final chunk of a message.
+    ///
+    /// This saves one multiplexer message compared to calling [send] followed by [finish].
+    pub async fn send_final(mut self, chunk: Bytes) -> Result<(), SendError> {
+        self.send_int(chunk, true).await
+    }
+
+    /// Finishes the message.
+    pub async fn finish(mut self) -> Result<(), SendError> {
+        self.send_int(Bytes::new(), true).await
     }
 }
 

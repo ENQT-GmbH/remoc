@@ -1,11 +1,13 @@
 use bytes::{Buf, Bytes, BytesMut};
 use futures::{
+    future::BoxFuture,
     ready,
     stream::Stream,
     task::{Context, Poll},
+    FutureExt,
 };
-use std::{collections::VecDeque, error::Error, fmt, mem, pin::Pin};
-use tokio::sync::{mpsc, oneshot};
+use std::{collections::VecDeque, error::Error, fmt, mem, pin::Pin, sync::Arc};
+use tokio::sync::{mpsc, oneshot, Mutex};
 
 use crate::{
     credit::{ChannelCreditReturner, UsedCredit},
@@ -241,13 +243,13 @@ impl From<Bytes> for DataBuf {
     }
 }
 
-/// Received entity.
+/// Received data or port requests.
 pub enum Received {
     /// Binary data.
     Data(DataBuf),
     /// Data was received that exceeds the receive buffer size.
     ///
-    /// Use [Receiver::recv_chunk] to receive data in chunks.
+    /// Use [Receiver::recv_chunk] to stream the data in chunks.
     BigData,
     /// Port open requests.
     Requests(Vec<Request>),
@@ -363,6 +365,7 @@ impl Receiver {
     ///
     /// Waits for data to become available.
     /// Received port open requests are silently rejected.
+    /// The size of the received data is limited by [max_data_size].
     pub async fn recv(&mut self) -> Result<Option<DataBuf>, ReceiveError> {
         loop {
             match self.recv_any().await? {
@@ -374,7 +377,9 @@ impl Receiver {
         }
     }
 
-    /// Receives chunks of a message over the channel.
+    /// Receives chunks of data over the channel.
+    ///
+    /// This is unlimited in size.
     pub async fn recv_chunk(&mut self) -> Result<Option<Bytes>, ReceiveChunkError> {
         if self.finished {
             return Ok(None);
@@ -454,7 +459,7 @@ impl Receiver {
         loop {
             self.credits.return_flush().await;
 
-            let received = match self.rx.recv().await {
+            match self.rx.recv().await {
                 // Data message.
                 Some(PortReceiveMsg::Data(data)) => {
                     self.credits.start_return(data.credit, self.remote_port, &self.tx);
@@ -517,7 +522,7 @@ impl Receiver {
                 }
 
                 None => return Err(ReceiveError::Multiplexer),
-            };
+            }
         }
     }
 
@@ -532,7 +537,7 @@ impl Receiver {
 
     /// Convert this into a stream.
     pub fn into_stream(self) -> ReceiverStream {
-        ReceiverStream(self)
+        ReceiverStream::new(self)
     }
 }
 
@@ -543,20 +548,46 @@ impl Drop for Receiver {
 }
 
 /// A stream receiving byte data over a channel.
-pub struct ReceiverStream(Receiver);
+///
+/// No ports or data exceeding the maximum buffer size can be received.
+pub struct ReceiverStream {
+    receiver: Arc<Mutex<Receiver>>,
+    receive_fut: Option<BoxFuture<'static, Result<Option<DataBuf>, ReceiveError>>>,
+}
 
 impl ReceiverStream {
+    fn new(receiver: Receiver) -> Self {
+        Self { receiver: Arc::new(Mutex::new(receiver)), receive_fut: None }
+    }
+
+    async fn receive(receiver: Arc<Mutex<Receiver>>) -> Result<Option<DataBuf>, ReceiveError> {
+        let mut receiver = receiver.lock().await;
+        receiver.recv().await
+    }
+
+    fn poll_next(&mut self, cx: &mut Context) -> Poll<Result<Option<DataBuf>, ReceiveError>> {
+        if self.receive_fut.is_none() {
+            self.receive_fut = Some(Self::receive(self.receiver.clone()).boxed());
+        }
+
+        let fut = self.receive_fut.as_mut().unwrap();
+        let res = ready!(fut.as_mut().poll(cx));
+        self.receive_fut = None;
+        Poll::Ready(res)
+    }
+
     /// Closes the sender at the remote endpoint, preventing it from sending new data.
     /// Already sent message will still be received.
     pub async fn close(&mut self) {
-        self.0.close().await
+        self.receiver.lock().await.close().await
     }
 }
 
-// impl Stream for ReceiverStream {
-//     type Item = Result<DataBuf, ReceiveError>;
-//
-//     fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
-//         Poll::Ready(ready!(Pin::into_inner(self).0.poll_recv(cx)).transpose())
-//     }
-// }
+impl Stream for ReceiverStream {
+    type Item = Result<DataBuf, ReceiveError>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
+        let res = ready!(Pin::into_inner(self).poll_next(cx));
+        Poll::Ready(res.transpose())
+    }
+}
