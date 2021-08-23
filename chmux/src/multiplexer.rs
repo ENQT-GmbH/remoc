@@ -6,19 +6,37 @@ use futures::{
     Future, FutureExt,
 };
 use lazy_static::lazy_static;
-use std::{collections::HashMap, error::Error, fmt, marker::PhantomData, mem::size_of, pin::Pin, sync::{
+use std::{
+    collections::HashMap,
+    convert::TryFrom,
+    error::Error,
+    fmt,
+    marker::PhantomData,
+    mem::size_of,
+    pin::Pin,
+    sync::{
         atomic::{AtomicBool, AtomicU16, Ordering},
         Arc,
-    }, task::{Context, Poll}, time::Duration};
+    },
+    task::{Context, Poll},
+    time::Duration,
+};
 use tokio::{
     sync::{mpsc, mpsc::Permit, oneshot, Mutex},
     time::{sleep, timeout},
     try_join,
 };
 
-use crate::{Cfg, MultiplexError, PROTOCOL_VERSION, client::{Client, ConnectRequest, ConnectResponse}, credit::{
-        credit_monitor_pair, credit_send_pair, ChannelCreditMonitor, CreditProvider, 
-    }, listener::{Listener, RemoteConnectMsg, Request}, msg::{ExchangedCfg, MultiplexMsg}, port_allocator::{PortAllocator, PortNumber}, receiver::{PortReceiveMsg, ReceivedData, ReceivedPortRequests, Receiver}, sender::Sender};
+use crate::{
+    client::{Client, ConnectRequest, ConnectResponse},
+    credit::{credit_monitor_pair, credit_send_pair, ChannelCreditMonitor, CreditProvider},
+    listener::{Listener, RemoteConnectMsg, Request},
+    msg::{ExchangedCfg, MultiplexMsg},
+    port_allocator::{PortAllocator, PortNumber},
+    receiver::{PortReceiveMsg, ReceivedData, ReceivedPortRequests, Receiver},
+    sender::Sender,
+    Cfg, MultiplexError, PROTOCOL_VERSION,
+};
 
 /// Multiplexer protocol error.
 macro_rules! protocol_err {
@@ -242,12 +260,18 @@ where
     /// Creates a new multiplexer.
     ///
     /// After creation use the `run` method of the multiplexer to launch the dispatch task.
+    ///
+    /// # Panics
+    /// Panics if specified configuration does not obey limits documented in [Cfg].
     pub async fn new(
         cfg: &Cfg, mut transport_sink: TransportSink, mut transport_stream: TransportStream,
     ) -> Result<(Self, Client, Listener), MultiplexError<TransportSinkError, TransportStreamError>> {
         // Check configuration.
         if cfg.max_ports.get() > 2u32.pow(31) {
-            return Err(MultiplexError::TooManyPorts);
+            panic!("maximum ports must not exceed 2^31");
+        }
+        if cfg.chunk_size < 4 {
+            panic!("chunk size must be at least 4");
         }
 
         // Get trace id.
@@ -433,7 +457,7 @@ where
         let receiver_tx = self.channel_tx.clone();
         let (receiver_tx_data, receiver_rx_data) = mpsc::unbounded_channel();
         let (receiver_credit_monitor, receiver_credit_returner) =
-            credit_monitor_pair(self.local_cfg.port_receive_buffer.get());
+            credit_monitor_pair(self.local_cfg.receive_buffer.get());
 
         let hangup_notify = Arc::new(Mutex::new(Some(Vec::new())));
         let hangup_recved = Arc::new(AtomicBool::new(false));
@@ -462,8 +486,7 @@ where
         let sender = Sender::new(
             local_port_num,
             remote_port,
-            self.remote_cfg.max_data_size.get(),
-            self.remote_cfg.chunk_size.get() as usize,
+            self.remote_cfg.chunk_size as usize,
             sender_tx,
             sender_credit_user,
             Arc::downgrade(&hangup_recved),
@@ -473,7 +496,8 @@ where
         let receiver = Receiver::new(
             local_port_num,
             remote_port,
-            self.local_cfg.max_data_size.get(),
+            self.local_cfg.max_data_size,
+            self.local_cfg.max_received_ports,
             receiver_tx,
             receiver_rx_data,
             receiver_credit_returner,
@@ -781,7 +805,10 @@ where
                     }
                     port_nums.push(port_num);
                 }
-                send_msg(permit, MultiplexMsg::PortData { port: remote_port, first, last, wait, ports: port_nums });
+                send_msg(
+                    permit,
+                    MultiplexMsg::PortData { port: remote_port, first, last, wait, ports: port_nums },
+                );
             }
 
             // Return port credits to remote endpoint.
@@ -940,10 +967,17 @@ where
                 }) = self.ports.get_mut(&port)
                 {
                     let data = data.unwrap();
-                    if data.len() > self.local_cfg.chunk_size.get() as usize {
-                        return Err(protocol_err!(format!("received data exceeds maximum chunk size on port {}", &port)));
-                    }
-                    let used_credit = receiver_credit_monitor.use_credits(data.len() as u32)?;
+                    let used_credit = match u32::try_from(data.len()) {
+                        Ok(size) if size <= self.local_cfg.chunk_size => {
+                            receiver_credit_monitor.use_credits(size.max(1))?
+                        }
+                        _ => {
+                            return Err(protocol_err!(format!(
+                                "received data exceeds maximum chunk size on port {}",
+                                &port
+                            )))
+                        }
+                    };
                     let _ = receiver_tx_data.send(PortReceiveMsg::Data(ReceivedData {
                         buf: data,
                         first,
@@ -966,11 +1000,18 @@ where
                     ..
                 }) = self.ports.get_mut(&port)
                 {
-                    let data_len = ports.len() * size_of::<u32>();
-                    if data_len > self.local_cfg.chunk_size.get() as usize {
-                        return Err(protocol_err!(format!("received ports exceeds maximum chunk size on port {}", &port)));
-                    }
-                    let used_credit = receiver_credit_monitor.use_credits(data_len as u32)?;
+                    let used_credit =
+                        match ports.len().checked_mul(size_of::<u32>()).and_then(|v| u32::try_from(v).ok()) {
+                            Some(size) if size <= self.local_cfg.chunk_size => {
+                                receiver_credit_monitor.use_credits(size)?
+                            }
+                            _ => {
+                                return Err(protocol_err!(format!(
+                                    "received ports exceeds maximum chunk size on port {}",
+                                    &port
+                                )))
+                            }
+                        };
                     let port_allocator = self.port_allocator.clone();
                     let channel_tx = self.channel_tx.clone();
                     let requests = ports
@@ -981,7 +1022,8 @@ where
                         .collect();
                     let _ = receiver_tx_data.send(PortReceiveMsg::PortRequests(ReceivedPortRequests {
                         requests,
-                        first, last,
+                        first,
+                        last,
                         credit: used_credit,
                     }));
                 } else {

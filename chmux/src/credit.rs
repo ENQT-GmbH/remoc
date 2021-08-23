@@ -124,8 +124,10 @@ pub(crate) struct CreditUser {
 
 impl CreditUser {
     /// Requests credits for sending.
-    /// Blocks until at least one credit becomes available.
-    pub async fn request(&self, req: u32) -> Result<AssignedCredits, SendError> {
+    /// Blocks until at least `min_req` credits become available.
+    pub async fn request(&self, req: u32, min_req: u32) -> Result<AssignedCredits, SendError> {
+        debug_assert!(req > 0);
+
         loop {
             let rx_channel = {
                 let channel = match self.channel.upgrade() {
@@ -137,7 +139,7 @@ impl CreditUser {
                     return Err(SendError::Closed { gracefully });
                 }
 
-                if channel.credits > 0 {
+                if channel.credits >= min_req {
                     let channel_taken = channel.credits.min(req);
                     channel.credits -= channel_taken;
 
@@ -149,13 +151,15 @@ impl CreditUser {
                 }
             };
 
-            rx_channel.await;
+            let _ = rx_channel.await;
         }
     }
 
     /// Requests the specified number of credits for sending without blocking.
-    /// Returns true, if requested credits are available, otherwise false.
+    /// Returns requested credits if fully available, otherwise None.
     pub fn try_request(&self, req: u32) -> Result<Option<AssignedCredits>, SendError> {
+        debug_assert!(req > 0);
+
         let channel = match self.channel.upgrade() {
             Some(channel) => channel,
             None => return Err(SendError::Multiplexer),
@@ -190,7 +194,7 @@ pub(crate) fn credit_send_pair(initial_credits: u32) -> (CreditProvider, CreditU
 // ===========================================================================
 
 /// Represents monitored used credits.
-pub(crate) struct UsedCredit (u32);
+pub(crate) struct UsedCredit(u32);
 
 #[derive(Debug)]
 struct ChannelCreditMonitorInner {
@@ -204,7 +208,9 @@ pub(crate) struct ChannelCreditMonitor(Arc<Mutex<ChannelCreditMonitorInner>>);
 
 impl ChannelCreditMonitor {
     /// Use channel-specific credits.
-    pub fn use_credits<SinkError, StreamError>(&self, credits: u32) -> Result<UsedCredit, MultiplexError<SinkError, StreamError>> {
+    pub fn use_credits<SinkError, StreamError>(
+        &self, credits: u32,
+    ) -> Result<UsedCredit, MultiplexError<SinkError, StreamError>> {
         let mut inner = self.0.lock().unwrap();
         match inner.used.checked_add(credits) {
             Some(new_used) if new_used <= inner.limit => {
@@ -278,4 +284,3 @@ pub(crate) fn credit_monitor_pair(limit: u32) -> (ChannelCreditMonitor, ChannelC
     let returner = ChannelCreditReturner { monitor: Arc::downgrade(&monitor.0), to_return: 0, return_fut: None };
     (monitor, returner)
 }
-

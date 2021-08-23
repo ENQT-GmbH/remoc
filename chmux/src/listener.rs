@@ -139,7 +139,7 @@ impl fmt::Debug for Listener {
 impl Listener {
     pub(crate) fn new(
         wait_rx: mpsc::Receiver<RemoteConnectMsg>, no_wait_rx: mpsc::Receiver<RemoteConnectMsg>,
-        port_allocator: PortAllocator, terminate_tx: mpsc::UnboundedSender<()>
+        port_allocator: PortAllocator, terminate_tx: mpsc::UnboundedSender<()>,
     ) -> Self {
         Self { wait_rx, no_wait_rx, port_allocator, terminate_tx, closed: false }
     }
@@ -222,8 +222,8 @@ impl Listener {
 
     /// Terminates the multiplexer, forcibly closing all open ports.
     pub fn terminate(&self) {
-        self.terminate()
-    }    
+        let _ = self.terminate_tx.send(());
+    }
 }
 
 impl Drop for Listener {

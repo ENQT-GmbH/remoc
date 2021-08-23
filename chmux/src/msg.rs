@@ -314,10 +314,8 @@ impl MultiplexMsg {
 pub struct ExchangedCfg {
     /// Time after which connection is closed when no data is.
     pub connection_timeout: Option<Duration>,
-    /// Maximum buffered receive data size in bytes.
-    pub max_data_size: NonZeroUsize,
     /// Size of a chunk of data in bytes.
-    pub chunk_size: NonZeroU32,
+    pub chunk_size: u32,
     /// Size of receive buffer of each port in bytes.
     pub port_receive_buffer: NonZeroU32,
     /// Length of connection request queue.
@@ -329,8 +327,7 @@ impl ExchangedCfg {
         writer.write_u64::<LE>(
             self.connection_timeout.unwrap_or_default().as_millis().min(u64::MAX as u128) as u64
         )?;
-        writer.write_u64::<LE>(self.max_data_size.get() as u64)?;
-        writer.write_u32::<LE>(self.chunk_size.get())?;
+        writer.write_u32::<LE>(self.chunk_size)?;
         writer.write_u32::<LE>(self.port_receive_buffer.get())?;
         writer.write_u16::<LE>(self.connect_queue.get())?;
         Ok(())
@@ -342,9 +339,10 @@ impl ExchangedCfg {
                 0 => None,
                 millis => Some(Duration::from_millis(millis)),
             },
-            max_data_size: NonZeroUsize::new(reader.read_u64::<LE>()?.min(usize::MAX as u64) as usize)
-                .ok_or_else(|| invalid_data!("max_data_size"))?,
-            chunk_size: NonZeroU32::new(reader.read_u32::<LE>()?).ok_or_else(|| invalid_data!("chunk_size"))?,
+            chunk_size: match reader.read_u32::<LE>()? {
+                cs if cs >= 4 => cs,
+                _ => return Err(invalid_data!("chunk_size")),
+            },
             port_receive_buffer: NonZeroU32::new(reader.read_u32::<LE>()?)
                 .ok_or_else(|| invalid_data!("port_receive_queue"))?,
             connect_queue: NonZeroU16::new(reader.read_u16::<LE>()?)
@@ -354,15 +352,13 @@ impl ExchangedCfg {
     }
 }
 
-
 impl From<&Cfg> for ExchangedCfg {
     fn from(cfg: &Cfg) -> Self {
         Self {
             connection_timeout: cfg.connection_timeout,
-            max_data_size: cfg.max_data_size,
             chunk_size: cfg.chunk_size,
-            port_receive_buffer: cfg.port_receive_buffer,
-            connect_queue: cfg.connect_queue
+            port_receive_buffer: cfg.receive_buffer,
+            connect_queue: cfg.connect_queue,
         }
     }
 }

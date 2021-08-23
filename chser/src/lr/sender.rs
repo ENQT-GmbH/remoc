@@ -1,4 +1,7 @@
-use std::{marker::PhantomData, sync::{Arc, Mutex}};
+use std::{
+    marker::PhantomData,
+    sync::{Arc, Mutex},
+};
 
 use futures::FutureExt;
 use serde::{ser, Deserialize, Serialize};
@@ -7,8 +10,8 @@ use super::{ConnectError, Interlock, Location};
 use crate::remote::{self, PortDeserializer, PortSerializer};
 
 enum ReceivableSender<T, Codec> {
-    ToReceive (tokio::sync::mpsc::UnboundedReceiver<Result<remote::Sender<T, Codec>, ConnectError>>),
-    Received (Result<remote::Sender<T, Codec>, ConnectError>)
+    ToReceive(tokio::sync::mpsc::UnboundedReceiver<Result<remote::Sender<T, Codec>, ConnectError>>),
+    Received(Result<remote::Sender<T, Codec>, ConnectError>),
 }
 
 impl<T, Codec> ReceivableSender<T, Codec> {
@@ -28,7 +31,8 @@ impl<T, Codec> ReceivableSender<T, Codec> {
 /// A local-remote channel sender.
 pub struct Sender<T, Codec> {
     pub(super) sender: ReceivableSender<T, Codec>,
-    pub(super) receiver_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<remote::Receiver<T, Codec>, ConnectError>>>,
+    pub(super) receiver_tx:
+        Option<tokio::sync::mpsc::UnboundedSender<Result<remote::Receiver<T, Codec>, ConnectError>>>,
     pub(super) interlock: Arc<Mutex<Interlock>>,
 }
 

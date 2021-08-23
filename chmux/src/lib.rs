@@ -18,9 +18,9 @@ mod port_allocator;
 mod receiver;
 mod sender;
 
+pub use cfg::Cfg;
 pub use client::{Client, Connect, ConnectError};
 pub use listener::{Listener, ListenerError, ListenerStream, Request};
-pub use cfg::Cfg;
 pub use multiplexer::Multiplexer;
 pub use port_allocator::{PortAllocator, PortNumber};
 pub use receiver::{DataBuf, ReceiveError, Received, Receiver, ReceiverStream};
@@ -43,8 +43,6 @@ pub enum MultiplexError<SinkError, StreamError> {
     Reset,
     /// No messages where received over the configured connection timeout.
     Timeout,
-    /// Too many ports specified in configuration.
-    TooManyPorts,
     /// A multiplex protocol error occured.
     Protocol(String),
 }
@@ -61,7 +59,6 @@ where
             Self::StreamClosed => write!(f, "end of receive stream"),
             Self::Reset => write!(f, "connection reset"),
             Self::Timeout => write!(f, "connection timeout"),
-            Self::TooManyPorts => write!(f, "too many ports configured"),
             Self::Protocol(err) => write!(f, "protocol error: {}", err),
         }
     }

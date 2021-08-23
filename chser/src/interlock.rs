@@ -1,4 +1,3 @@
-
 /// Interlocks sender and receiver against both being sent.
 pub(crate) struct Interlock {
     pub sender: Location,

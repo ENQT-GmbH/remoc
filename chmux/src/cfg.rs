@@ -34,18 +34,27 @@ pub struct Cfg {
     /// This can be overridden on a per-request basis.
     /// By default this is wait with a timeout of 60 seconds.
     pub ports_exhausted: PortsExhausted,
-    /// Maximum buffered receive data size in bytes.
+    /// Maximum size of received data per message in bytes.
+    ///
+    /// [Receiver::recv_chunk] is not affected by this limit.
+    /// This can be configured on a per-receiver basis.
     ///
     /// By default this is 64 kB.
-    pub max_data_size: NonZeroUsize,
+    pub max_data_size: usize,
+    /// Maximum port requests received per message.
+    ///
+    /// This can be configured on a per-receiver basis.
+    ///
+    /// By default this is 128.
+    pub max_received_ports: usize,
     /// Size of a chunk of data in bytes.
     ///
     /// By default this is 16 kB.
-    pub chunk_size: NonZeroU32,
+    pub chunk_size: u32,
     /// Size of receive buffer of each port in bytes.
     ///
     /// By default this is 64 kB.
-    pub port_receive_buffer: NonZeroU32,
+    pub receive_buffer: NonZeroU32,
     /// Length of global send queue.
     /// Each element holds a chunk.
     ///
@@ -65,9 +74,10 @@ impl Default for Cfg {
             connection_timeout: Some(Duration::from_secs(60)),
             max_ports: NonZeroU32::new(16384).unwrap(),
             ports_exhausted: PortsExhausted::Wait(Some(Duration::from_secs(60))),
-            max_data_size: NonZeroUsize::new(134_217_728).unwrap(),
-            chunk_size: NonZeroU32::new(16384).unwrap(),
-            port_receive_buffer: NonZeroU32::new(65536).unwrap(),
+            max_data_size: 65_536,
+            max_received_ports: 128,
+            chunk_size: 16384,
+            receive_buffer: NonZeroU32::new(65536).unwrap(),
             shared_send_queue: NonZeroU16::new(32).unwrap(),
             connect_queue: NonZeroU16::new(128).unwrap(),
         }

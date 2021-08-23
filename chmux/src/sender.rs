@@ -7,6 +7,7 @@ use futures::{
     Future, FutureExt,
 };
 use std::{
+    convert::TryInto,
     error::Error,
     fmt,
     mem::size_of,
@@ -36,22 +37,6 @@ pub enum SendError {
         /// True, if remote endpoint still processes messages that were already sent.
         gracefully: bool,
     },
-    /// This side has been closed.
-    SinkClosed,
-    /// Data exceeds maximum size.
-    ExceedsMaxDataSize {
-        /// Actual data size.
-        data_size: usize,
-        /// Maximum allowed data size.
-        max_size: usize,
-    },
-    /// Port count exceeds limit.
-    ExceedsMaxPortCount {
-        /// Actual port count.
-        port_count: usize,
-        /// Maximum allowed port count.
-        max_count: usize,
-    },
 }
 
 impl SendError {
@@ -71,13 +56,6 @@ impl fmt::Display for SendError {
                 "remote endpoint closed channel{}",
                 if *gracefully { " but still processes sent messages" } else { "" }
             ),
-            Self::SinkClosed => write!(f, "sink has been closed"),
-            Self::ExceedsMaxDataSize { data_size, max_size } => {
-                write!(f, "data ({} bytes) exceeds maximum allowed size ({} bytes)", data_size, max_size)
-            }
-            Self::ExceedsMaxPortCount { port_count, max_count } => {
-                write!(f, "port count ({}) exceeds maximum allowed port count ({})", port_count, max_count)
-            }
         }
     }
 }
@@ -162,7 +140,6 @@ impl Future for Closed {
 pub struct Sender {
     local_port: u32,
     remote_port: u32,
-    max_data_size: usize,
     chunk_size: usize,
     tx: mpsc::Sender<PortEvt>,
     credits: CreditUser,
@@ -185,9 +162,8 @@ impl Sender {
     /// Create a new sender.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
-        local_port: u32, remote_port: u32, max_data_size: usize, chunk_size: usize, tx: mpsc::Sender<PortEvt>,
-        credits: CreditUser, hangup_recved: Weak<AtomicBool>,
-        hangup_notify: Weak<Mutex<Option<Vec<oneshot::Sender<()>>>>>,
+        local_port: u32, remote_port: u32, chunk_size: usize, tx: mpsc::Sender<PortEvt>, credits: CreditUser,
+        hangup_recved: Weak<AtomicBool>, hangup_notify: Weak<Mutex<Option<Vec<oneshot::Sender<()>>>>>,
     ) -> Self {
         let (_drop_tx, drop_rx) = oneshot::channel();
         let tx_drop = tx.clone();
@@ -196,17 +172,7 @@ impl Sender {
             let _ = tx_drop.send(PortEvt::SenderDropped { local_port }).await;
         });
 
-        Self {
-            local_port,
-            remote_port,
-            max_data_size,
-            chunk_size,
-            tx,
-            credits,
-            hangup_recved,
-            hangup_notify,
-            _drop_tx,
-        }
+        Self { local_port, remote_port, chunk_size, tx, credits, hangup_recved, hangup_notify, _drop_tx }
     }
 
     /// Number of chunks to send data of given size.
@@ -228,16 +194,6 @@ impl Sender {
         self.remote_port
     }
 
-    /// Maximum allowed size of data to be sent in one request.
-    pub fn max_data_size(&self) -> usize {
-        self.max_data_size
-    }
-
-    /// Maximum number of ports that can be sent in one request.
-    pub fn max_port_count(&self) -> usize {
-        (self.max_data_size / size_of::<u32>()).max(1)
-    }
-
     /// Sends data over the channel.
     ///
     /// Waits until send space becomes available.
@@ -246,38 +202,34 @@ impl Sender {
     /// # Cancel safety
     /// If this function is cancelled before completion, the remote endpoint will receive no data.
     pub async fn send(&mut self, mut data: Bytes) -> Result<(), SendError> {
-        if data.len() > self.max_data_size {
-            return Err(SendError::ExceedsMaxDataSize { data_size: data.len(), max_size: self.max_data_size });
-        }
-
         if data.is_empty() {
-            let mut credits = self.credits.request(1).await?;
-            let msg = PortEvt::SendData {
-                remote_port: self.remote_port,
-                data,
-                first: true,
-                last: true,
-                credit: credits.take_one(),
-            };
+            let mut credits = self.credits.request(1, 1).await?;
+            credits.take(1);
+
+            let msg = PortEvt::SendData { remote_port: self.remote_port, data, first: true, last: true };
             self.tx.send(msg).await?;
         } else {
             let mut first = true;
             let mut credits = AssignedCredits::default();
+
             while !data.is_empty() {
                 if credits.is_empty() {
-                    credits = self.credits.request(self.chunks(data.len()).min(u16::MAX as usize) as u16).await?;
+                    credits = self.credits.request(data.len().min(u32::MAX as usize) as u32, 1).await?;
                 }
 
-                let at = data.len().min(self.chunk_size);
+                let at = data.len().min(self.chunk_size).min(credits.available() as usize);
                 let chunk = data.split_to(at);
+
+                credits.take(chunk.len() as u32);
+
                 let msg = PortEvt::SendData {
                     remote_port: self.remote_port,
                     data: chunk,
                     first,
                     last: data.is_empty(),
-                    credit: credits.take_one(),
                 };
                 self.tx.send(msg).await?;
+
                 first = false;
             }
         }
@@ -293,42 +245,34 @@ impl Sender {
     pub fn try_send(&mut self, data: &Bytes) -> Result<(), TrySendError> {
         let mut data = data.clone();
 
-        if data.len() > self.max_data_size {
-            return Err(
-                SendError::ExceedsMaxDataSize { data_size: data.len(), max_size: self.max_data_size }.into()
-            );
-        }
-
         if data.is_empty() {
             match self.credits.try_request(1)? {
                 Some(mut credits) => {
-                    let msg = PortEvt::SendData {
-                        remote_port: self.remote_port,
-                        data,
-                        first: true,
-                        last: true,
-                        credit: credits.take_one(),
-                    };
+                    credits.take(1);
+                    let msg = PortEvt::SendData { remote_port: self.remote_port, data, first: true, last: true };
                     self.tx.try_send(msg)?;
                     Ok(())
                 }
                 None => Err(TrySendError::Full),
             }
         } else {
-            match self.credits.try_request(self.chunks(data.len()).min(u16::MAX as usize) as u16)? {
+            match self.credits.try_request(data.len().min(u32::MAX as usize) as u32)? {
                 Some(mut credits) => {
                     let mut first = true;
                     while !data.is_empty() {
                         let at = data.len().min(self.chunk_size);
                         let chunk = data.split_to(at);
+
+                        credits.take(chunk.len() as u32);
+
                         let msg = PortEvt::SendData {
                             remote_port: self.remote_port,
                             data: chunk,
                             first,
                             last: data.is_empty(),
-                            credit: credits.take_one(),
                         };
                         self.tx.try_send(msg)?;
+
                         first = false;
                     }
                     Ok(())
@@ -339,16 +283,9 @@ impl Sender {
     }
 
     /// Sends port open requests over this port and returns the connect requests.
+    ///
+    /// The receiver limits the number of ports sendable per call, see [Receiver::max_port_count].
     pub async fn connect(&mut self, ports: Vec<PortNumber>, wait: bool) -> Result<Vec<Connect>, SendError> {
-        if ports.len() > self.max_port_count() {
-            return Err(SendError::ExceedsMaxPortCount {
-                port_count: ports.len(),
-                max_count: self.max_port_count(),
-            });
-        }
-
-        let mut credits = self.credits.request(1).await?;
-
         let mut ports_response = Vec::new();
         let mut sent_txs = Vec::new();
         let mut connects = Vec::new();
@@ -377,13 +314,34 @@ impl Sender {
             connects.push(Connect { sent_rx, response });
         }
 
-        let msg = PortEvt::SendPorts {
-            remote_port: self.remote_port,
-            credit: credits.take_one(),
-            wait,
-            ports: ports_response,
-        };
-        self.tx.send(msg).await?;
+        let mut first = true;
+        let mut credits = AssignedCredits::default();
+
+        while !ports_response.is_empty() {
+            if credits.is_empty() {
+                let data_len = ports_response.len() * size_of::<u32>();
+                credits =
+                    self.credits.request(data_len.min(u32::MAX as usize) as u32, size_of::<u32>() as u32).await?;
+            }
+
+            let max_ports = self.chunk_size.min(credits.available() as usize) / size_of::<u32>();
+            let next =
+                if ports_response.len() > max_ports { ports_response.split_off(max_ports) } else { Vec::new() };
+
+            credits.take((ports_response.len() * size_of::<u32>()) as u32);
+
+            let msg = PortEvt::SendPorts {
+                remote_port: self.remote_port,
+                first,
+                last: next.is_empty(),
+                wait,
+                ports: ports_response,
+            };
+            self.tx.send(msg).await?;
+
+            ports_response = next;
+            first = false;
+        }
 
         Ok(connects)
     }
@@ -436,7 +394,7 @@ impl SenderSink {
                 self.send_fut = Some(Self::send(sender, data).boxed());
                 Ok(())
             }
-            None => Err(SendError::SinkClosed),
+            None => panic!("start_send afer sink has beed closed"),
         }
     }
 

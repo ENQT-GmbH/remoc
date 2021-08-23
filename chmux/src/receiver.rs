@@ -13,19 +13,16 @@ use crate::{
     Request,
 };
 
-/// An error occured during receiving a message.
+/// An error occured during receiving a data message.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ReceiveError {
     /// Multiplexer terminated.
     Multiplexer,
     /// Data exceeds maximum size.
-    ExceedsMaxDataSize {
-        /// Actual data size or below.
-        data_size: usize,
-        /// Maximum allowed data size.
-        max_size: usize,
-    },
+    ExceedsMaxDataSize(usize),
+    /// Received ports exceed maximum count.
+    ExceedsMaxPortCount(usize),
 }
 
 impl ReceiveError {
@@ -39,14 +36,68 @@ impl fmt::Display for ReceiveError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::Multiplexer => write!(f, "multiplexer terminated"),
-            Self::ExceedsMaxDataSize { data_size, max_size } => {
-                write!(f, "data (at least {} bytes) exceeds maximum allowed size ({} bytes)", data_size, max_size)
+            Self::ExceedsMaxDataSize(max_size) => {
+                write!(f, "data exceeds maximum allowed size of {} bytes", max_size)
+            }
+            Self::ExceedsMaxPortCount(max_count) => {
+                write!(f, "port message exceeds maximum allowed count of {} ports", max_count)
             }
         }
     }
 }
 
 impl Error for ReceiveError {}
+
+/// An error occured during receiving a message.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum ReceiveAnyError {
+    /// Multiplexer terminated.
+    Multiplexer,
+}
+
+impl ReceiveAnyError {
+    /// Returns true, if error is due to multiplexer being terminated.
+    pub fn is_terminated(&self) -> bool {
+        matches!(self, Self::Multiplexer)
+    }
+}
+
+impl fmt::Display for ReceiveAnyError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Multiplexer => write!(f, "multiplexer terminated"),
+        }
+    }
+}
+
+impl Error for ReceiveAnyError {}
+
+/// An error occured during receiving chunks of a message.
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum ReceiveChunkError {
+    /// Multiplexer terminated.
+    Multiplexer,
+    /// Remote endpoint cancelled transmission.
+    Cancelled,
+}
+
+impl ReceiveChunkError {
+    /// Returns true, if error is due to multiplexer being terminated.
+    pub fn is_terminated(&self) -> bool {
+        matches!(self, Self::Multiplexer)
+    }
+}
+
+impl fmt::Display for ReceiveChunkError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Multiplexer => write!(f, "multiplexer terminated"),
+            Self::Cancelled => write!(f, "transmission cancelled"),
+        }
+    }
+}
 
 /// Container for received data.
 pub(crate) struct ReceivedData {
@@ -67,7 +118,7 @@ pub(crate) struct ReceivedPortRequests {
     /// First chunk of ports.
     pub first: bool,
     /// Last chunk of ports.
-    pub last: bool,    
+    pub last: bool,
     /// Flow-control credit.
     pub credit: UsedCredit,
 }
@@ -100,15 +151,14 @@ impl DataBuf {
         Self { bufs: VecDeque::new(), remaining: 0 }
     }
 
-    fn push(&mut self, buf: Bytes, max_size: usize) -> Result<(), ReceiveError> {
+    fn try_push(&mut self, buf: Bytes, max_size: usize) -> Result<(), Bytes> {
         match self.remaining.checked_add(buf.len()) {
             Some(new_size) if new_size <= max_size => {
                 self.bufs.push_back(buf);
                 self.remaining = new_size;
                 Ok(())
             }
-            Some(new_size) => Err(ReceiveError::ExceedsMaxDataSize { data_size: new_size, max_size }),
-            None => Err(ReceiveError::ExceedsMaxDataSize { data_size: usize::MAX, max_size }),
+            _ => Err(buf),
         }
     }
 }
@@ -195,8 +245,25 @@ impl From<Bytes> for DataBuf {
 pub enum Received {
     /// Binary data.
     Data(DataBuf),
+    /// Data was received that exceeds the receive buffer size.
+    ///
+    /// Use [Receiver::recv_chunk] to receive data in chunks.
+    BigData,
     /// Port open requests.
     Requests(Vec<Request>),
+}
+
+enum Receiving {
+    Nothing,
+    Data(DataBuf),
+    Chunks { chunks: VecDeque<Bytes>, completed: bool },
+    Requests(Vec<Request>),
+}
+
+impl Default for Receiving {
+    fn default() -> Self {
+        Self::Nothing
+    }
 }
 
 /// Receives byte data over a channel.
@@ -204,9 +271,10 @@ pub struct Receiver {
     local_port: u32,
     remote_port: u32,
     max_data_size: usize,
+    max_ports: usize,
     tx: mpsc::Sender<PortEvt>,
     rx: mpsc::UnboundedReceiver<PortReceiveMsg>,
-    receiving: Option<Received>,
+    receiving: Receiving,
     credits: ChannelCreditReturner,
     closed: bool,
     finished: bool,
@@ -218,6 +286,8 @@ impl fmt::Debug for Receiver {
         f.debug_struct("Receiver")
             .field("local_port", &self.local_port)
             .field("remote_port", &self.remote_port)
+            .field("max_data_size", &self.max_data_size)
+            .field("max_port_count", &self.max_ports)
             .field("closed", &self.closed)
             .field("finished", &self.finished)
             .finish()
@@ -226,8 +296,8 @@ impl fmt::Debug for Receiver {
 
 impl Receiver {
     pub(crate) fn new(
-        local_port: u32, remote_port: u32, max_data_size: usize, tx: mpsc::Sender<PortEvt>,
-        rx: mpsc::UnboundedReceiver<PortReceiveMsg>, credits: ChannelCreditReturner,
+        local_port: u32, remote_port: u32, max_data_size: usize, max_port_count: usize,
+        tx: mpsc::Sender<PortEvt>, rx: mpsc::UnboundedReceiver<PortReceiveMsg>, credits: ChannelCreditReturner,
     ) -> Self {
         let (_drop_tx, drop_rx) = oneshot::channel();
         let tx_drop = tx.clone();
@@ -240,9 +310,10 @@ impl Receiver {
             local_port,
             remote_port,
             max_data_size,
+            max_ports: max_port_count,
             tx,
             rx,
-            receiving: None,
+            receiving: Receiving::Nothing,
             credits,
             closed: false,
             finished: false,
@@ -260,71 +331,32 @@ impl Receiver {
         self.remote_port
     }
 
-    /// Receives data or ports over the channel.
+    /// Maximum data size in bytes to receive per message.
     ///
-    /// Waits for data to become available.
-    pub async fn recv_any(&mut self) -> Result<Option<Received>, ReceiveError> {
-        if self.finished {
-            return Ok(None);
-        }
+    /// The default value is specified by [Cfg::max_data_size].
+    ///
+    /// [recv_chunk] is not affected by this limit.
+    pub fn max_data_size(&self) -> usize {
+        self.max_data_size
+    }
 
-        loop {
-            self.credits.return_flush().await;
+    /// Set maximum data size in bytes to receive per message.
+    ///
+    /// [recv_chunk] is not affected by this limit.
+    pub fn set_max_data_size(&mut self, max_data_size: usize) {
+        self.max_data_size = max_data_size;
+    }
 
-            let received = match self.rx.recv().await {
-                Some(PortReceiveMsg::Data(data)) => {
-                    self.credits.start_return(data.credit, self.remote_port, &self.tx);
+    /// Maximum port count per message.
+    ///
+    /// The default value is specified by [Cfg::max_received_ports].
+    pub fn max_ports(&self) -> usize {
+        self.max_ports
+    }
 
-                    if data.first {
-                        self.receiving = Some(Received::Data(DataBuf::new()));
-                    }
-        
-                    if let Some(Received::Data(data_buf)) = &mut self.receiving {
-                        if let Err(err) = data_buf.push(data.buf, self.max_data_size) {
-                            self.finished = true;
-                            self.receiving = None;
-                            return Err(err);
-                            // TODO: switch to stream.
-                            
-                        }
-
-                        if data.last {
-                            if let Some(Received::Data(data_buf)) = mem::take(&mut self.receiving) {
-                                return Ok(Some(Received::Data(data_buf)));
-                            } else {
-                                unreachable!()
-                            }
-                        }                        
-                    } 
-                },
-                Some(PortReceiveMsg::PortRequests(req)) => {
-                    self.credits.start_return(req.credit, self.remote_port, &self.tx);
-
-                    if req.first {
-                        self.receiving = Some(Received::Requests(Vec::new()));
-                    }
-        
-                    if let Some(Received::Requests(requests)) = &mut self.receiving {
-                        requests.extend(req.requests);
-
-                        if req.last {
-                            if let Some(Received::Requests(requests)) = mem::take(&mut self.receiving) {
-                                return Ok(Some(Received::Requests(requests)));
-                            } else {
-                                unreachable!()
-                            }
-                        }                        
-                    } 
-                }
-                Some(PortReceiveMsg::Finished) => {
-                    self.finished = true;
-                    return Ok(None);
-                }
-                None => return Err(ReceiveError::Multiplexer),
-            };
-
-
-        }
+    /// Set maximum port count per message.
+    pub fn set_max_ports(&mut self, max_ports: usize) {
+        self.max_ports = max_ports;
     }
 
     /// Receives data over the channel.
@@ -335,63 +367,157 @@ impl Receiver {
         loop {
             match self.recv_any().await? {
                 Some(Received::Data(data)) => break Ok(Some(data)),
+                Some(Received::BigData) => break Err(ReceiveError::ExceedsMaxDataSize(self.max_data_size)),
                 Some(Received::Requests(_)) => (),
                 None => break Ok(None),
             }
         }
     }
 
-    /// Polls to receive data or ports on this channel.
-    pub fn poll_recv_any(&mut self, cx: &mut Context) -> Poll<Result<Option<Received>, ReceiveError>> {
+    /// Receives chunks of a message over the channel.
+    pub async fn recv_chunk(&mut self) -> Result<Option<Bytes>, ReceiveChunkError> {
         if self.finished {
-            return Poll::Ready(Ok(None));
+            return Ok(None);
         }
 
         loop {
-            ready!(self.credits.poll_return_flush(cx));
+            self.credits.return_flush().await;
 
-            let data = match ready!(self.rx.poll_recv(cx)) {
-                Some(PortReceiveMsg::Data(data)) => data,
-                Some(PortReceiveMsg::PortRequests(req)) => {
-                    self.data_buf = DataBuf::new();
-                    self.credits.start_return(req.credit, self.remote_port, &self.tx);
-                    return Poll::Ready(Ok(Some(Received::Requests(req.requests))));
+            match &mut self.receiving {
+                // Chunks from receive operation started by recv_any available.
+                Receiving::Chunks { chunks, .. } if !chunks.is_empty() => {
+                    return Ok(Some(chunks.pop_front().unwrap()))
                 }
-                Some(PortReceiveMsg::Finished) => {
-                    self.finished = true;
-                    return Poll::Ready(Ok(None));
+
+                // Previous received chunk was last of message.
+                Receiving::Chunks { completed: true, .. } => {
+                    self.receiving = Receiving::Nothing;
+                    return Ok(None);
                 }
-                None => return Poll::Ready(Err(ReceiveError::Multiplexer)),
-            };
 
-            self.credits.start_return(data.credit, self.remote_port, &self.tx);
+                // Try to receive next chunk.
+                _ => match self.rx.recv().await {
+                    Some(PortReceiveMsg::Data(data)) => {
+                        self.credits.start_return(data.credit, self.remote_port, &self.tx);
 
-            if data.first {
-                self.data_buf = DataBuf::new();
-            }
+                        match (&self.receiving, data.first) {
+                            // First segment without last segment indicates that last transmission
+                            // was cancelled.
+                            (Receiving::Chunks { .. }, true) => {
+                                self.receiving =
+                                    Receiving::Chunks { chunks: vec![data.buf].into(), completed: data.last };
+                                return Err(ReceiveChunkError::Cancelled);
+                            }
+                            // Either continuation or start of transmission.
+                            (Receiving::Chunks { .. }, false) | (_, true) => {
+                                self.receiving =
+                                    Receiving::Chunks { chunks: VecDeque::new(), completed: data.last };
+                                return Ok(Some(data.buf));
+                            }
+                            // Ignore transmission without start.
+                            (_, false) => (),
+                        }
+                    }
 
-            if let Err(err) = self.data_buf.push(data.buf, self.max_data_size) {
-                self.finished = true;
-                self.data_buf = DataBuf::new();
-                return Poll::Ready(Err(err));
-            }
+                    // Either aborted transmission or port data to ignore.
+                    Some(PortReceiveMsg::PortRequests(req)) => {
+                        self.credits.start_return(req.credit, self.remote_port, &self.tx);
+                        if let Receiving::Chunks { .. } = &self.receiving {
+                            self.receiving = Receiving::Nothing;
+                            return Err(ReceiveChunkError::Cancelled);
+                        }
+                    }
 
-            if data.last {
-                return Poll::Ready(Ok(Some(Received::Data(mem::take(&mut self.data_buf)))));
+                    // Port closure.
+                    Some(PortReceiveMsg::Finished) => {
+                        self.finished = true;
+                        if let Receiving::Chunks { .. } = &self.receiving {
+                            self.receiving = Receiving::Nothing;
+                            return Err(ReceiveChunkError::Cancelled);
+                        } else {
+                            return Ok(None);
+                        }
+                    }
+
+                    None => return Err(ReceiveChunkError::Multiplexer),
+                },
             }
         }
     }
 
-    /// Polls to receive on this channel.
-    ///
-    /// Received port open requests are silently rejected.
-    pub fn poll_recv(&mut self, cx: &mut Context) -> Poll<Result<Option<DataBuf>, ReceiveError>> {
+    /// Receives data or ports over the channel.
+    pub async fn recv_any(&mut self) -> Result<Option<Received>, ReceiveError> {
+        if self.finished {
+            return Ok(None);
+        }
+
         loop {
-            match ready!(self.poll_recv_any(cx))? {
-                Some(Received::Data(data)) => break Poll::Ready(Ok(Some(data))),
-                Some(Received::Requests(_)) => (),
-                None => break Poll::Ready(Ok(None)),
-            }
+            self.credits.return_flush().await;
+
+            let received = match self.rx.recv().await {
+                // Data message.
+                Some(PortReceiveMsg::Data(data)) => {
+                    self.credits.start_return(data.credit, self.remote_port, &self.tx);
+
+                    if data.first {
+                        self.receiving = Receiving::Data(DataBuf::new());
+                    }
+
+                    if let Receiving::Data(mut data_buf) = mem::take(&mut self.receiving) {
+                        // Try to add data to buffer.
+                        match data_buf.try_push(data.buf, self.max_data_size) {
+                            // Data fits into buffer.
+                            Ok(()) => {
+                                if data.last {
+                                    return Ok(Some(Received::Data(data_buf)));
+                                } else {
+                                    self.receiving = Receiving::Data(data_buf);
+                                }
+                            }
+
+                            // Maximum message size has been reached.
+                            Err(buf) => {
+                                data_buf.bufs.push_back(buf);
+                                self.receiving =
+                                    Receiving::Chunks { chunks: data_buf.bufs, completed: data.last };
+                                return Ok(Some(Received::BigData));
+                            }
+                        }
+                    }
+                }
+
+                // Port connection requests.
+                Some(PortReceiveMsg::PortRequests(req)) => {
+                    self.credits.start_return(req.credit, self.remote_port, &self.tx);
+
+                    if req.first {
+                        self.receiving = Receiving::Requests(Vec::new());
+                    }
+
+                    if let Receiving::Requests(mut requests) = mem::take(&mut self.receiving) {
+                        requests.extend(req.requests);
+
+                        if requests.len() > self.max_ports {
+                            self.receiving = Receiving::Nothing;
+                            return Err(ReceiveError::ExceedsMaxPortCount(self.max_ports));
+                        }
+
+                        if req.last {
+                            return Ok(Some(Received::Requests(requests)));
+                        } else {
+                            self.receiving = Receiving::Requests(requests);
+                        }
+                    }
+                }
+
+                // Port closure.
+                Some(PortReceiveMsg::Finished) => {
+                    self.finished = true;
+                    return Ok(None);
+                }
+
+                None => return Err(ReceiveError::Multiplexer),
+            };
         }
     }
 
@@ -427,10 +553,10 @@ impl ReceiverStream {
     }
 }
 
-impl Stream for ReceiverStream {
-    type Item = Result<DataBuf, ReceiveError>;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
-        Poll::Ready(ready!(Pin::into_inner(self).0.poll_recv(cx)).transpose())
-    }
-}
+// impl Stream for ReceiverStream {
+//     type Item = Result<DataBuf, ReceiveError>;
+//
+//     fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
+//         Poll::Ready(ready!(Pin::into_inner(self).0.poll_recv(cx)).transpose())
+//     }
+// }

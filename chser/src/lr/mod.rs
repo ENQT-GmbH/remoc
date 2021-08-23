@@ -18,5 +18,5 @@ pub enum ConnectError {
     Accept(chmux::ListenerError),
 }
 
-mod sender;
 mod receiver;
+mod sender;
