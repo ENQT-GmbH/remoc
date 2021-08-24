@@ -300,15 +300,22 @@ where
                         self.recved = Some(other);
                         self.data = DataSource::None;
                         self.item = None;
+                        self.port_deser = None;
                         continue 'restart;
                     }
                 };
 
-                // Call port callbacks from received objects, ignoring unmatched ports for forward compatibility.
+                // Call port callbacks from received objects, ignoring superflous requests for
+                // forward compatibility.
                 for request in requests {
                     if let Some((local_port, callback)) = pds.expected.remove(&request.remote_port()) {
                         tokio::spawn(callback(local_port, request, self.allocator.clone()));
                     }
+                }
+
+                // But error on ports that we expect but that are missing.
+                if !pds.expected.is_empty() {
+                    return Err(ReceiveError::MissingPorts(pds.expected.iter().map(|(port, _)| *port).collect()));
                 }
             }
 
