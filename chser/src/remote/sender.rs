@@ -1,14 +1,22 @@
-use std::{
-    cell::RefCell,
-    marker::PhantomData,
-    rc::{Rc, Weak},
-};
-
+use bytes::BytesMut;
 use futures::future::BoxFuture;
 use serde::{ser, Serialize};
+use std::{
+    cell::RefCell,
+    io::BufWriter,
+    marker::PhantomData,
+    rc::{Rc, Weak},
+    sync::{Arc, Mutex},
+};
+use tokio::task;
 
-use super::Obtainer;
+use super::{
+    io::{ChannelBytesWriter, LimitedBytesWriter},
+    Obtainer, BIG_DATA_CHUNK_QUEUE,
+};
 use crate::codec::{CodecT, SerializationError};
+
+const BIG_DATA_LIMIT: i8 = 16;
 
 /// Error obtaining a remote sender.
 #[derive(Clone, Debug)]
@@ -113,6 +121,7 @@ impl PortSerializer {
 pub(crate) struct Sender<T, Codec> {
     sender: Obtainer<chmux::Sender, ObtainSenderError>,
     allocator: chmux::PortAllocator,
+    big_data: i8,
     _data: PhantomData<T>,
     _codec: PhantomData<Codec>,
 }
@@ -123,55 +132,154 @@ where
     Codec: CodecT,
 {
     pub fn new(sender: Obtainer<chmux::Sender, ObtainSenderError>, allocator: chmux::PortAllocator) -> Self {
-        Self { sender, allocator, _data: PhantomData, _codec: PhantomData }
+        Self { sender, allocator, big_data: 0, _data: PhantomData, _codec: PhantomData }
     }
 
-    pub async fn send(&mut self, item: T) -> Result<(), SendError<T>> {
-        // Serialize item while gathering port requests from embedded
-        // BaseSenders and BaseReceivers.
-        let data;
-        let requestor = {
-            let requestor_ref = PortSerializer::start(self.allocator.clone());
-            data = match Codec::serialize(&item) {
-                Ok(data) => data,
-                Err(err) => return Err(SendError::new(SendErrorKind::Serialize(err), item)),
-            };
-            PortSerializer::finish(requestor_ref)
+    fn serialize_buffered(
+        allocator: chmux::PortAllocator, item: &T, limit: usize,
+    ) -> Result<Option<(BytesMut, PortSerializer)>, SerializationError> {
+        let mut lw = LimitedBytesWriter::new(limit);
+        let ps_ref = PortSerializer::start(allocator);
+
+        match Codec::serialize(&mut lw, &item) {
+            _ if lw.overflow() => return Ok(None),
+            Ok(()) => (),
+            Err(err) => return Err(err),
         };
 
-        // Send the serialized item data.
+        let ps = PortSerializer::finish(ps_ref);
+        Ok(Some((lw.into_inner().unwrap(), ps)))
+    }
+
+    async fn serialize_streaming(
+        allocator: chmux::PortAllocator, item: T, tx: tokio::sync::mpsc::Sender<BytesMut>, chunk_size: usize,
+    ) -> Result<(T, PortSerializer, usize), (SerializationError, T)> {
+        let cbw = ChannelBytesWriter::new(tx);
+        let mut cbw = BufWriter::with_capacity(chunk_size, cbw);
+
+        let item_arc = Arc::new(Mutex::new(item));
+        let item_arc_task = item_arc.clone();
+
+        let result = task::spawn_blocking(move || {
+            let ps_ref = PortSerializer::start(allocator);
+
+            let item = item_arc_task.lock().unwrap();
+            Codec::serialize(&mut cbw, &*item)?;
+
+            let cbw = cbw.into_inner().map_err(|_| {
+                SerializationError::new(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "flush failed"))
+            })?;
+
+            let ps = PortSerializer::finish(ps_ref);
+            Ok((ps, cbw.written()))
+        })
+        .await;
+
+        let item = match Arc::try_unwrap(item_arc) {
+            Ok(item_mutex) => match item_mutex.into_inner() {
+                Ok(item) => item,
+                Err(err) => err.into_inner(),
+            },
+            Err(_) => unreachable!("serialization task has terminated"),
+        };
+
+        match result {
+            Ok(Ok((ps, written))) => Ok((item, ps, written)),
+            Ok(Err(err)) => Err((err, item)),
+            Err(err) => Err((SerializationError::new(err), item)),
+        }
+    }
+
+    /// Sends an item over the channel.
+    ///
+    /// The item may contain ports that will be serialized and connected as well.
+    pub async fn send(&mut self, item: T) -> Result<(), SendError<T>> {
+        // Get sender and allocator.
         let sender = match self.sender.get().await {
             Ok(sender) => sender,
             Err(err) => return Err(SendError::new(SendErrorKind::Obtain(err), item)),
         };
-        if let Err(err) = sender.send(data).await {
-            return Err(SendError::new(SendErrorKind::Send(err), item));
-        }
+
+        // Determine if it is worthy to try buffered serialization.
+        let data_ps = if self.big_data <= 0 {
+            // Try buffered serialization.
+            match Self::serialize_buffered(self.allocator.clone(), &item, sender.max_data_size()) {
+                Ok(Some(v)) => {
+                    self.big_data = (self.big_data - 1).max(-BIG_DATA_LIMIT);
+                    Some(v)
+                }
+                Ok(None) => {
+                    self.big_data = (self.big_data + 1).min(BIG_DATA_LIMIT);
+                    None
+                }
+                Err(err) => return Err(SendError::new(SendErrorKind::Serialize(err), item)),
+            }
+        } else {
+            // Buffered serialization unlikely to succeed.
+            None
+        };
+
+        let (item, ps) = match data_ps {
+            Some((data, ps)) => {
+                // Send buffered data.
+                if let Err(err) = sender.send(data.freeze()).await {
+                    return Err(SendError::new(SendErrorKind::Send(err), item));
+                }
+                (item, ps)
+            }
+
+            None => {
+                // Stream data while serializing.
+                let (tx, mut rx) = tokio::sync::mpsc::channel(BIG_DATA_CHUNK_QUEUE);
+                let ser_task = Self::serialize_streaming(self.allocator.clone(), item, tx, sender.chunk_size());
+
+                let mut sc = sender.send_chunks();
+                let send_task = async {
+                    while let Some(chunk) = rx.recv().await {
+                        sc = sc.send(chunk.freeze()).await?;
+                    }
+                    Ok(sc)
+                };
+
+                match tokio::join!(ser_task, send_task) {
+                    (Ok((item, ps, size)), Ok(sc)) => {
+                        if let Err(err) = sc.finish().await {
+                            return Err(SendError::new(SendErrorKind::Send(err), item));
+                        }
+
+                        if size <= sender.max_data_size() {
+                            self.big_data = (self.big_data - 1).max(-BIG_DATA_LIMIT);
+                        }
+
+                        (item, ps)
+                    }
+                    (Ok((item, _, _)), Err(err)) => {
+                        return Err(SendError::new(SendErrorKind::Send(err), item));
+                    }
+                    (Err((err, item)), _) => {
+                        return Err(SendError::new(SendErrorKind::Serialize(err), item));
+                    }
+                }
+            }
+        };
 
         // Extract ports and connect callbacks.
         let mut ports = Vec::new();
         let mut callbacks = Vec::new();
-        for (port, callback) in requestor.requests {
+        for (port, callback) in ps.requests {
             ports.push(port);
             callbacks.push(callback);
         }
 
         // Request connecting chmux ports.
-        let mut connects = Vec::new();
-        while !ports.is_empty() {
-            let next_ports = if ports.len() > sender.max_port_count() {
-                ports.split_off(sender.max_port_count())
-            } else {
-                Vec::new()
-            };
-
+        let connects = if ports.is_empty() {
+            Vec::new()
+        } else {
             match sender.connect(ports, true).await {
-                Ok(cs) => connects.extend(cs),
+                Ok(connects) => connects,
                 Err(err) => return Err(SendError::new(SendErrorKind::Send(err), item)),
-            };
-
-            ports = next_ports;
-        }
+            }
+        };
 
         // Ensure that item is dropped before calling connection callbacks.
         drop(item);

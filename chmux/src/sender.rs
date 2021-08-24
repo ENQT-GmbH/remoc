@@ -140,6 +140,7 @@ pub struct Sender {
     local_port: u32,
     remote_port: u32,
     chunk_size: usize,
+    max_data_size: usize,
     tx: mpsc::Sender<PortEvt>,
     credits: CreditUser,
     hangup_recved: Weak<AtomicBool>,
@@ -152,8 +153,10 @@ impl fmt::Debug for Sender {
         f.debug_struct("Sender")
             .field("local_port", &self.local_port)
             .field("remote_port", &self.remote_port)
+            .field("chunk_size", &self.chunk_size)
+            .field("max_data_size", &self.max_data_size)
             .field("is_closed", &self.is_closed())
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -161,8 +164,9 @@ impl Sender {
     /// Create a new sender.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
-        local_port: u32, remote_port: u32, chunk_size: usize, tx: mpsc::Sender<PortEvt>, credits: CreditUser,
-        hangup_recved: Weak<AtomicBool>, hangup_notify: Weak<Mutex<Option<Vec<oneshot::Sender<()>>>>>,
+        local_port: u32, remote_port: u32, chunk_size: usize, max_data_size: usize, tx: mpsc::Sender<PortEvt>,
+        credits: CreditUser, hangup_recved: Weak<AtomicBool>,
+        hangup_notify: Weak<Mutex<Option<Vec<oneshot::Sender<()>>>>>,
     ) -> Self {
         let (_drop_tx, drop_rx) = oneshot::channel();
         let tx_drop = tx.clone();
@@ -171,7 +175,17 @@ impl Sender {
             let _ = tx_drop.send(PortEvt::SenderDropped { local_port }).await;
         });
 
-        Self { local_port, remote_port, chunk_size, tx, credits, hangup_recved, hangup_notify, _drop_tx }
+        Self {
+            local_port,
+            remote_port,
+            chunk_size,
+            max_data_size,
+            tx,
+            credits,
+            hangup_recved,
+            hangup_notify,
+            _drop_tx,
+        }
     }
 
     /// The local port number.
@@ -185,8 +199,18 @@ impl Sender {
     }
 
     /// Maximum chunk size that can be sent.
+    ///
+    /// This is set by the remote endpoint.
     pub fn chunk_size(&self) -> usize {
         self.chunk_size
+    }
+
+    /// Configured maximum data size of receiver.
+    ///
+    /// This is not a limit for the sender and only provided here for
+    /// advisory purposes.
+    pub fn max_data_size(&self) -> usize {
+        self.max_data_size
     }
 
     /// Sends data over the channel.

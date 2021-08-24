@@ -1,11 +1,14 @@
 use futures::{future::BoxFuture, ready, Future, FutureExt};
 use std::task::{Context, Poll};
 
+mod io;
 mod receiver;
 mod sender;
 
 pub(crate) use receiver::{ObtainReceiverError, PortDeserializer, ReceiveError, Receiver};
 pub(crate) use sender::{ObtainSenderError, PortSerializer, SendError, SendErrorKind, Sender};
+
+const BIG_DATA_CHUNK_QUEUE: usize = 32;
 
 /// Evaluates a future once and stores the result.
 pub(crate) enum Obtainer<T, E> {

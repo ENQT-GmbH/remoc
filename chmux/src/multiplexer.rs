@@ -481,6 +481,7 @@ where
             local_port_num,
             remote_port,
             self.remote_cfg.chunk_size as usize,
+            self.local_cfg.max_data_size,
             sender_tx,
             sender_credit_user,
             Arc::downgrade(&hangup_recved),

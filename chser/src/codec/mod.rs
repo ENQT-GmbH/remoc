@@ -1,9 +1,12 @@
 //! Codecs for transforming values into and from binary format.
 
-use bytes::Bytes;
-use chmux::DataBuf;
 use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize};
-use std::{error::Error, fmt, sync::Arc};
+use std::{
+    error::Error,
+    fmt,
+    io::{Read, Write},
+    sync::Arc,
+};
 
 /// Reference counted error that is send, sync, static and clone.
 pub type ArcError = Arc<dyn Error + Send + Sync + 'static>;
@@ -105,14 +108,19 @@ impl<'de> Deserialize<'de> for DeserializationError {
 }
 
 /// Serializes and deserializes items from and to byte data.
-pub trait CodecT: Clone + Send + Sync + fmt::Debug + 'static {
+pub trait CodecT: Send + Sync + 'static {
     /// Serializes the specified item into the data format.
-    fn serialize<Item>(item: &Item) -> Result<Bytes, SerializationError>
+    fn serialize<Writer, Item>(writer: Writer, item: &Item) -> Result<(), SerializationError>
     where
+        Writer: Write,
         Item: Serialize;
 
     /// Deserializes the specified data into an item.
-    fn deserialize<Item>(data: DataBuf) -> Result<Item, DeserializationError>
+    fn deserialize<Reader, Item>(reader: Reader) -> Result<Item, DeserializationError>
     where
+        Reader: Read,
         Item: DeserializeOwned;
 }
+
+mod json;
+pub use json::JsonCodec;

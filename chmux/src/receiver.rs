@@ -289,10 +289,10 @@ impl fmt::Debug for Receiver {
             .field("local_port", &self.local_port)
             .field("remote_port", &self.remote_port)
             .field("max_data_size", &self.max_data_size)
-            .field("max_port_count", &self.max_ports)
+            .field("max_ports", &self.max_ports)
             .field("closed", &self.closed)
             .field("finished", &self.finished)
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
