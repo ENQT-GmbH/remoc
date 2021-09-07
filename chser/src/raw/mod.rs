@@ -1,9 +1,6 @@
 //! Raw chmux channel.
 
-use std::{
-    fmt,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 
 mod receiver;
 mod sender;

@@ -105,6 +105,16 @@ where
         let item = receiver.recv().await?;
         Ok(item)
     }
+
+    /// Close the channel.
+    ///
+    /// This stops the remote endpoint from sending more items, but allows already sent items
+    /// to be received.    
+    pub async fn close(&mut self) {
+        if let Ok(receiver) = self.get().await {
+            receiver.close().await;
+        }
+    }
 }
 
 impl<T, Codec> Serialize for Receiver<T, Codec>

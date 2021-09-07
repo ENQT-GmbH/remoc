@@ -1,17 +1,11 @@
 //! Local/remote channels.
 
-use serde::{Deserialize, Serialize};
-use std::{
-    error::Error,
-    fmt,
-    sync::{Arc, Mutex},
-};
-
-use crate::interlock::{Interlock, Location};
+use std::sync::{Arc, Mutex};
 
 mod receiver;
 mod sender;
 
+use crate::interlock::{Interlock, Location};
 pub use receiver::{ReceiveError, Receiver, TransportedReceiver};
 pub use sender::{SendError, SendErrorKind, Sender, TransportedSender};
 
