@@ -8,6 +8,7 @@ use crate::remote::{PortDeserializer, PortSerializer};
 
 /// A raw chmux channel sender.
 pub struct Sender {
+    pub(super) sender: Option<Result<chmux::Sender, ConnectError>>,
     pub(super) sender_rx: tokio::sync::mpsc::UnboundedReceiver<Result<chmux::Sender, ConnectError>>,
     pub(super) receiver_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<chmux::Receiver, ConnectError>>>,
     pub(super) interlock: Arc<Mutex<Interlock>>,
@@ -21,10 +22,24 @@ pub struct TransportedSender {
 }
 
 impl Sender {
+    async fn connect(&mut self) {
+        if self.sender.is_none() {
+            self.sender = Some(self.sender_rx.recv().await.unwrap_or(Err(ConnectError::Dropped)));
+        }
+    }
+
+    /// Establishes the connection and returns a reference to the chmux sender channel
+    /// to the remote endpoint.
+    pub async fn get(&mut self) -> Result<&mut chmux::Sender, ConnectError> {
+        self.connect().await;
+        self.sender.as_mut().unwrap().as_mut().map_err(|err| err.clone())
+    }
+
     /// Establishes the connection and returns the chmux sender channel
     /// to the remote endpoint.
-    pub async fn connect(mut self) -> Result<chmux::Sender, ConnectError> {
-        self.sender_rx.recv().await.unwrap_or(Err(ConnectError::Dropped))
+    pub async fn into_inner(mut self) -> Result<chmux::Sender, ConnectError> {
+        self.connect().await;
+        self.sender.unwrap()
     }
 }
 
@@ -89,6 +104,7 @@ impl<'de> Deserialize<'de> for Sender {
         })?;
 
         Ok(Self {
+            sender: None,
             sender_rx,
             receiver_tx: None,
             interlock: Arc::new(Mutex::new(Interlock { sender: Location::Local, receiver: Location::Remote })),

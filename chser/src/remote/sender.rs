@@ -16,6 +16,7 @@ use super::{
 };
 use crate::codec::{CodecT, SerializationError};
 
+/// Limit for counting big data instances.
 const BIG_DATA_LIMIT: i8 = 16;
 
 /// Error obtaining a remote sender.

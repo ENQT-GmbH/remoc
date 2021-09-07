@@ -8,6 +8,7 @@ use crate::remote::{PortDeserializer, PortSerializer};
 
 /// A raw chmux channel receiver.
 pub struct Receiver {
+    pub(super) receiver: Option<Result<chmux::Receiver, ConnectError>>,
     pub(super) sender_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<chmux::Sender, ConnectError>>>,
     pub(super) receiver_rx: tokio::sync::mpsc::UnboundedReceiver<Result<chmux::Receiver, ConnectError>>,
     pub(super) interlock: Arc<Mutex<Interlock>>,
@@ -21,10 +22,24 @@ pub struct TransportedReceiver {
 }
 
 impl Receiver {
+    async fn connect(&mut self) {
+        if self.receiver.is_none() {
+            self.receiver = Some(self.receiver_rx.recv().await.unwrap_or(Err(ConnectError::Dropped)));
+        }
+    }
+
+    /// Establishes the connection and returns a reference to the chmux receiver channel
+    /// to the remote endpoint.
+    pub async fn get(&mut self) -> Result<&mut chmux::Receiver, ConnectError> {
+        self.connect().await;
+        self.receiver.as_mut().unwrap().as_mut().map_err(|err| err.clone())
+    }
+
     /// Establishes the connection and returns the chmux receiver channel
-    /// from the remote endpoint.
-    pub async fn connect(mut self) -> Result<chmux::Receiver, ConnectError> {
-        self.receiver_rx.recv().await.unwrap_or(Err(ConnectError::Dropped))
+    /// to the remote endpoint.
+    pub async fn into_inner(mut self) -> Result<chmux::Receiver, ConnectError> {
+        self.connect().await;
+        self.receiver.unwrap()
     }
 }
 
@@ -89,6 +104,7 @@ impl<'de> Deserialize<'de> for Receiver {
         })?;
 
         Ok(Self {
+            receiver: None,
             sender_tx: None,
             receiver_rx,
             interlock: Arc::new(Mutex::new(Interlock { sender: Location::Remote, receiver: Location::Local })),
