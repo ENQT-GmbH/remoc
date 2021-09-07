@@ -3,14 +3,18 @@ use futures::FutureExt;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{marker::PhantomData, sync::Mutex};
 
+use super::RemoteSendError;
 use crate::{
     codec::CodecT,
     mpsc::{BACKCHANNEL_MSG_CLOSE, BACKCHANNEL_MSG_ERROR},
-    remote::{self, Obtainer, PortDeserializer, PortSerializer, SendErrorKind},
+    remote::{self, PortDeserializer, PortSerializer},
 };
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ReceiveError {
-    Remote(remote::ReceiveError),
+    RemoteReceive(remote::ReceiveError),
+    RemoteConnect(chmux::ConnectError),
+    RemoteListen(chmux::ListenerError),
 }
 
 /// Receive values from the associated [Sender], which may be located on a remote endpoint.
@@ -23,9 +27,9 @@ pub struct Receiver<T, Codec, const BUFFER: usize> {
 }
 
 pub(crate) struct ReceiverInner<T, Codec, const BUFFER: usize> {
-    rx: tokio::sync::mpsc::Receiver<Result<T, remote::ReceiveError>>,
+    rx: tokio::sync::mpsc::Receiver<Result<T, ReceiveError>>,
     closed_tx: tokio::sync::watch::Sender<bool>,
-    remote_send_err_tx: tokio::sync::watch::Sender<Option<remote::SendErrorKind>>,
+    remote_send_err_tx: tokio::sync::watch::Sender<Option<RemoteSendError>>,
     _codec: PhantomData<Codec>,
 }
 
@@ -41,9 +45,8 @@ pub struct TransportedReceiver<T, Codec> {
 
 impl<T, Codec, const BUFFER: usize> Receiver<T, Codec, BUFFER> {
     pub(crate) fn new(
-        rx: tokio::sync::mpsc::Receiver<Result<T, remote::ReceiveError>>,
-        closed_tx: tokio::sync::watch::Sender<bool>,
-        remote_send_err_tx: tokio::sync::watch::Sender<Option<remote::SendErrorKind>>,
+        rx: tokio::sync::mpsc::Receiver<Result<T, ReceiveError>>, closed_tx: tokio::sync::watch::Sender<bool>,
+        remote_send_err_tx: tokio::sync::watch::Sender<Option<RemoteSendError>>,
     ) -> Self {
         Self {
             inner: Some(ReceiverInner { rx, closed_tx, remote_send_err_tx, _codec: PhantomData }),
@@ -55,7 +58,7 @@ impl<T, Codec, const BUFFER: usize> Receiver<T, Codec, BUFFER> {
     pub async fn recv(&mut self) -> Result<Option<T>, ReceiveError> {
         match self.inner.as_mut().unwrap().rx.recv().await {
             Some(Ok(value_opt)) => Ok(Some(value_opt)),
-            Some(Err(err)) => Err(ReceiveError::Remote(err)),
+            Some(Err(err)) => Err(err),
             None => Ok(None),
         }
     }
@@ -101,16 +104,13 @@ where
                 let (raw_tx, mut raw_rx) = match connect.await {
                     Ok(tx_rx) => tx_rx,
                     Err(err) => {
-                        let _ = remote_send_err_tx.send(Some(remote::SendErrorKind::Connect(err)));
+                        let _ = remote_send_err_tx.send(Some(RemoteSendError::Connect(err)));
                         return;
                     }
                 };
 
                 // Encode data using remote sender.
-                let mut remote_tx = remote::Sender::<Result<T, remote::ReceiveError>, Codec>::new(
-                    Obtainer::ready(Ok(raw_tx)),
-                    allocator,
-                );
+                let mut remote_tx = remote::Sender::<Result<T, ReceiveError>, Codec>::new(raw_tx, allocator);
 
                 // Process events.
                 let mut backchannel_active = true;
@@ -127,7 +127,7 @@ where
                                             let _ = closed_tx.send(true);
                                         }
                                         BACKCHANNEL_MSG_ERROR => {
-                                            let _ = remote_send_err_tx.send(Some(SendErrorKind::Forward));
+                                            let _ = remote_send_err_tx.send(Some(RemoteSendError::Forward));
                                         }
                                         _ => (),
                                     }
@@ -144,7 +144,7 @@ where
                             };
 
                             if let Err(err) = remote_tx.send(res).await {
-                                let _ = remote_send_err_tx.send(Some(err.kind));
+                                let _ = remote_send_err_tx.send(Some(RemoteSendError::Send(err.kind)));
                             }
                         }
                     }
@@ -186,16 +186,13 @@ where
                 let (mut raw_tx, raw_rx) = match request.accept_from(local_port).await {
                     Ok(tx_rx) => tx_rx,
                     Err(err) => {
-                        let _ = tx.send(Err(remote::ReceiveError::Listen(err))).await;
+                        let _ = tx.send(Err(ReceiveError::RemoteListen(err))).await;
                         return;
                     }
                 };
 
                 // Decode received data using remote receiver.
-                let mut remote_rx = remote::Receiver::<Result<T, remote::ReceiveError>, Codec>::new(
-                    Obtainer::ready(Ok(raw_rx)),
-                    allocator,
-                );
+                let mut remote_rx = remote::Receiver::<Result<T, ReceiveError>, Codec>::new(raw_rx, allocator);
 
                 // Process events.
                 let mut close_sent = false;
@@ -227,7 +224,7 @@ where
                             let value = match res {
                                 Ok(Some(value)) => value,
                                 Ok(None) => break,
-                                Err(err) => Err(err),
+                                Err(err) => Err(ReceiveError::RemoteReceive(err)),
                             };
                             if tx.send(value).await.is_err() {
                                 break;

@@ -3,6 +3,8 @@ use futures::future::BoxFuture;
 use serde::{ser, Serialize};
 use std::{
     cell::RefCell,
+    error::Error,
+    fmt,
     io::BufWriter,
     marker::PhantomData,
     rc::{Rc, Weak},
@@ -12,54 +14,50 @@ use tokio::task;
 
 use super::{
     io::{ChannelBytesWriter, LimitedBytesWriter},
-    Obtainer, BIG_DATA_CHUNK_QUEUE,
+    BIG_DATA_CHUNK_QUEUE, BIG_DATA_LIMIT,
 };
 use crate::codec::{CodecT, SerializationError};
 
-/// Limit for counting big data instances.
-const BIG_DATA_LIMIT: i8 = 16;
-
-/// Error obtaining a remote sender.
+/// An error that occured during remote sending.
 #[derive(Clone, Debug)]
-pub enum ObtainSenderError {
-    Dropped,
-    Listener(chmux::ListenerError),
-    Connect(chmux::ConnectError),
-}
-
-impl From<chmux::ListenerError> for ObtainSenderError {
-    fn from(err: chmux::ListenerError) -> Self {
-        Self::Listener(err)
-    }
-}
-
-impl From<chmux::ConnectError> for ObtainSenderError {
-    fn from(err: chmux::ConnectError) -> Self {
-        Self::Connect(err)
-    }
-}
-
 pub struct SendError<T> {
+    /// Error kind.
     pub kind: SendErrorKind,
+    /// Item that could not be sent.
     pub item: T,
 }
 
+/// Error kind that occured during remote sending.
 #[derive(Debug, Clone)]
 pub enum SendErrorKind {
-    Closed,
-    PortsExhausted,
+    /// Serialization of the item failed.
     Serialize(SerializationError),
+    /// Sending of the serialized item over the chmux channel failed.
     Send(chmux::SendError),
-    Obtain(ObtainSenderError),
-    Connect(chmux::ConnectError),
-    Forward,
 }
 
 impl<T> SendError<T> {
-    pub fn new(kind: SendErrorKind, item: T) -> Self {
+    pub(crate) fn new(kind: SendErrorKind, item: T) -> Self {
         Self { kind, item }
     }
 }
+
+impl fmt::Display for SendErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Serialize(err) => write!(f, "serialization error: {}", err),
+            Self::Send(err) => write!(f, "send error: {}", err),
+        }
+    }
+}
+
+impl<T> fmt::Display for SendError<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", &self.kind)
+    }
+}
+
+impl<T> Error for SendError<T> where T: fmt::Debug {}
 
 /// Gathers ports to send to the remote endpoint during object serialization.
 pub(crate) struct PortSerializer {
@@ -120,7 +118,7 @@ impl PortSerializer {
 ///
 /// Can serialize a base sender and a base receiver.
 pub(crate) struct Sender<T, Codec> {
-    sender: Obtainer<chmux::Sender, ObtainSenderError>,
+    sender: chmux::Sender,
     allocator: chmux::PortAllocator,
     big_data: i8,
     _data: PhantomData<T>,
@@ -132,7 +130,7 @@ where
     T: Serialize + Send + 'static,
     Codec: CodecT,
 {
-    pub fn new(sender: Obtainer<chmux::Sender, ObtainSenderError>, allocator: chmux::PortAllocator) -> Self {
+    pub fn new(sender: chmux::Sender, allocator: chmux::PortAllocator) -> Self {
         Self { sender, allocator, big_data: 0, _data: PhantomData, _codec: PhantomData }
     }
 
@@ -195,16 +193,10 @@ where
     ///
     /// The item may contain ports that will be serialized and connected as well.
     pub async fn send(&mut self, item: T) -> Result<(), SendError<T>> {
-        // Get sender and allocator.
-        let sender = match self.sender.get().await {
-            Ok(sender) => sender,
-            Err(err) => return Err(SendError::new(SendErrorKind::Obtain(err), item)),
-        };
-
         // Determine if it is worthy to try buffered serialization.
         let data_ps = if self.big_data <= 0 {
             // Try buffered serialization.
-            match Self::serialize_buffered(self.allocator.clone(), &item, sender.max_data_size()) {
+            match Self::serialize_buffered(self.allocator.clone(), &item, self.sender.max_data_size()) {
                 Ok(Some(v)) => {
                     self.big_data = (self.big_data - 1).max(-BIG_DATA_LIMIT);
                     Some(v)
@@ -223,7 +215,7 @@ where
         let (item, ps) = match data_ps {
             Some((data, ps)) => {
                 // Send buffered data.
-                if let Err(err) = sender.send(data.freeze()).await {
+                if let Err(err) = self.sender.send(data.freeze()).await {
                     return Err(SendError::new(SendErrorKind::Send(err), item));
                 }
                 (item, ps)
@@ -232,9 +224,10 @@ where
             None => {
                 // Stream data while serializing.
                 let (tx, mut rx) = tokio::sync::mpsc::channel(BIG_DATA_CHUNK_QUEUE);
-                let ser_task = Self::serialize_streaming(self.allocator.clone(), item, tx, sender.chunk_size());
+                let ser_task =
+                    Self::serialize_streaming(self.allocator.clone(), item, tx, self.sender.chunk_size());
 
-                let mut sc = sender.send_chunks();
+                let mut sc = self.sender.send_chunks();
                 let send_task = async {
                     while let Some(chunk) = rx.recv().await {
                         sc = sc.send(chunk.freeze()).await?;
@@ -248,7 +241,7 @@ where
                             return Err(SendError::new(SendErrorKind::Send(err), item));
                         }
 
-                        if size <= sender.max_data_size() {
+                        if size <= self.sender.max_data_size() {
                             self.big_data = (self.big_data - 1).max(-BIG_DATA_LIMIT);
                         }
 
@@ -276,7 +269,7 @@ where
         let connects = if ports.is_empty() {
             Vec::new()
         } else {
-            match sender.connect(ports, true).await {
+            match self.sender.connect(ports, true).await {
                 Ok(connects) => connects,
                 Err(err) => return Err(SendError::new(SendErrorKind::Send(err), item)),
             }

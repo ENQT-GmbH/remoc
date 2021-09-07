@@ -1,47 +1,29 @@
-use std::{
-    cell::RefCell,
-    collections::HashMap,
-    marker::PhantomData,
-    rc::{Rc, Weak},
-};
-
 use bytes::{Buf, Bytes};
 use chmux::{ReceiveChunkError, Received};
 use futures::future::BoxFuture;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    error::Error,
+    fmt,
+    marker::PhantomData,
+    rc::{Rc, Weak},
+};
 use tokio::task::{self, JoinHandle};
 
-use super::{io::ChannelBytesReader, Obtainer, BIG_DATA_CHUNK_QUEUE};
+use super::{io::ChannelBytesReader, BIG_DATA_CHUNK_QUEUE};
 use crate::codec::{CodecT, DeserializationError};
 
-/// Error obtaining a remote receiver.
-#[derive(Clone)]
-pub enum ObtainReceiverError {
-    Dropped,
-    Listener(chmux::ListenerError),
-    Connect(chmux::ConnectError),
-}
-
-impl From<chmux::ListenerError> for ObtainReceiverError {
-    fn from(err: chmux::ListenerError) -> Self {
-        Self::Listener(err)
-    }
-}
-
-impl From<chmux::ConnectError> for ObtainReceiverError {
-    fn from(err: chmux::ConnectError) -> Self {
-        Self::Connect(err)
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
+/// An error that occured during receiving from a remote endpoint.
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ReceiveError {
+    /// Receiving data over the chmux channel failed.
     Receive(chmux::ReceiveError),
+    /// Deserialization of received data failed.
     Deserialize(DeserializationError),
+    /// chmux ports required for deserialization of received channels were not received.
     MissingPorts(Vec<u32>),
-    Connect(chmux::ConnectError),
-    Listen(chmux::ListenerError),
-    Multiplexer,
 }
 
 impl From<chmux::ReceiveError> for ReceiveError {
@@ -56,11 +38,21 @@ impl From<DeserializationError> for ReceiveError {
     }
 }
 
-impl From<ObtainReceiverError> for ReceiveError {
-    fn from(_: ObtainReceiverError) -> Self {
-        todo!()
+impl fmt::Display for ReceiveError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Receive(err) => write!(f, "receive error: {}", err),
+            Self::Deserialize(err) => write!(f, "deserialization error: {}", err),
+            Self::MissingPorts(ports) => write!(
+                f,
+                "missing chmux ports: {}",
+                ports.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", ")
+            ),
+        }
     }
 }
+
+impl Error for ReceiveError {}
 
 /// Gathers ports sent from the remote endpoint during deserialization.
 pub(crate) struct PortDeserializer {
@@ -133,7 +125,7 @@ impl PortDeserializer {
 ///
 /// Can deserialize a base send and a base receiver.
 pub(crate) struct Receiver<T, Codec> {
-    receiver: Obtainer<chmux::Receiver, ObtainReceiverError>,
+    receiver: chmux::Receiver,
     allocator: chmux::PortAllocator,
     recved: Option<Option<Received>>,
     data: DataSource<T>,
@@ -157,9 +149,7 @@ where
     T: DeserializeOwned + Send + 'static,
     Codec: CodecT,
 {
-    pub fn new(
-        receiver: Obtainer<chmux::Receiver, ObtainReceiverError>, allocator: chmux::PortAllocator,
-    ) -> Self {
+    pub fn new(receiver: chmux::Receiver, allocator: chmux::PortAllocator) -> Self {
         Self {
             receiver,
             allocator,
@@ -173,10 +163,8 @@ where
     }
 
     pub async fn recv(&mut self) -> Result<Option<T>, ReceiveError> {
-        let receiver = self.receiver.get().await?;
-
         if self.default_max_ports.is_none() {
-            self.default_max_ports = Some(receiver.max_ports());
+            self.default_max_ports = Some(self.receiver.max_ports());
         }
 
         'restart: loop {
@@ -184,7 +172,7 @@ where
                 // Receive data or start streaming it.
                 if let DataSource::None = &self.data {
                     if self.recved.is_none() {
-                        self.recved = Some(receiver.recv_any().await?);
+                        self.recved = Some(self.receiver.recv_any().await?);
                     }
 
                     self.data = match self.recved.take().unwrap() {
@@ -240,7 +228,7 @@ where
                                     break Ok(());
                                 };
 
-                                match receiver.recv_chunk().await {
+                                match self.receiver.recv_chunk().await {
                                     Ok(Some(chunk)) => tx_permit.send(Ok(chunk)),
                                     Ok(None) => break Ok(()),
                                     Err(err) => break Err(err),
@@ -255,7 +243,7 @@ where
                                 }
                                 Err(ReceiveChunkError::Multiplexer) => {
                                     self.data = DataSource::None;
-                                    return Err(ReceiveError::Multiplexer);
+                                    return Err(ReceiveError::Receive(chmux::ReceiveError::Multiplexer));
                                 }
                             }
                         }
@@ -289,10 +277,10 @@ where
                 // Allow the reception of additional ports for forward compatibility,
                 // i.e. our deserializer may use an older version of the struct
                 // which is missing some ports that the remote endpoint sent.
-                receiver.set_max_ports(pds.expected.len() + self.default_max_ports.unwrap());
+                self.receiver.set_max_ports(pds.expected.len() + self.default_max_ports.unwrap());
 
                 // Receive port requests from chmux.
-                let requests = match receiver.recv_any().await? {
+                let requests = match self.receiver.recv_any().await? {
                     Some(chmux::Received::Requests(requests)) => requests,
                     other => {
                         // Current send operation has been aborted and this is data from
@@ -325,8 +313,6 @@ where
 
     #[allow(dead_code)]
     pub async fn close(&mut self) {
-        if let Ok(receiver) = self.receiver.get().await {
-            receiver.close().await
-        }
+        self.receiver.close().await
     }
 }

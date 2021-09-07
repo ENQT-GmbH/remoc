@@ -2,28 +2,62 @@ use bytes::Buf;
 use futures::FutureExt;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
+    error::Error,
+    fmt,
     marker::PhantomData,
     sync::{Arc, Weak},
 };
 
+use super::{receiver::ReceiveError, RemoteSendError};
 use crate::{
     codec::CodecT,
     mpsc::{BACKCHANNEL_MSG_CLOSE, BACKCHANNEL_MSG_ERROR},
-    remote::{self, Obtainer, PortDeserializer, PortSerializer, SendErrorKind},
+    remote::{self, PortDeserializer, PortSerializer},
 };
 
+/// An error occured during sending over an mpsc channel.
+#[derive(Clone, Debug)]
 pub enum SendError<T> {
+    /// The remote end closed the channel.
     Closed(T),
-    Remote(remote::SendErrorKind),
+    /// Sending to a remote endpoint failed.
+    RemoteSend(remote::SendErrorKind),
+    /// Connecting a sent channel failed.
+    RemoteConnect(chmux::ConnectError),
+    /// Forwarding at a remote endpoint to another remote endpoint failed.
+    RemoteForward,
+}
+
+impl<T> fmt::Display for SendError<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Closed(_) => write!(f, "channel closed"),
+            Self::RemoteSend(err) => write!(f, "send error: {}", err),
+            Self::RemoteConnect(err) => write!(f, "connect error: {}", err),
+            Self::RemoteForward => write!(f, "forwarding error"),
+        }
+    }
+}
+
+impl<T> Error for SendError<T> where T: fmt::Debug {}
+
+impl<T> From<RemoteSendError> for SendError<T> {
+    fn from(err: RemoteSendError) -> Self {
+        match err {
+            RemoteSendError::Send(err) => Self::RemoteSend(err),
+            RemoteSendError::Connect(err) => Self::RemoteConnect(err),
+            RemoteSendError::Forward => Self::RemoteForward,
+        }
+    }
 }
 
 /// Send values to the associated [Receiver], which may be located on a remote endpoint.
 ///
 /// Instances are created by the [channel] function.
 pub struct Sender<T, Codec, const BUFFER: usize> {
-    tx: Weak<tokio::sync::mpsc::Sender<Result<T, remote::ReceiveError>>>,
+    tx: Weak<tokio::sync::mpsc::Sender<Result<T, ReceiveError>>>,
     closed_rx: tokio::sync::watch::Receiver<bool>,
-    remote_send_err_rx: tokio::sync::watch::Receiver<Option<remote::SendErrorKind>>,
+    remote_send_err_rx: tokio::sync::watch::Receiver<Option<RemoteSendError>>,
     _dropped_tx: tokio::sync::oneshot::Sender<()>,
     _codec: PhantomData<Codec>,
 }
@@ -44,9 +78,9 @@ where
 {
     /// Creates a new sender.
     pub(crate) fn new(
-        tx: tokio::sync::mpsc::Sender<Result<T, remote::ReceiveError>>,
+        tx: tokio::sync::mpsc::Sender<Result<T, ReceiveError>>,
         mut closed_rx: tokio::sync::watch::Receiver<bool>,
-        remote_send_err_rx: tokio::sync::watch::Receiver<Option<remote::SendErrorKind>>,
+        remote_send_err_rx: tokio::sync::watch::Receiver<Option<RemoteSendError>>,
     ) -> Self {
         let tx = Arc::new(tx);
         let (dropped_tx, mut dropped_rx) = tokio::sync::oneshot::channel();
@@ -92,12 +126,12 @@ where
     /// Sends a value over this channel.
     pub async fn send(&self, value: T) -> Result<(), SendError<T>> {
         if let Some(err) = self.remote_send_err_rx.borrow().as_ref() {
-            return Err(SendError::Remote(err.clone()));
+            return Err(err.clone().into());
         }
 
         if let Some(tx) = self.tx.upgrade() {
             if let Err(err) = tx.send(Ok(value)).await {
-                return Err(SendError::Closed(err.0.unwrap()));
+                return Err(SendError::Closed(err.0.expect("")));
             }
         } else {
             return Err(SendError::Closed(value));
@@ -151,16 +185,14 @@ where
                         let (mut raw_tx, raw_rx) = match connect.await {
                             Ok(tx_rx) => tx_rx,
                             Err(err) => {
-                                let _ = tx.send(Err(remote::ReceiveError::Connect(err))).await;
+                                let _ = tx.send(Err(ReceiveError::RemoteConnect(err))).await;
                                 return;
                             }
                         };
 
                         // Decode raw received data using remote receiver.
-                        let mut remote_rx = remote::Receiver::<Result<T, remote::ReceiveError>, Codec>::new(
-                            Obtainer::ready(Ok(raw_rx)),
-                            allocator,
-                        );
+                        let mut remote_rx =
+                            remote::Receiver::<Result<T, ReceiveError>, Codec>::new(raw_rx, allocator);
 
                         // Process events.
                         let mut close_sent = false;
@@ -192,7 +224,7 @@ where
                                     let value = match res {
                                         Ok(Some(value)) => value,
                                         Ok(None) => break,
-                                        Err(err) => Err(err),
+                                        Err(err) => Err(ReceiveError::RemoteReceive(err)),
                                     };
                                     if tx.send(value).await.is_err() {
                                         break;
@@ -248,14 +280,14 @@ where
                         let (raw_tx, mut raw_rx) = match request.accept_from(local_port).await {
                             Ok(tx_rx) => tx_rx,
                             Err(err) => {
-                                let _ = err_tx.send(Err(remote::ReceiveError::Listen(err))).await;
+                                let _ = err_tx.send(Err(ReceiveError::RemoteListen(err))).await;
                                 return;
                             }
                         };
 
                         // Encode data using remote sender for sending.
-                        let mut remote_tx = remote::Sender::<Result<T, remote::ReceiveError>, Codec>::new(
-                            Obtainer::ready(Ok(raw_tx)),
+                        let mut remote_tx = remote::Sender::<Result<T, ReceiveError>, Codec>::new(
+                            raw_tx,
                             allocator,
                         );
 
@@ -274,7 +306,7 @@ where
                                                     let _ = closed_tx.send(true);
                                                 }
                                                 BACKCHANNEL_MSG_ERROR => {
-                                                    let _ = remote_send_err_tx.send(Some(SendErrorKind::Forward));
+                                                    let _ = remote_send_err_tx.send(Some(RemoteSendError::Forward));
                                                 }
                                                 _ => (),
                                             }
@@ -288,7 +320,7 @@ where
                                     match value_opt {
                                         Some(value) => {
                                             if let Err(err) = remote_tx.send(value).await {
-                                                let _ = remote_send_err_tx.send(Some(err.kind));
+                                                let _ = remote_send_err_tx.send(Some(RemoteSendError::Send(err.kind)));
                                             }
                                         }
                                         None => break,
