@@ -2,11 +2,10 @@
 
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::remote;
-
 mod receiver;
 mod sender;
 
+use crate::remote;
 pub use receiver::{ReceiveError, Receiver, TransportedReceiver};
 pub use sender::{SendError, Sender, TransportedSender};
 
@@ -14,7 +13,7 @@ const BACKCHANNEL_MSG_CLOSE: u8 = 0x01;
 const BACKCHANNEL_MSG_ERROR: u8 = 0x02;
 
 #[derive(Clone)]
-enum RemoteSendError {
+pub(crate) enum RemoteSendError {
     Send(remote::SendErrorKind),
     Connect(chmux::ConnectError),
     Forward,

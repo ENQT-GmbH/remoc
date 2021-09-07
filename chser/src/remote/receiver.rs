@@ -162,6 +162,7 @@ where
         }
     }
 
+    /// Receive an item from the remote endpoint.
     pub async fn recv(&mut self) -> Result<Option<T>, ReceiveError> {
         if self.default_max_ports.is_none() {
             self.default_max_ports = Some(self.receiver.max_ports());
@@ -311,7 +312,10 @@ where
         }
     }
 
-    #[allow(dead_code)]
+    /// Close the channel.
+    ///
+    /// This stops the remote endpoint from sending more data, but allows already sent data
+    /// to be received.
     pub async fn close(&mut self) {
         self.receiver.close().await
     }

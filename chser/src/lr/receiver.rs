@@ -1,34 +1,117 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    error::Error,
+    fmt,
+    marker::PhantomData,
+    sync::{Arc, Mutex},
+};
 
 use futures::FutureExt;
-use serde::{ser, Deserialize, Serialize};
+use serde::{de::DeserializeOwned, ser, Deserialize, Serialize};
 
 use super::{Interlock, Location};
-use crate::remote::{PortDeserializer, PortSerializer};
+use crate::{
+    codec::{CodecT, DeserializationError},
+    remote::{self, PortDeserializer, PortSerializer},
+    ConnectError,
+};
 
-/// A raw chmux channel receiver.
-pub struct Receiver {
-    pub(super) sender_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<chmux::Sender, ConnectError>>>,
-    pub(super) receiver_rx: tokio::sync::mpsc::UnboundedReceiver<Result<chmux::Receiver, ConnectError>>,
+/// An error that occured during receiving from a remote endpoint.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum ReceiveError {
+    /// Receiving data over the chmux channel failed.
+    Receive(chmux::ReceiveError),
+    /// Deserialization of received data failed.
+    Deserialize(DeserializationError),
+    /// chmux ports required for deserialization of received channels were not received.
+    MissingPorts(Vec<u32>),
+    /// Connecting to remote channel failed.
+    Connect(ConnectError),
+}
+
+impl From<remote::ReceiveError> for ReceiveError {
+    fn from(err: remote::ReceiveError) -> Self {
+        match err {
+            remote::ReceiveError::Receive(err) => Self::Receive(err),
+            remote::ReceiveError::Deserialize(err) => Self::Deserialize(err),
+            remote::ReceiveError::MissingPorts(ports) => Self::MissingPorts(ports),
+        }
+    }
+}
+
+impl From<ConnectError> for ReceiveError {
+    fn from(err: ConnectError) -> Self {
+        Self::Connect(err)
+    }
+}
+
+impl fmt::Display for ReceiveError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Receive(err) => write!(f, "receive error: {}", err),
+            Self::Deserialize(err) => write!(f, "deserialization error: {}", err),
+            Self::MissingPorts(ports) => write!(
+                f,
+                "missing chmux ports: {}",
+                ports.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", ")
+            ),
+            Self::Connect(err) => write!(f, "connect error: {}", err),
+        }
+    }
+}
+
+impl Error for ReceiveError {}
+
+/// The receiver part of a local/remote channel.
+pub struct Receiver<T, Codec> {
+    pub(super) receiver: Option<Result<remote::Receiver<T, Codec>, ConnectError>>,
+    pub(super) sender_tx:
+        Option<tokio::sync::mpsc::UnboundedSender<Result<remote::Sender<T, Codec>, ConnectError>>>,
+    pub(super) receiver_rx:
+        tokio::sync::mpsc::UnboundedReceiver<Result<remote::Receiver<T, Codec>, ConnectError>>,
     pub(super) interlock: Arc<Mutex<Interlock>>,
 }
 
 /// A raw chmux channel receiver in transport.
 #[derive(Debug, Serialize, Deserialize)]
-pub struct TransportedReceiver {
+pub struct TransportedReceiver<T, Codec> {
     /// chmux port number.
     pub port: u32,
+    /// Data type.
+    data: PhantomData<T>,
+    /// Data codec.
+    codec: PhantomData<Codec>,
 }
 
-impl Receiver {
-    /// Establishes the connection and returns the chmux receiver channel
-    /// from the remote endpoint.
-    pub async fn connect(mut self) -> Result<chmux::Receiver, ConnectError> {
-        self.receiver_rx.recv().await.unwrap_or(Err(ConnectError::Dropped))
+impl<T, Codec> Receiver<T, Codec>
+where
+    T: DeserializeOwned + Send + 'static,
+    Codec: CodecT,
+{
+    async fn connect(&mut self) {
+        if self.receiver.is_none() {
+            self.receiver = Some(self.receiver_rx.recv().await.unwrap_or(Err(ConnectError::Dropped)));
+        }
+    }
+
+    /// Establishes the connection and returns a reference to the remote receiver.
+    async fn get(&mut self) -> Result<&mut remote::Receiver<T, Codec>, ConnectError> {
+        self.connect().await;
+        self.receiver.as_mut().unwrap().as_mut().map_err(|err| err.clone())
+    }
+
+    /// Receive an item from the remote endpoint.
+    pub async fn recv(&mut self) -> Result<Option<T>, ReceiveError> {
+        let receiver = self.get().await?;
+        let item = receiver.recv().await?;
+        Ok(item)
     }
 }
 
-impl Serialize for Receiver {
+impl<T, Codec> Serialize for Receiver<T, Codec>
+where
+    T: Serialize + Send + 'static,
+    Codec: CodecT,
+{
     /// Serializes this receiver for sending over a chmux channel.
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -45,13 +128,14 @@ impl Serialize for Receiver {
             interlock.sender.start_send()
         };
 
-        let port = PortSerializer::connect(|connect, _| {
+        let port = PortSerializer::connect(|connect, allocator| {
             async move {
                 let _ = interlock_confirm.send(());
 
                 match connect.await {
                     Ok((raw_tx, _)) => {
-                        let _ = sender_tx.send(Ok(raw_tx));
+                        let tx = remote::Sender::new(raw_tx, allocator);
+                        let _ = sender_tx.send(Ok(tx));
                     }
                     Err(err) => {
                         let _ = sender_tx.send(Err(ConnectError::Connect(err)));
@@ -61,27 +145,32 @@ impl Serialize for Receiver {
             .boxed()
         })?;
 
-        TransportedReceiver { port }.serialize(serializer)
+        TransportedReceiver::<T, Codec> { port, data: PhantomData, codec: PhantomData }.serialize(serializer)
     }
 }
 
-impl<'de> Deserialize<'de> for Receiver {
+impl<'de, T, Codec> Deserialize<'de> for Receiver<T, Codec>
+where
+    T: DeserializeOwned + Send + 'static,
+    Codec: CodecT,
+{
     /// Deserializes this receiver after it has been received over a chmux channel.
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        let TransportedReceiver { port } = TransportedReceiver::deserialize(deserializer)?;
+        let TransportedReceiver::<T, Codec> { port, .. } = TransportedReceiver::deserialize(deserializer)?;
 
         let (receiver_tx, receiver_rx) = tokio::sync::mpsc::unbounded_channel();
-        PortDeserializer::accept(port, |local_port, request, _| {
+        PortDeserializer::accept(port, |local_port, request, allocator| {
             async move {
                 match request.accept_from(local_port).await {
                     Ok((_, raw_rx)) => {
-                        let _ = receiver_tx.send(Ok(raw_rx));
+                        let rx = remote::Receiver::new(raw_rx, allocator);
+                        let _ = receiver_tx.send(Ok(rx));
                     }
                     Err(err) => {
-                        let _ = receiver_tx.send(Err(ConnectError::Accept(err)));
+                        let _ = receiver_tx.send(Err(ConnectError::Listen(err)));
                     }
                 }
             }
@@ -89,6 +178,7 @@ impl<'de> Deserialize<'de> for Receiver {
         })?;
 
         Ok(Self {
+            receiver: None,
             sender_tx: None,
             receiver_rx,
             interlock: Arc::new(Mutex::new(Interlock { sender: Location::Remote, receiver: Location::Local })),

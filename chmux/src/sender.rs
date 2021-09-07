@@ -328,7 +328,7 @@ impl Sender {
                             Err(ConnectError::Rejected)
                         }
                     }
-                    Err(_) => Err(ConnectError::MultiplexerError),
+                    Err(_) => Err(ConnectError::Multiplexer),
                 }
             });
 

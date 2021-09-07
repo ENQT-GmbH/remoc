@@ -1,22 +1,28 @@
-// Only difference here will be that we wrap the channels into remote sender / remote receiver.
-// And maybe wrap the methods?
+//! Local/remote channels.
 
-// Yes => should be done so here.
-// But why?
-// We could avoid that if we publish the remote sender.
-// But then this channel is less user friendly.
+use serde::{Deserialize, Serialize};
+use std::{
+    error::Error,
+    fmt,
+    sync::{Arc, Mutex},
+};
 
 use crate::interlock::{Interlock, Location};
 
-#[derive(Debug, Clone)]
-pub enum ConnectError {
-    /// The corresponding sender or receiver has been dropped.
-    Dropped,
-    /// Error initiating chmux connection.
-    Connect(chmux::ConnectError),
-    /// Error accepting chmux connection.
-    Accept(chmux::ListenerError),
-}
-
 mod receiver;
 mod sender;
+
+pub use receiver::{ReceiveError, Receiver, TransportedReceiver};
+pub use sender::{SendError, SendErrorKind, Sender, TransportedSender};
+
+/// Creates a new local/remote channel that is established by sending either the sender or receiver
+/// over a remote channel.
+pub fn channel<T, Codec>() -> (Sender<T, Codec>, Receiver<T, Codec>) {
+    let (sender_tx, sender_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (receiver_tx, receiver_rx) = tokio::sync::mpsc::unbounded_channel();
+    let interlock = Arc::new(Mutex::new(Interlock { sender: Location::Local, receiver: Location::Local }));
+
+    let sender = Sender { sender: None, sender_rx, receiver_tx: Some(receiver_tx), interlock: interlock.clone() };
+    let receiver = Receiver { receiver: None, sender_tx: Some(sender_tx), receiver_rx, interlock };
+    (sender, receiver)
+}

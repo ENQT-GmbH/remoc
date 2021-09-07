@@ -13,28 +13,6 @@ pub use sender::{Sender, TransportedSender};
 
 use crate::interlock::{Interlock, Location};
 
-#[derive(Debug, Clone)]
-pub enum ConnectError {
-    /// The corresponding sender or receiver has been dropped.
-    Dropped,
-    /// Error initiating chmux connection.
-    Connect(chmux::ConnectError),
-    /// Error accepting chmux connection.
-    Accept(chmux::ListenerError),
-}
-
-impl fmt::Display for ConnectError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::Dropped => write!(f, "corresponding sender or receiver has been dropped"),
-            Self::Connect(err) => write!(f, "chmux connect error: {}", err),
-            Self::Accept(err) => write!(f, "chmux accept error: {}", err),
-        }
-    }
-}
-
-impl std::error::Error for ConnectError {}
-
 /// Creates a new chmux channel that is established by sending either the sender or receiver
 /// over a remote channel.
 pub fn channel() -> (Sender, Receiver) {

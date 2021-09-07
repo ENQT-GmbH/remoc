@@ -3,8 +3,11 @@ use std::sync::{Arc, Mutex};
 use futures::FutureExt;
 use serde::{ser, Deserialize, Serialize};
 
-use super::{ConnectError, Interlock, Location};
-use crate::remote::{PortDeserializer, PortSerializer};
+use super::{Interlock, Location};
+use crate::{
+    remote::{PortDeserializer, PortSerializer},
+    ConnectError,
+};
 
 /// A raw chmux channel receiver.
 pub struct Receiver {
@@ -96,7 +99,7 @@ impl<'de> Deserialize<'de> for Receiver {
                         let _ = receiver_tx.send(Ok(raw_rx));
                     }
                     Err(err) => {
-                        let _ = receiver_tx.send(Err(ConnectError::Accept(err)));
+                        let _ = receiver_tx.send(Err(ConnectError::Listen(err)));
                     }
                 }
             }
