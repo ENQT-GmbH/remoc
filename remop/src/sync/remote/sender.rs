@@ -16,7 +16,10 @@ use super::{
     io::{ChannelBytesWriter, LimitedBytesWriter},
     BIG_DATA_CHUNK_QUEUE, BIG_DATA_LIMIT,
 };
-use crate::codec::{CodecT, SerializationError};
+use crate::{
+    chmux,
+    codec::{CodecT, SerializationError},
+};
 
 /// An error that occured during remote sending.
 #[derive(Clone, Debug)]

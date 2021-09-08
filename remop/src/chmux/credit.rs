@@ -8,7 +8,7 @@ use tokio::sync::{
     oneshot,
 };
 
-use crate::{multiplexer::PortEvt, MultiplexError, SendError};
+use super::{multiplexer::PortEvt, MultiplexError, SendError};
 
 // ===========================================================================
 // Credit accounting for sending data

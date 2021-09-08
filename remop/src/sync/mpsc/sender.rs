@@ -8,12 +8,15 @@ use std::{
     sync::{Arc, Weak},
 };
 
-use super::{receiver::ReceiveError, RemoteSendError};
-use crate::{
-    codec::CodecT,
-    mpsc::{BACKCHANNEL_MSG_CLOSE, BACKCHANNEL_MSG_ERROR},
-    remote::{self, PortDeserializer, PortSerializer},
+use super::{
+    super::{
+        mpsc::{BACKCHANNEL_MSG_CLOSE, BACKCHANNEL_MSG_ERROR},
+        remote::{self, PortDeserializer, PortSerializer},
+    },
+    receiver::ReceiveError,
+    RemoteSendError,
 };
+use crate::{chmux, codec::CodecT};
 
 /// An error occured during sending over an mpsc channel.
 #[derive(Clone, Debug)]

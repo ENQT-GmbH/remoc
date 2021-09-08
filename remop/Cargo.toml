@@ -1,14 +1,14 @@
 [package]
-name = "chmux"
-version = "0.8.0"
+name = "remop"
+version = "0.8.0-pre0"
 authors = ["ENQT GmbH <su@enqt.de>", "Sebastian Urban <surban@surban.net>"]
 edition = "2018"
-description = "Multiplexes multiple channels over a single transport (anything that implements Sink and Stream)."
-keywords = ["multiplex", "transport", "mux", "multiple", "channels", "channel"]
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Remote multiplexed objects and ports"
+keywords = ["remote", "channel", "rpc", "stream", "multiplexer"]
+license = "Apache-2.0"
 
 [features]
+default = ["serde"]
 
 [dependencies]
 futures = "0.3"
@@ -21,6 +21,7 @@ bytes = "1"
 byteorder = "1"
 lazy_static = "1"
 serde = { version = "1", features = ["derive"], optional = true }
+serde_json = {version="1"}
 
 [dev-dependencies]
 tokio = { version="1", features = ["net", "io-util", "rt", "rt-multi-thread"] }

@@ -9,7 +9,7 @@ use futures::{
 use std::{collections::VecDeque, error::Error, fmt, mem, pin::Pin, sync::Arc};
 use tokio::sync::{mpsc, oneshot, Mutex};
 
-use crate::{
+use super::{
     credit::{ChannelCreditReturner, UsedCredit},
     multiplexer::PortEvt,
     Request,

@@ -15,7 +15,7 @@ use tokio::{
     task::JoinHandle,
 };
 
-use crate::{
+use super::{
     port_allocator::{PortAllocator, PortNumber},
     receiver::Receiver,
     sender::Sender,

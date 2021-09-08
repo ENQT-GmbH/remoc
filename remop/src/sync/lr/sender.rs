@@ -7,11 +7,16 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use super::{Interlock, Location};
+use super::{
+    super::{
+        remote::{self, PortDeserializer, PortSerializer},
+        ConnectError,
+    },
+    Interlock, Location,
+};
 use crate::{
+    chmux,
     codec::{CodecT, SerializationError},
-    remote::{self, PortDeserializer, PortSerializer},
-    ConnectError,
 };
 
 /// An error that occured during remote sending.

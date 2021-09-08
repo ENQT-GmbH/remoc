@@ -18,7 +18,7 @@ use std::{
 };
 use tokio::sync::{mpsc, oneshot, Mutex};
 
-use crate::{
+use super::{
     client::ConnectResponse,
     credit::{AssignedCredits, CreditUser},
     multiplexer::PortEvt,

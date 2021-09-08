@@ -4,7 +4,7 @@ use std::{
     time::Duration,
 };
 
-use crate::{Cfg, MultiplexError};
+use super::{Cfg, MultiplexError};
 
 macro_rules! invalid_data {
     ($msg:expr) => {

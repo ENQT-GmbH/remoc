@@ -27,7 +27,7 @@ use tokio::{
     try_join,
 };
 
-use crate::{
+use super::{
     client::{Client, ConnectRequest, ConnectResponse},
     credit::{credit_monitor_pair, credit_send_pair, ChannelCreditMonitor, CreditProvider},
     listener::{Listener, RemoteConnectMsg, Request},
@@ -41,7 +41,7 @@ use crate::{
 /// Multiplexer protocol error.
 macro_rules! protocol_err {
     ($msg:expr) => {
-        crate::MultiplexError::Protocol($msg.to_string())
+        super::MultiplexError::Protocol($msg.to_string())
     };
 }
 

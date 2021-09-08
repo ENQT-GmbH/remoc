@@ -1,5 +1,4 @@
 use bytes::{Buf, Bytes};
-use chmux::{ReceiveChunkError, Received};
 use futures::future::BoxFuture;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
@@ -13,7 +12,10 @@ use std::{
 use tokio::task::{self, JoinHandle};
 
 use super::{io::ChannelBytesReader, BIG_DATA_CHUNK_QUEUE};
-use crate::codec::{CodecT, DeserializationError};
+use crate::{
+    chmux::{self, ReceiveChunkError, Received},
+    codec::{CodecT, DeserializationError},
+};
 
 /// An error that occured during receiving from a remote endpoint.
 #[derive(Clone, Debug, Serialize, Deserialize)]

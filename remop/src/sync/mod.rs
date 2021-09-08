@@ -1,7 +1,7 @@
+use crate::chmux;
 use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt};
 
-pub mod codec;
 mod interlock;
 pub mod lr;
 pub mod mpsc;

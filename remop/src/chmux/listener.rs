@@ -8,7 +8,7 @@ use futures::{
 use std::{error::Error, fmt, pin::Pin, sync::Arc};
 use tokio::sync::{mpsc, oneshot, Mutex};
 
-use crate::{
+use super::{
     multiplexer::PortEvt,
     port_allocator::{PortAllocator, PortNumber},
     receiver::Receiver,

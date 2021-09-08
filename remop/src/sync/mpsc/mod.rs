@@ -2,10 +2,12 @@
 
 use serde::{de::DeserializeOwned, Serialize};
 
+use super::remote;
+use crate::chmux;
+
 mod receiver;
 mod sender;
 
-use crate::remote;
 pub use receiver::{ReceiveError, Receiver, TransportedReceiver};
 pub use sender::{SendError, Sender, TransportedSender};
 

@@ -1,18 +1,17 @@
-//! Raw chmux channel.
+//! Local/remote channels.
 
 use std::sync::{Arc, Mutex};
 
 mod receiver;
 mod sender;
 
-pub use receiver::{Receiver, TransportedReceiver};
-pub use sender::{Sender, TransportedSender};
+use super::interlock::{Interlock, Location};
+pub use receiver::{ReceiveError, Receiver, TransportedReceiver};
+pub use sender::{SendError, SendErrorKind, Sender, TransportedSender};
 
-use crate::interlock::{Interlock, Location};
-
-/// Creates a new chmux channel that is established by sending either the sender or receiver
+/// Creates a new local/remote channel that is established by sending either the sender or receiver
 /// over a remote channel.
-pub fn channel() -> (Sender, Receiver) {
+pub fn channel<T, Codec>() -> (Sender<T, Codec>, Receiver<T, Codec>) {
     let (sender_tx, sender_rx) = tokio::sync::mpsc::unbounded_channel();
     let (receiver_tx, receiver_rx) = tokio::sync::mpsc::unbounded_channel();
     let interlock = Arc::new(Mutex::new(Interlock { sender: Location::Local, receiver: Location::Local }));

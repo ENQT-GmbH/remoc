@@ -8,11 +8,16 @@ use std::{
 use futures::FutureExt;
 use serde::{de::DeserializeOwned, ser, Deserialize, Serialize};
 
-use super::{Interlock, Location};
+use super::{
+    super::{
+        remote::{self, PortDeserializer, PortSerializer},
+        ConnectError,
+    },
+    Interlock, Location,
+};
 use crate::{
+    chmux,
     codec::{CodecT, DeserializationError},
-    remote::{self, PortDeserializer, PortSerializer},
-    ConnectError,
 };
 
 /// An error that occured during receiving from a remote endpoint.
