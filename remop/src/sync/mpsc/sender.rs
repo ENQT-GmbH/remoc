@@ -20,7 +20,7 @@ use super::{
 use crate::{chmux, codec::CodecT, sync::RemoteSend};
 
 /// An error occured during sending over an mpsc channel.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SendError<T> {
     /// The remote end closed the channel.
     Closed(T),
@@ -56,7 +56,7 @@ impl<T> From<RemoteSendError> for SendError<T> {
 }
 
 /// An error occured during trying to send over an mpsc channel.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum TrySendError<T> {
     /// The remote end closed the channel.
     Closed(T),

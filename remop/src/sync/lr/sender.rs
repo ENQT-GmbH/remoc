@@ -20,7 +20,7 @@ use crate::{
 };
 
 /// An error that occured during remote sending.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SendError<T> {
     /// Error kind.
     pub kind: SendErrorKind,
@@ -29,7 +29,7 @@ pub struct SendError<T> {
 }
 
 /// Error kind that occured during remote sending.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SendErrorKind {
     /// Serialization of the item failed.
     Serialize(SerializationError),

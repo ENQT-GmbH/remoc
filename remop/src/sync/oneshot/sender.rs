@@ -5,7 +5,7 @@ use super::super::{mpsc, RemoteSend};
 use crate::codec::CodecT;
 
 /// An error occured during sending over an mpsc channel.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SendError<T> {
     /// The remote end closed the channel.
     Closed(T),
