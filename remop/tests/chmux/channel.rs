@@ -5,14 +5,9 @@ use futures::{
     future::try_join,
     stream::StreamExt,
 };
-use std::{io, sync::Once, time::Duration};
+use remop::chmux;
+use std::{io, time::Duration};
 use tokio::time::sleep;
-
-static INIT: Once = Once::new();
-
-fn init() {
-    INIT.call_once(env_logger::init);
-}
 
 fn cfg(trace_id: &str) -> chmux::Cfg {
     chmux::Cfg {
@@ -48,7 +43,7 @@ fn cfg2(trace_id: &str) -> chmux::Cfg {
 
 #[tokio::test]
 async fn basic() {
-    init();
+    crate::init();
 
     let queue_length = 0;
     let (a_tx, b_rx) = mpsc::channel::<Bytes>(queue_length);
@@ -159,7 +154,7 @@ async fn basic() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 async fn hangup() {
-    init();
+    crate::init();
 
     let queue_length = 10;
     let (a_tx, b_rx) = mpsc::channel::<Bytes>(queue_length);

@@ -1,10 +1,11 @@
 use crate::chmux;
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{error::Error, fmt};
 
 mod interlock;
 pub mod lr;
 pub mod mpsc;
+pub mod oneshot;
 pub mod raw;
 mod remote;
 
@@ -30,3 +31,8 @@ impl fmt::Display for ConnectError {
 }
 
 impl Error for ConnectError {}
+
+/// Object that is remote sendable.
+pub trait RemoteSend: Send + Serialize + DeserializeOwned + 'static {}
+
+impl<T> RemoteSend for T where T: Send + Serialize + DeserializeOwned + 'static {}

@@ -1,7 +1,8 @@
 use bytes::Buf;
 use futures::FutureExt;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use std::{
+    convert::TryFrom,
     error::Error,
     fmt,
     marker::PhantomData,
@@ -16,7 +17,7 @@ use super::{
     receiver::ReceiveError,
     RemoteSendError,
 };
-use crate::{chmux, codec::CodecT};
+use crate::{chmux, codec::CodecT, sync::RemoteSend};
 
 /// An error occured during sending over an mpsc channel.
 #[derive(Clone, Debug)]
@@ -34,7 +35,7 @@ pub enum SendError<T> {
 impl<T> fmt::Display for SendError<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::Closed(_) => write!(f, "channel closed"),
+            Self::Closed(_) => write!(f, "channel is closed"),
             Self::RemoteSend(err) => write!(f, "send error: {}", err),
             Self::RemoteConnect(err) => write!(f, "connect error: {}", err),
             Self::RemoteForward => write!(f, "forwarding error"),
@@ -54,9 +55,74 @@ impl<T> From<RemoteSendError> for SendError<T> {
     }
 }
 
-/// Send values to the associated [Receiver], which may be located on a remote endpoint.
+/// An error occured during trying to send over an mpsc channel.
+#[derive(Clone, Debug)]
+pub enum TrySendError<T> {
+    /// The remote end closed the channel.
+    Closed(T),
+    /// The data could not be sent on the channel because the channel
+    /// is currently full and sending would require blocking.
+    Full(T),
+    /// Sending to a remote endpoint failed.
+    RemoteSend(remote::SendErrorKind),
+    /// Connecting a sent channel failed.
+    RemoteConnect(chmux::ConnectError),
+    /// Forwarding at a remote endpoint to another remote endpoint failed.
+    RemoteForward,
+}
+
+impl<T> fmt::Display for TrySendError<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Closed(_) => write!(f, "channel is closed"),
+            Self::Full(_) => write!(f, "channel is full"),
+            Self::RemoteSend(err) => write!(f, "send error: {}", err),
+            Self::RemoteConnect(err) => write!(f, "connect error: {}", err),
+            Self::RemoteForward => write!(f, "forwarding error"),
+        }
+    }
+}
+
+impl<T> From<RemoteSendError> for TrySendError<T> {
+    fn from(err: RemoteSendError) -> Self {
+        match err {
+            RemoteSendError::Send(err) => Self::RemoteSend(err),
+            RemoteSendError::Connect(err) => Self::RemoteConnect(err),
+            RemoteSendError::Forward => Self::RemoteForward,
+        }
+    }
+}
+
+impl<T> From<SendError<T>> for TrySendError<T> {
+    fn from(err: SendError<T>) -> Self {
+        match err {
+            SendError::Closed(v) => Self::Closed(v),
+            SendError::RemoteSend(err) => Self::RemoteSend(err),
+            SendError::RemoteConnect(err) => Self::RemoteConnect(err),
+            SendError::RemoteForward => Self::RemoteForward,
+        }
+    }
+}
+
+impl<T> TryFrom<TrySendError<T>> for SendError<T> {
+    type Error = TrySendError<T>;
+
+    fn try_from(err: TrySendError<T>) -> Result<Self, Self::Error> {
+        match err {
+            TrySendError::Closed(v) => Ok(Self::Closed(v)),
+            TrySendError::RemoteSend(err) => Ok(Self::RemoteSend(err)),
+            TrySendError::RemoteConnect(err) => Ok(Self::RemoteConnect(err)),
+            TrySendError::RemoteForward => Ok(Self::RemoteForward),
+            other => Err(other),
+        }
+    }
+}
+
+impl<T> Error for TrySendError<T> where T: fmt::Debug {}
+
+/// Send values to the associated [Receiver](super::Receiver), which may be located on a remote endpoint.
 ///
-/// Instances are created by the [channel] function.
+/// Instances are created by the [channel](super::channel) function.
 pub struct Sender<T, Codec, const BUFFER: usize> {
     tx: Weak<tokio::sync::mpsc::Sender<Result<T, ReceiveError>>>,
     closed_rx: tokio::sync::watch::Receiver<bool>,
@@ -65,6 +131,13 @@ pub struct Sender<T, Codec, const BUFFER: usize> {
     _codec: PhantomData<Codec>,
 }
 
+impl<T, Codec, const BUFFER: usize> fmt::Debug for Sender<T, Codec, BUFFER> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Sender").finish_non_exhaustive()
+    }
+}
+
+/// Mpsc sender in transport.
 #[derive(Serialize, Deserialize)]
 pub struct TransportedSender<T, Codec> {
     /// chmux port number. `None` if closed.
@@ -134,13 +207,61 @@ where
 
         if let Some(tx) = self.tx.upgrade() {
             if let Err(err) = tx.send(Ok(value)).await {
-                return Err(SendError::Closed(err.0.expect("")));
+                return Err(SendError::Closed(err.0.expect("unreachable")));
             }
         } else {
             return Err(SendError::Closed(value));
         }
 
         Ok(())
+    }
+
+    /// Attempts to immediately send a message over this channel.
+    pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
+        if let Some(err) = self.remote_send_err_rx.borrow().as_ref() {
+            return Err(err.clone().into());
+        }
+
+        match self.tx.upgrade() {
+            Some(tx) => match tx.try_send(Ok(value)) {
+                Ok(()) => Ok(()),
+                Err(tokio::sync::mpsc::error::TrySendError::Full(err)) => {
+                    Err(TrySendError::Full(err.expect("unreachable")))
+                }
+                Err(tokio::sync::mpsc::error::TrySendError::Closed(err)) => {
+                    Err(TrySendError::Closed(err.expect("unreachable")))
+                }
+            },
+            None => Err(TrySendError::Closed(value)),
+        }
+    }
+
+    /// Wait for channel capacity, returning an owned permit.
+    /// Once capacity to send one message is available, it is reserved for the caller.
+    pub async fn reserve(&self) -> Result<Permit<T>, SendError<()>> {
+        if let Some(err) = self.remote_send_err_rx.borrow().as_ref() {
+            return Err(err.clone().into());
+        }
+
+        if let Some(tx) = self.tx.upgrade() {
+            let tx = (*tx).clone();
+            match tx.reserve_owned().await {
+                Ok(permit) => Ok(Permit(permit)),
+                Err(_) => Err(SendError::Closed(())),
+            }
+        } else {
+            Err(SendError::Closed(()))
+        }
+    }
+
+    /// Returns the current capacity of the channel.
+    ///
+    /// Zero is returned when the channel has been closed or an occur has occured.
+    pub fn capacity(&self) -> usize {
+        match self.tx.upgrade() {
+            Some(tx) => tx.capacity(),
+            None => 0,
+        }
     }
 
     /// Completes when the receiver has been closed or dropped.
@@ -159,6 +280,19 @@ where
     }
 }
 
+/// Owned permit to send one value into the channel.
+pub struct Permit<T>(tokio::sync::mpsc::OwnedPermit<Result<T, ReceiveError>>);
+
+impl<T> Permit<T>
+where
+    T: Send,
+{
+    /// Sends a value using the reserved capacity.
+    pub fn send(self, value: T) {
+        self.0.send(Ok(value));
+    }
+}
+
 impl<T, Codec, const BUFFER: usize> Drop for Sender<T, Codec, BUFFER> {
     fn drop(&mut self) {
         // empty
@@ -167,7 +301,7 @@ impl<T, Codec, const BUFFER: usize> Drop for Sender<T, Codec, BUFFER> {
 
 impl<T, Codec, const BUFFER: usize> Serialize for Sender<T, Codec, BUFFER>
 where
-    T: Serialize + DeserializeOwned + Send + 'static,
+    T: RemoteSend,
     Codec: CodecT,
 {
     /// Serializes this sender for sending over a chmux channel.
@@ -254,7 +388,7 @@ where
 
 impl<'de, T, Codec, const BUFFER: usize> Deserialize<'de> for Sender<T, Codec, BUFFER>
 where
-    T: Serialize + DeserializeOwned + Send + 'static,
+    T: RemoteSend,
     Codec: CodecT,
 {
     /// Deserializes this sender after it has been received over a chmux channel.

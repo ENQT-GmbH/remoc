@@ -1,14 +1,16 @@
 use futures::stream::StreamExt;
-use std::{net::Ipv4Addr, time::Duration};
+use remop::chmux;
+use std::{fs, time::Duration};
 use tokio::{
     io::split,
-    net::{TcpListener, TcpStream},
+    net::{UnixListener, UnixStream},
     time::sleep,
 };
 use tokio_util::codec::{length_delimited::LengthDelimitedCodec, FramedRead, FramedWrite};
 
-async fn tcp_server() {
-    let listener = TcpListener::bind((Ipv4Addr::new(127, 0, 0, 1), 9876)).await.unwrap();
+async fn uds_server() {
+    let _ = fs::remove_file("/tmp/chmux_test");
+    let listener = UnixListener::bind("/tmp/chmux_test").unwrap();
 
     let (socket, _) = listener.accept().await.unwrap();
     let (socket_rx, socket_tx) = split(socket);
@@ -22,7 +24,7 @@ async fn tcp_server() {
     let mux_run = tokio::spawn(async move { mux.run().await.unwrap() });
 
     while let Some((mut tx, mut rx)) = server.accept().await.unwrap() {
-        println!("Server accepted request.");
+        println!("Server accepting request");
 
         tx.send("Hi from server".into()).await.unwrap();
         println!("Server sent Hi message");
@@ -40,8 +42,8 @@ async fn tcp_server() {
     mux_run.await.unwrap();
 }
 
-async fn tcp_client() {
-    let socket = TcpStream::connect((Ipv4Addr::new(127, 0, 0, 1), 9876)).await.unwrap();
+async fn uds_client() {
+    let socket = UnixStream::connect("/tmp/chmux_test").await.unwrap();
 
     let (socket_rx, socket_tx) = split(socket);
     let framed_tx = FramedWrite::new(socket_tx, LengthDelimitedCodec::new());
@@ -78,15 +80,15 @@ async fn tcp_client() {
 }
 
 #[tokio::test]
-async fn tcp_test() {
-    env_logger::init();
+async fn uds_test() {
+    crate::init();
 
     println!("Starting server task...");
-    let server_task = tokio::spawn(tcp_server());
+    let server_task = tokio::spawn(uds_server());
     sleep(Duration::from_millis(100)).await;
 
     println!("String client thread...");
-    let client_task = tokio::spawn(tcp_client());
+    let client_task = tokio::spawn(uds_client());
 
     println!("Waiting for server task...");
     server_task.await.unwrap();

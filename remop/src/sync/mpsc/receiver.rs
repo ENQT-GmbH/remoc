@@ -1,7 +1,13 @@
 use bytes::Buf;
-use futures::FutureExt;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::{marker::PhantomData, sync::Mutex};
+use futures::{ready, FutureExt};
+use serde::{Deserialize, Serialize};
+use std::{
+    error::Error,
+    fmt,
+    marker::PhantomData,
+    sync::Mutex,
+    task::{Context, Poll},
+};
 
 use super::{
     super::{
@@ -10,14 +16,30 @@ use super::{
     },
     RemoteSendError,
 };
-use crate::{chmux, codec::CodecT};
+use crate::{chmux, codec::CodecT, sync::RemoteSend};
 
+/// An error occured during receiving over an mpsc channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ReceiveError {
+    /// Receiving from a remote endpoint failed.
     RemoteReceive(remote::ReceiveError),
+    /// Connecting a sent channel failed.
     RemoteConnect(chmux::ConnectError),
+    /// Listening for a connection from a received channel failed.
     RemoteListen(chmux::ListenerError),
 }
+
+impl fmt::Display for ReceiveError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::RemoteReceive(err) => write!(f, "receive error: {}", err),
+            Self::RemoteConnect(err) => write!(f, "connect error: {}", err),
+            Self::RemoteListen(err) => write!(f, "listen error: {}", err),
+        }
+    }
+}
+
+impl Error for ReceiveError {}
 
 /// Receive values from the associated [Sender], which may be located on a remote endpoint.
 ///
@@ -28,6 +50,12 @@ pub struct Receiver<T, Codec, const BUFFER: usize> {
     successor_tx: Mutex<Option<tokio::sync::oneshot::Sender<ReceiverInner<T, Codec, BUFFER>>>>,
 }
 
+impl<T, Codec, const BUFFER: usize> fmt::Debug for Receiver<T, Codec, BUFFER> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Receiver").finish_non_exhaustive()
+    }
+}
+
 pub(crate) struct ReceiverInner<T, Codec, const BUFFER: usize> {
     rx: tokio::sync::mpsc::Receiver<Result<T, ReceiveError>>,
     closed_tx: tokio::sync::watch::Sender<bool>,
@@ -35,6 +63,7 @@ pub(crate) struct ReceiverInner<T, Codec, const BUFFER: usize> {
     _codec: PhantomData<Codec>,
 }
 
+/// Mpsc receiver in transport.
 #[derive(Serialize, Deserialize)]
 pub struct TransportedReceiver<T, Codec> {
     /// chmux port number.
@@ -65,6 +94,15 @@ impl<T, Codec, const BUFFER: usize> Receiver<T, Codec, BUFFER> {
         }
     }
 
+    /// Polls to receive the next message on this channel.
+    pub fn poll_recv(&mut self, cx: &mut Context<'_>) -> Poll<Result<Option<T>, ReceiveError>> {
+        match ready!(self.inner.as_mut().unwrap().rx.poll_recv(cx)) {
+            Some(Ok(value_opt)) => Poll::Ready(Ok(Some(value_opt))),
+            Some(Err(err)) => Poll::Ready(Err(err)),
+            None => Poll::Ready(Ok(None)),
+        }
+    }
+
     /// Closes the receiving half of a channel without dropping it.
     pub fn close(&mut self) {
         let _ = self.inner.as_mut().unwrap().closed_tx.send(true);
@@ -82,7 +120,7 @@ impl<T, Codec, const BUFFER: usize> Drop for Receiver<T, Codec, BUFFER> {
 
 impl<T, Codec, const BUFFER: usize> Serialize for Receiver<T, Codec, BUFFER>
 where
-    T: Serialize + DeserializeOwned + Send + 'static,
+    T: RemoteSend,
     Codec: CodecT,
 {
     /// Serializes this receiver for sending over a chmux channel.
@@ -164,7 +202,7 @@ where
 
 impl<'de, T, Codec, const BUFFER: usize> Deserialize<'de> for Receiver<T, Codec, BUFFER>
 where
-    T: Serialize + DeserializeOwned + Send + 'static,
+    T: RemoteSend,
     Codec: CodecT,
 {
     /// Deserializes the receiver after it has been received over a chmux channel.

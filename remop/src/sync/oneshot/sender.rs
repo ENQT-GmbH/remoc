@@ -1,0 +1,61 @@
+use serde::{Deserialize, Serialize};
+use std::{error::Error, fmt};
+
+use super::super::{mpsc, RemoteSend};
+use crate::codec::CodecT;
+
+/// An error occured during sending over an mpsc channel.
+#[derive(Clone, Debug)]
+pub enum SendError<T> {
+    /// The remote end closed the channel.
+    Closed(T),
+    /// Communication with the remote endpoint failed.
+    Failed,
+}
+
+impl<T> fmt::Display for SendError<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Closed(_) => write!(f, "channel is closed"),
+            Self::Failed => write!(f, "send error"),
+        }
+    }
+}
+
+impl<T> From<mpsc::TrySendError<T>> for SendError<T> {
+    fn from(err: mpsc::TrySendError<T>) -> Self {
+        match err {
+            mpsc::TrySendError::Closed(err) => Self::Closed(err),
+            _ => Self::Failed,
+        }
+    }
+}
+
+impl<T> Error for SendError<T> where T: fmt::Debug {}
+
+/// Sends a value to the associated receiver.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(bound(serialize = "T: RemoteSend, Codec: CodecT"))]
+#[serde(bound(deserialize = "T: RemoteSend, Codec: CodecT"))]
+pub struct Sender<T, Codec>(pub(crate) mpsc::Sender<T, Codec, 1>);
+
+impl<T, Codec> Sender<T, Codec>
+where
+    T: RemoteSend,
+    Codec: CodecT,
+{
+    /// Sends a value over this channel.
+    pub fn send(self, value: T) -> Result<(), SendError<T>> {
+        self.0.try_send(value).map_err(|err| err.into())
+    }
+
+    /// Completes when the receiver has been closed or dropped.
+    pub async fn closed(&self) {
+        self.0.closed().await
+    }
+
+    /// Returns whether the receiver has been closed or dropped.
+    pub fn is_closed(&self) -> bool {
+        self.0.is_closed()
+    }
+}

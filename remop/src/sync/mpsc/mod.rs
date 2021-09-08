@@ -9,7 +9,7 @@ mod receiver;
 mod sender;
 
 pub use receiver::{ReceiveError, Receiver, TransportedReceiver};
-pub use sender::{SendError, Sender, TransportedSender};
+pub use sender::{Permit, SendError, Sender, TransportedSender, TrySendError};
 
 const BACKCHANNEL_MSG_CLOSE: u8 = 0x01;
 const BACKCHANNEL_MSG_ERROR: u8 = 0x02;
