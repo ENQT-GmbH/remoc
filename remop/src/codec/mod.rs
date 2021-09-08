@@ -123,4 +123,6 @@ pub trait CodecT: Send + Sync + 'static {
 }
 
 mod json;
+pub mod serde_map;
+
 pub use json::JsonCodec;
