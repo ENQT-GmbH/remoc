@@ -188,7 +188,7 @@ where
                                 let cbr = ChannelBytesReader::new(rx);
 
                                 let pds_ref = PortDeserializer::start(allocator);
-                                let item = Codec::deserialize(cbr)?;
+                                let item = <Codec as CodecT>::deserialize(cbr)?;
                                 let pds = PortDeserializer::finish(pds_ref);
 
                                 Ok((item, pds))
@@ -214,7 +214,7 @@ where
                         };
 
                         let pdf_ref = PortDeserializer::start(self.allocator.clone());
-                        self.item = Some(Codec::deserialize(data.reader())?);
+                        self.item = Some(<Codec as CodecT>::deserialize(data.reader())?);
                         self.port_deser = Some(PortDeserializer::finish(pdf_ref));
 
                         self.data = DataSource::None;

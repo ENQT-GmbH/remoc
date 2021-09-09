@@ -13,7 +13,7 @@ default = ["serde"]
 [dependencies]
 futures = "0.3"
 pin-project = "1.0"
-tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
+tokio = { version = "1.11", features = ["macros", "rt", "sync", "time"] }
 rand = "0.8"
 log = "0.4"
 async-trait = "0.1"

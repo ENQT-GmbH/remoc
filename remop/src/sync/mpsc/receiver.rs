@@ -9,12 +9,9 @@ use std::{
     task::{Context, Poll},
 };
 
-use super::{
-    super::{
-        mpsc::{BACKCHANNEL_MSG_CLOSE, BACKCHANNEL_MSG_ERROR},
-        remote::{self, PortDeserializer, PortSerializer},
-    },
-    RemoteSendError,
+use super::super::{
+    remote::{self, PortDeserializer, PortSerializer},
+    RemoteSendError, BACKCHANNEL_MSG_CLOSE, BACKCHANNEL_MSG_ERROR,
 };
 use crate::{chmux, codec::CodecT, sync::RemoteSend};
 

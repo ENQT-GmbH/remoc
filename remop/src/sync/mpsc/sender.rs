@@ -11,13 +11,12 @@ use std::{
 
 use super::{
     super::{
-        mpsc::{BACKCHANNEL_MSG_CLOSE, BACKCHANNEL_MSG_ERROR},
         remote::{self, PortDeserializer, PortSerializer},
+        RemoteSend, RemoteSendError, BACKCHANNEL_MSG_CLOSE, BACKCHANNEL_MSG_ERROR,
     },
     receiver::ReceiveError,
-    RemoteSendError,
 };
-use crate::{chmux, codec::CodecT, sync::RemoteSend};
+use crate::{chmux, codec::CodecT};
 
 /// An error occured during sending over an mpsc channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -28,6 +27,8 @@ pub enum SendError<T> {
     RemoteSend(remote::SendErrorKind),
     /// Connecting a sent channel failed.
     RemoteConnect(chmux::ConnectError),
+    /// Listening for a received channel failed.
+    RemoteListen(chmux::ListenerError),
     /// Forwarding at a remote endpoint to another remote endpoint failed.
     RemoteForward,
 }
@@ -38,6 +39,7 @@ impl<T> fmt::Display for SendError<T> {
             Self::Closed(_) => write!(f, "channel is closed"),
             Self::RemoteSend(err) => write!(f, "send error: {}", err),
             Self::RemoteConnect(err) => write!(f, "connect error: {}", err),
+            Self::RemoteListen(err) => write!(f, "listen error: {}", err),
             Self::RemoteForward => write!(f, "forwarding error"),
         }
     }
@@ -50,6 +52,7 @@ impl<T> From<RemoteSendError> for SendError<T> {
         match err {
             RemoteSendError::Send(err) => Self::RemoteSend(err),
             RemoteSendError::Connect(err) => Self::RemoteConnect(err),
+            RemoteSendError::Listen(err) => Self::RemoteListen(err),
             RemoteSendError::Forward => Self::RemoteForward,
         }
     }
@@ -67,6 +70,8 @@ pub enum TrySendError<T> {
     RemoteSend(remote::SendErrorKind),
     /// Connecting a sent channel failed.
     RemoteConnect(chmux::ConnectError),
+    /// Listening for a received channel failed.
+    RemoteListen(chmux::ListenerError),
     /// Forwarding at a remote endpoint to another remote endpoint failed.
     RemoteForward,
 }
@@ -78,6 +83,7 @@ impl<T> fmt::Display for TrySendError<T> {
             Self::Full(_) => write!(f, "channel is full"),
             Self::RemoteSend(err) => write!(f, "send error: {}", err),
             Self::RemoteConnect(err) => write!(f, "connect error: {}", err),
+            Self::RemoteListen(err) => write!(f, "listen error: {}", err),
             Self::RemoteForward => write!(f, "forwarding error"),
         }
     }
@@ -88,6 +94,7 @@ impl<T> From<RemoteSendError> for TrySendError<T> {
         match err {
             RemoteSendError::Send(err) => Self::RemoteSend(err),
             RemoteSendError::Connect(err) => Self::RemoteConnect(err),
+            RemoteSendError::Listen(err) => Self::RemoteListen(err),
             RemoteSendError::Forward => Self::RemoteForward,
         }
     }
@@ -99,6 +106,7 @@ impl<T> From<SendError<T>> for TrySendError<T> {
             SendError::Closed(v) => Self::Closed(v),
             SendError::RemoteSend(err) => Self::RemoteSend(err),
             SendError::RemoteConnect(err) => Self::RemoteConnect(err),
+            SendError::RemoteListen(err) => Self::RemoteListen(err),
             SendError::RemoteForward => Self::RemoteForward,
         }
     }
@@ -123,11 +131,12 @@ impl<T> Error for TrySendError<T> where T: fmt::Debug {}
 /// Send values to the associated [Receiver](super::Receiver), which may be located on a remote endpoint.
 ///
 /// Instances are created by the [channel](super::channel) function.
+#[derive(Clone)]
 pub struct Sender<T, Codec, const BUFFER: usize> {
     tx: Weak<tokio::sync::mpsc::Sender<Result<T, ReceiveError>>>,
     closed_rx: tokio::sync::watch::Receiver<bool>,
     remote_send_err_rx: tokio::sync::watch::Receiver<Option<RemoteSendError>>,
-    _dropped_tx: tokio::sync::oneshot::Sender<()>,
+    _dropped_tx: tokio::sync::mpsc::Sender<()>,
     _codec: PhantomData<Codec>,
 }
 
@@ -159,7 +168,7 @@ where
         remote_send_err_rx: tokio::sync::watch::Receiver<Option<RemoteSendError>>,
     ) -> Self {
         let tx = Arc::new(tx);
-        let (dropped_tx, mut dropped_rx) = tokio::sync::oneshot::channel();
+        let (dropped_tx, mut dropped_rx) = tokio::sync::mpsc::channel(1);
 
         let this = Self {
             tx: Arc::downgrade(&tx),
@@ -178,7 +187,7 @@ where
                             break;
                         }
                     },
-                    _ = &mut dropped_rx => break,
+                    _ = dropped_rx.recv() => break,
                 }
             }
 
@@ -194,7 +203,7 @@ where
             tx: Weak::new(),
             closed_rx: tokio::sync::watch::channel(true).1,
             remote_send_err_rx: tokio::sync::watch::channel(None).1,
-            _dropped_tx: tokio::sync::oneshot::channel().0,
+            _dropped_tx: tokio::sync::mpsc::channel(1).0,
             _codec: PhantomData,
         }
     }
@@ -410,14 +419,13 @@ where
                 let (remote_send_err_tx, remote_send_err_rx) = tokio::sync::watch::channel(None);
 
                 // Accept chmux port request.
-                let err_tx = tx.clone();
                 PortDeserializer::accept(port, |local_port, request, allocator| {
                     tokio::spawn(async move {
                         // Accept chmux connection request.
                         let (raw_tx, mut raw_rx) = match request.accept_from(local_port).await {
                             Ok(tx_rx) => tx_rx,
                             Err(err) => {
-                                let _ = err_tx.send(Err(ReceiveError::RemoteListen(err))).await;
+                                let _ = remote_send_err_tx.send(Some(RemoteSendError::Listen(err)));
                                 return;
                             }
                         };

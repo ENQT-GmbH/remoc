@@ -1,6 +1,6 @@
 use bytes::BytesMut;
 use futures::future::BoxFuture;
-use serde::{ser, Serialize, Deserialize};
+use serde::{ser, Deserialize, Serialize};
 use std::{
     cell::RefCell,
     error::Error,
@@ -143,7 +143,7 @@ where
         let mut lw = LimitedBytesWriter::new(limit);
         let ps_ref = PortSerializer::start(allocator);
 
-        match Codec::serialize(&mut lw, &item) {
+        match <Codec as CodecT>::serialize(&mut lw, &item) {
             _ if lw.overflow() => return Ok(None),
             Ok(()) => (),
             Err(err) => return Err(err),
@@ -166,7 +166,7 @@ where
             let ps_ref = PortSerializer::start(allocator);
 
             let item = item_arc_task.lock().unwrap();
-            Codec::serialize(&mut cbw, &*item)?;
+            <Codec as CodecT>::serialize(&mut cbw, &*item)?;
 
             let cbw = cbw.into_inner().map_err(|_| {
                 SerializationError::new(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "flush failed"))

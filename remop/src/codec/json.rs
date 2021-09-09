@@ -1,6 +1,9 @@
+use serde::{Deserialize, Serialize};
+
 use super::{CodecT, DeserializationError, SerializationError};
 
 /// JSON codec.
+#[derive(Serialize, Deserialize)]
 pub struct JsonCodec;
 
 impl CodecT for JsonCodec {

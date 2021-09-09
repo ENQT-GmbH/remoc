@@ -1,3 +1,5 @@
+//! Synchronization primitives for use in asynchronous and remote contexts modelled after [tokio::sync].
+
 use crate::chmux;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{error::Error, fmt};
@@ -8,6 +10,7 @@ pub mod mpsc;
 pub mod oneshot;
 pub mod raw;
 mod remote;
+pub mod watch;
 
 /// Error connecting a remote channel.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,3 +39,14 @@ impl Error for ConnectError {}
 pub trait RemoteSend: Send + Serialize + DeserializeOwned + 'static {}
 
 impl<T> RemoteSend for T where T: Send + Serialize + DeserializeOwned + 'static {}
+
+pub(crate) const BACKCHANNEL_MSG_CLOSE: u8 = 0x01;
+pub(crate) const BACKCHANNEL_MSG_ERROR: u8 = 0x02;
+
+#[derive(Clone)]
+pub(crate) enum RemoteSendError {
+    Send(remote::SendErrorKind),
+    Connect(chmux::ConnectError),
+    Listen(chmux::ListenerError),
+    Forward,
+}

@@ -1,25 +1,12 @@
 //! MPSC channels.
 
-use serde::{de::DeserializeOwned, Serialize};
-
-use super::remote;
-use crate::chmux;
+use super::RemoteSend;
 
 mod receiver;
 mod sender;
 
 pub use receiver::{ReceiveError, Receiver, TransportedReceiver};
 pub use sender::{Permit, SendError, Sender, TransportedSender, TrySendError};
-
-const BACKCHANNEL_MSG_CLOSE: u8 = 0x01;
-const BACKCHANNEL_MSG_ERROR: u8 = 0x02;
-
-#[derive(Clone)]
-pub(crate) enum RemoteSendError {
-    Send(remote::SendErrorKind),
-    Connect(chmux::ConnectError),
-    Forward,
-}
 
 /// Creates a bounded channel for communicating between asynchronous tasks with backpressure.
 ///
@@ -28,7 +15,7 @@ pub fn channel<T, Codec, const SEND_BUFFER: usize, const RECEIVE_BUFFER: usize>(
     local_buffer: usize,
 ) -> (Sender<T, Codec, SEND_BUFFER>, Receiver<T, Codec, RECEIVE_BUFFER>)
 where
-    T: Serialize + DeserializeOwned + Send + 'static,
+    T: RemoteSend,
 {
     assert!(SEND_BUFFER > 0, "SEND_BUFFER must not be zero");
     assert!(RECEIVE_BUFFER > 0, "RECEIVE_BUFFER must not be zero");
