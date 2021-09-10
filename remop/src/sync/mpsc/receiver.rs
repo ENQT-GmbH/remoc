@@ -1,5 +1,5 @@
 use bytes::Buf;
-use futures::{ready, FutureExt};
+use futures::{future, ready, FutureExt};
 use serde::{Deserialize, Serialize};
 use std::{
     error::Error,
@@ -9,24 +9,27 @@ use std::{
     task::{Context, Poll},
 };
 
-use super::super::{
-    remote::{self, PortDeserializer, PortSerializer},
-    RemoteSendError, BACKCHANNEL_MSG_CLOSE, BACKCHANNEL_MSG_ERROR,
+use super::{
+    super::{
+        remote::{self, PortDeserializer, PortSerializer},
+        RemoteSendError, BACKCHANNEL_MSG_CLOSE, BACKCHANNEL_MSG_ERROR,
+    },
+    Sender,
 };
 use crate::{chmux, codec::CodecT, sync::RemoteSend};
 
 /// An error occured during receiving over an mpsc channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum ReceiveError {
+pub enum RecvError {
     /// Receiving from a remote endpoint failed.
-    RemoteReceive(remote::ReceiveError),
+    RemoteReceive(remote::RecvError),
     /// Connecting a sent channel failed.
     RemoteConnect(chmux::ConnectError),
     /// Listening for a connection from a received channel failed.
     RemoteListen(chmux::ListenerError),
 }
 
-impl fmt::Display for ReceiveError {
+impl fmt::Display for RecvError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::RemoteReceive(err) => write!(f, "receive error: {}", err),
@@ -36,7 +39,7 @@ impl fmt::Display for ReceiveError {
     }
 }
 
-impl Error for ReceiveError {}
+impl Error for RecvError {}
 
 /// Receive values from the associated [Sender], which may be located on a remote endpoint.
 ///
@@ -55,7 +58,7 @@ impl<T, Codec, const BUFFER: usize> fmt::Debug for Receiver<T, Codec, BUFFER> {
 }
 
 pub(crate) struct ReceiverInner<T> {
-    rx: tokio::sync::mpsc::Receiver<Result<T, ReceiveError>>,
+    rx: tokio::sync::mpsc::Receiver<Result<T, RecvError>>,
     closed_tx: tokio::sync::watch::Sender<bool>,
     remote_send_err_tx: tokio::sync::watch::Sender<Option<RemoteSendError>>,
 }
@@ -73,7 +76,7 @@ pub struct TransportedReceiver<T, Codec> {
 
 impl<T, Codec, const BUFFER: usize> Receiver<T, Codec, BUFFER> {
     pub(crate) fn new(
-        rx: tokio::sync::mpsc::Receiver<Result<T, ReceiveError>>, closed_tx: tokio::sync::watch::Sender<bool>,
+        rx: tokio::sync::mpsc::Receiver<Result<T, RecvError>>, closed_tx: tokio::sync::watch::Sender<bool>,
         remote_send_err_tx: tokio::sync::watch::Sender<Option<RemoteSendError>>,
     ) -> Self {
         Self {
@@ -84,7 +87,7 @@ impl<T, Codec, const BUFFER: usize> Receiver<T, Codec, BUFFER> {
     }
 
     /// Receives the next value for this receiver.
-    pub async fn recv(&mut self) -> Result<Option<T>, ReceiveError> {
+    pub async fn recv(&mut self) -> Result<Option<T>, RecvError> {
         match self.inner.as_mut().unwrap().rx.recv().await {
             Some(Ok(value_opt)) => Ok(Some(value_opt)),
             Some(Err(err)) => Err(err),
@@ -93,7 +96,7 @@ impl<T, Codec, const BUFFER: usize> Receiver<T, Codec, BUFFER> {
     }
 
     /// Polls to receive the next message on this channel.
-    pub fn poll_recv(&mut self, cx: &mut Context<'_>) -> Poll<Result<Option<T>, ReceiveError>> {
+    pub fn poll_recv(&mut self, cx: &mut Context<'_>) -> Poll<Result<Option<T>, RecvError>> {
         match ready!(self.inner.as_mut().unwrap().rx.poll_recv(cx)) {
             Some(Ok(value_opt)) => Poll::Ready(Ok(Some(value_opt))),
             Some(Err(err)) => Poll::Ready(Err(err)),
@@ -114,6 +117,108 @@ impl<T, Codec, const BUFFER: usize> Receiver<T, Codec, BUFFER> {
     /// Sets the buffer size that will be used when sending this receiver to a remote endpoint.
     pub fn set_buffer<const NEW_BUFFER: usize>(mut self) -> Receiver<T, Codec, NEW_BUFFER> {
         Receiver { inner: self.inner.take(), successor_tx: Mutex::new(None), _codec: PhantomData }
+    }
+}
+
+impl<T, Codec, const BUFFER: usize> Receiver<T, Codec, BUFFER>
+where
+    T: RemoteSend + Clone,
+    Codec: CodecT,
+{
+    /// Distribute received items over two receivers.
+    ///
+    /// Each value is received by either one of the receivers.
+    pub fn distribute(mut self) -> (Receiver<T, Codec, BUFFER>, Receiver<T, Codec, BUFFER>) {
+        let (tx1, rx1): (Sender<_, _, 1>, _) = super::channel(1);
+        let (tx2, rx2): (Sender<_, _, 1>, _) = super::channel(1);
+
+        tokio::spawn(async move {
+            let mut tx1 = Some(tx1);
+            let mut tx2 = Some(tx2);
+            let mut value = None;
+
+            'outer: loop {
+                // Obtain value from upstream channel.
+                while value.is_none() {
+                    if tx1.is_none() && tx2.is_none() {
+                        break 'outer;
+                    }
+
+                    let closed_tx1 = async {
+                        match &tx1 {
+                            Some(tx) => tx.closed().await,
+                            None => future::pending().await,
+                        }
+                    };
+
+                    let closed_tx2 = async {
+                        match &tx2 {
+                            Some(tx) => tx.closed().await,
+                            None => future::pending().await,
+                        }
+                    };
+
+                    tokio::select! {
+                        biased;
+
+                        res = self.recv() => {
+                            match res {
+                                Ok(Some(v)) => value = Some(v),
+                                _ => break 'outer,
+                            }
+                        }
+
+                        _ = closed_tx1 => tx1 = None,
+                        _ = closed_tx2 => tx2 = None,
+                    }
+                }
+
+                // Send value to either of the downstream channels.
+                let value1 = value.clone().unwrap();
+                let send_tx1 = async {
+                    match &tx1 {
+                        Some(tx) => tx.send(value1).await,
+                        None => future::pending().await,
+                    }
+                };
+
+                let value2 = value.clone().unwrap();
+                let send_tx2 = async {
+                    match &tx2 {
+                        Some(tx) => tx.send(value2).await,
+                        None => future::pending().await,
+                    }
+                };
+
+                tokio::select! {
+                    res = send_tx1 => {
+                        match res {
+                            Ok(()) => value = None,
+                            Err(err) => {
+                                if !err.is_closed() {
+                                    value = None;
+                                }
+                                tx1 = None;
+                            }
+                        }
+                    },
+
+                    res = send_tx2 => {
+                        match res {
+                            Ok(()) => value = None,
+                            Err(err) => {
+                                if !err.is_closed() {
+                                    value = None;
+                                }
+                                tx2 = None;
+                            }
+                        }
+                    },
+                }
+            }
+        });
+
+        (rx1, rx2)
     }
 }
 
@@ -158,7 +263,7 @@ where
                 };
 
                 // Encode data using remote sender.
-                let mut remote_tx = remote::Sender::<Result<T, ReceiveError>, Codec>::new(raw_tx, allocator);
+                let mut remote_tx = remote::Sender::<Result<T, RecvError>, Codec>::new(raw_tx, allocator);
 
                 // Process events.
                 let mut backchannel_active = true;
@@ -234,13 +339,13 @@ where
                 let (mut raw_tx, raw_rx) = match request.accept_from(local_port).await {
                     Ok(tx_rx) => tx_rx,
                     Err(err) => {
-                        let _ = tx.send(Err(ReceiveError::RemoteListen(err))).await;
+                        let _ = tx.send(Err(RecvError::RemoteListen(err))).await;
                         return;
                     }
                 };
 
                 // Decode received data using remote receiver.
-                let mut remote_rx = remote::Receiver::<Result<T, ReceiveError>, Codec>::new(raw_rx, allocator);
+                let mut remote_rx = remote::Receiver::<Result<T, RecvError>, Codec>::new(raw_rx, allocator);
 
                 // Process events.
                 let mut close_sent = false;
@@ -272,7 +377,7 @@ where
                             let value = match res {
                                 Ok(Some(value)) => value,
                                 Ok(None) => break,
-                                Err(err) => Err(ReceiveError::RemoteReceive(err)),
+                                Err(err) => Err(RecvError::RemoteReceive(err)),
                             };
                             if tx.send(value).await.is_err() {
                                 break;

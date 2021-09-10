@@ -6,7 +6,7 @@ mod receiver;
 mod sender;
 
 use super::interlock::{Interlock, Location};
-pub use receiver::{ReceiveError, Receiver, TransportedReceiver};
+pub use receiver::{Receiver, RecvError, TransportedReceiver};
 pub use sender::{SendError, SendErrorKind, Sender, TransportedSender};
 
 /// Creates a new local/remote channel that is established by sending either the sender or receiver

@@ -5,7 +5,7 @@ use super::RemoteSend;
 mod receiver;
 mod sender;
 
-pub use receiver::{ReceiveError, Receiver, TransportedReceiver};
+pub use receiver::{Receiver, RecvError, TransportedReceiver};
 pub use sender::{Permit, SendError, Sender, TransportedSender, TrySendError};
 
 /// Creates a bounded channel for communicating between asynchronous tasks with backpressure.

@@ -16,7 +16,7 @@ pub enum ReceiveError {
     /// Sender dropped without sending a value.
     Closed,
     /// Receiving from a remote endpoint failed.
-    RemoteReceive(remote::ReceiveError),
+    RemoteReceive(remote::RecvError),
     /// Connecting a sent channel failed.
     RemoteConnect(chmux::ConnectError),
     /// Listening for a connection from a received channel failed.
@@ -34,12 +34,12 @@ impl fmt::Display for ReceiveError {
     }
 }
 
-impl From<mpsc::ReceiveError> for ReceiveError {
-    fn from(err: mpsc::ReceiveError) -> Self {
+impl From<mpsc::RecvError> for ReceiveError {
+    fn from(err: mpsc::RecvError) -> Self {
         match err {
-            mpsc::ReceiveError::RemoteReceive(err) => Self::RemoteReceive(err),
-            mpsc::ReceiveError::RemoteConnect(err) => Self::RemoteConnect(err),
-            mpsc::ReceiveError::RemoteListen(err) => Self::RemoteListen(err),
+            mpsc::RecvError::RemoteReceive(err) => Self::RemoteReceive(err),
+            mpsc::RecvError::RemoteConnect(err) => Self::RemoteConnect(err),
+            mpsc::RecvError::RemoteListen(err) => Self::RemoteListen(err),
         }
     }
 }
@@ -54,7 +54,7 @@ pub enum TryReceiveError {
     /// Sender dropped without sending a value.
     Closed,
     /// Receiving from a remote endpoint failed.
-    RemoteReceive(remote::ReceiveError),
+    RemoteReceive(remote::RecvError),
     /// Connecting a sent channel failed.
     RemoteConnect(chmux::ConnectError),
     /// Listening for a connection from a received channel failed.
@@ -73,12 +73,12 @@ impl fmt::Display for TryReceiveError {
     }
 }
 
-impl From<mpsc::ReceiveError> for TryReceiveError {
-    fn from(err: mpsc::ReceiveError) -> Self {
+impl From<mpsc::RecvError> for TryReceiveError {
+    fn from(err: mpsc::RecvError) -> Self {
         match err {
-            mpsc::ReceiveError::RemoteReceive(err) => Self::RemoteReceive(err),
-            mpsc::ReceiveError::RemoteConnect(err) => Self::RemoteConnect(err),
-            mpsc::ReceiveError::RemoteListen(err) => Self::RemoteListen(err),
+            mpsc::RecvError::RemoteReceive(err) => Self::RemoteReceive(err),
+            mpsc::RecvError::RemoteConnect(err) => Self::RemoteConnect(err),
+            mpsc::RecvError::RemoteListen(err) => Self::RemoteListen(err),
         }
     }
 }

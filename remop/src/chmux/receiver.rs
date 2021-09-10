@@ -18,7 +18,7 @@ use super::{
 /// An error occured during receiving a data message.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum ReceiveError {
+pub enum RecvError {
     /// Multiplexer terminated.
     Multiplexer,
     /// Data exceeds maximum size.
@@ -27,14 +27,14 @@ pub enum ReceiveError {
     ExceedsMaxPortCount(usize),
 }
 
-impl ReceiveError {
+impl RecvError {
     /// Returns true, if error is due to multiplexer being terminated.
     pub fn is_terminated(&self) -> bool {
         matches!(self, Self::Multiplexer)
     }
 }
 
-impl fmt::Display for ReceiveError {
+impl fmt::Display for RecvError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::Multiplexer => write!(f, "multiplexer terminated"),
@@ -48,24 +48,24 @@ impl fmt::Display for ReceiveError {
     }
 }
 
-impl Error for ReceiveError {}
+impl Error for RecvError {}
 
 /// An error occured during receiving a message.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum ReceiveAnyError {
+pub enum RecvAnyError {
     /// Multiplexer terminated.
     Multiplexer,
 }
 
-impl ReceiveAnyError {
+impl RecvAnyError {
     /// Returns true, if error is due to multiplexer being terminated.
     pub fn is_terminated(&self) -> bool {
         matches!(self, Self::Multiplexer)
     }
 }
 
-impl fmt::Display for ReceiveAnyError {
+impl fmt::Display for RecvAnyError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::Multiplexer => write!(f, "multiplexer terminated"),
@@ -73,26 +73,26 @@ impl fmt::Display for ReceiveAnyError {
     }
 }
 
-impl Error for ReceiveAnyError {}
+impl Error for RecvAnyError {}
 
 /// An error occured during receiving chunks of a message.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum ReceiveChunkError {
+pub enum RecvChunkError {
     /// Multiplexer terminated.
     Multiplexer,
     /// Remote endpoint cancelled transmission.
     Cancelled,
 }
 
-impl ReceiveChunkError {
+impl RecvChunkError {
     /// Returns true, if error is due to multiplexer being terminated.
     pub fn is_terminated(&self) -> bool {
         matches!(self, Self::Multiplexer)
     }
 }
 
-impl fmt::Display for ReceiveChunkError {
+impl fmt::Display for RecvChunkError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::Multiplexer => write!(f, "multiplexer terminated"),
@@ -366,11 +366,11 @@ impl Receiver {
     /// Waits for data to become available.
     /// Received port open requests are silently rejected.
     /// The size of the received data is limited by [max_data_size].
-    pub async fn recv(&mut self) -> Result<Option<DataBuf>, ReceiveError> {
+    pub async fn recv(&mut self) -> Result<Option<DataBuf>, RecvError> {
         loop {
             match self.recv_any().await? {
                 Some(Received::Data(data)) => break Ok(Some(data)),
-                Some(Received::BigData) => break Err(ReceiveError::ExceedsMaxDataSize(self.max_data_size)),
+                Some(Received::BigData) => break Err(RecvError::ExceedsMaxDataSize(self.max_data_size)),
                 Some(Received::Requests(_)) => (),
                 None => break Ok(None),
             }
@@ -380,7 +380,7 @@ impl Receiver {
     /// Receives chunks of data over the channel.
     ///
     /// This is unlimited in size.
-    pub async fn recv_chunk(&mut self) -> Result<Option<Bytes>, ReceiveChunkError> {
+    pub async fn recv_chunk(&mut self) -> Result<Option<Bytes>, RecvChunkError> {
         if self.finished {
             return Ok(None);
         }
@@ -411,7 +411,7 @@ impl Receiver {
                             (Receiving::Chunks { .. }, true) => {
                                 self.receiving =
                                     Receiving::Chunks { chunks: vec![data.buf].into(), completed: data.last };
-                                return Err(ReceiveChunkError::Cancelled);
+                                return Err(RecvChunkError::Cancelled);
                             }
                             // Either continuation or start of transmission.
                             (Receiving::Chunks { .. }, false) | (_, true) => {
@@ -429,7 +429,7 @@ impl Receiver {
                         self.credits.start_return(req.credit, self.remote_port, &self.tx);
                         if let Receiving::Chunks { .. } = &self.receiving {
                             self.receiving = Receiving::Nothing;
-                            return Err(ReceiveChunkError::Cancelled);
+                            return Err(RecvChunkError::Cancelled);
                         }
                     }
 
@@ -438,20 +438,20 @@ impl Receiver {
                         self.finished = true;
                         if let Receiving::Chunks { .. } = &self.receiving {
                             self.receiving = Receiving::Nothing;
-                            return Err(ReceiveChunkError::Cancelled);
+                            return Err(RecvChunkError::Cancelled);
                         } else {
                             return Ok(None);
                         }
                     }
 
-                    None => return Err(ReceiveChunkError::Multiplexer),
+                    None => return Err(RecvChunkError::Multiplexer),
                 },
             }
         }
     }
 
     /// Receives data or ports over the channel.
-    pub async fn recv_any(&mut self) -> Result<Option<Received>, ReceiveError> {
+    pub async fn recv_any(&mut self) -> Result<Option<Received>, RecvError> {
         if self.finished {
             return Ok(None);
         }
@@ -504,7 +504,7 @@ impl Receiver {
 
                         if requests.len() > self.max_ports {
                             self.receiving = Receiving::Nothing;
-                            return Err(ReceiveError::ExceedsMaxPortCount(self.max_ports));
+                            return Err(RecvError::ExceedsMaxPortCount(self.max_ports));
                         }
 
                         if req.last {
@@ -521,7 +521,7 @@ impl Receiver {
                     return Ok(None);
                 }
 
-                None => return Err(ReceiveError::Multiplexer),
+                None => return Err(RecvError::Multiplexer),
             }
         }
     }
@@ -552,7 +552,7 @@ impl Drop for Receiver {
 /// No ports or data exceeding the maximum buffer size can be received.
 pub struct ReceiverStream {
     receiver: Arc<Mutex<Receiver>>,
-    receive_fut: Option<BoxFuture<'static, Result<Option<DataBuf>, ReceiveError>>>,
+    receive_fut: Option<BoxFuture<'static, Result<Option<DataBuf>, RecvError>>>,
 }
 
 impl ReceiverStream {
@@ -560,12 +560,12 @@ impl ReceiverStream {
         Self { receiver: Arc::new(Mutex::new(receiver)), receive_fut: None }
     }
 
-    async fn receive(receiver: Arc<Mutex<Receiver>>) -> Result<Option<DataBuf>, ReceiveError> {
+    async fn receive(receiver: Arc<Mutex<Receiver>>) -> Result<Option<DataBuf>, RecvError> {
         let mut receiver = receiver.lock().await;
         receiver.recv().await
     }
 
-    fn poll_next(&mut self, cx: &mut Context) -> Poll<Result<Option<DataBuf>, ReceiveError>> {
+    fn poll_next(&mut self, cx: &mut Context) -> Poll<Result<Option<DataBuf>, RecvError>> {
         if self.receive_fut.is_none() {
             self.receive_fut = Some(Self::receive(self.receiver.clone()).boxed());
         }
@@ -584,7 +584,7 @@ impl ReceiverStream {
 }
 
 impl Stream for ReceiverStream {
-    type Item = Result<DataBuf, ReceiveError>;
+    type Item = Result<DataBuf, RecvError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
         let res = ready!(Pin::into_inner(self).poll_next(cx));

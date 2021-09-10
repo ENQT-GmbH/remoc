@@ -4,6 +4,7 @@ use crate::chmux;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{error::Error, fmt};
 
+pub mod broadcast;
 mod interlock;
 pub mod lr;
 pub mod mpsc;

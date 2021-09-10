@@ -13,34 +13,34 @@ use tokio::task::{self, JoinHandle};
 
 use super::{io::ChannelBytesReader, BIG_DATA_CHUNK_QUEUE};
 use crate::{
-    chmux::{self, ReceiveChunkError, Received},
+    chmux::{self, Received, RecvChunkError},
     codec::{CodecT, DeserializationError},
 };
 
 /// An error that occured during receiving from a remote endpoint.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum ReceiveError {
+pub enum RecvError {
     /// Receiving data over the chmux channel failed.
-    Receive(chmux::ReceiveError),
+    Receive(chmux::RecvError),
     /// Deserialization of received data failed.
     Deserialize(DeserializationError),
     /// chmux ports required for deserialization of received channels were not received.
     MissingPorts(Vec<u32>),
 }
 
-impl From<chmux::ReceiveError> for ReceiveError {
-    fn from(err: chmux::ReceiveError) -> Self {
+impl From<chmux::RecvError> for RecvError {
+    fn from(err: chmux::RecvError) -> Self {
         Self::Receive(err)
     }
 }
 
-impl From<DeserializationError> for ReceiveError {
+impl From<DeserializationError> for RecvError {
     fn from(err: DeserializationError) -> Self {
         Self::Deserialize(err)
     }
 }
 
-impl fmt::Display for ReceiveError {
+impl fmt::Display for RecvError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::Receive(err) => write!(f, "receive error: {}", err),
@@ -54,7 +54,7 @@ impl fmt::Display for ReceiveError {
     }
 }
 
-impl Error for ReceiveError {}
+impl Error for RecvError {}
 
 /// Gathers ports sent from the remote endpoint during deserialization.
 pub(crate) struct PortDeserializer {
@@ -165,7 +165,7 @@ where
     }
 
     /// Receive an item from the remote endpoint.
-    pub async fn recv(&mut self) -> Result<Option<T>, ReceiveError> {
+    pub async fn recv(&mut self) -> Result<Option<T>, RecvError> {
         if self.default_max_ports.is_none() {
             self.default_max_ports = Some(self.receiver.max_ports());
         }
@@ -240,13 +240,13 @@ where
 
                             match res {
                                 Ok(()) => (),
-                                Err(ReceiveChunkError::Cancelled) => {
+                                Err(RecvChunkError::Cancelled) => {
                                     self.data = DataSource::None;
                                     continue 'restart;
                                 }
-                                Err(ReceiveChunkError::Multiplexer) => {
+                                Err(RecvChunkError::Multiplexer) => {
                                     self.data = DataSource::None;
-                                    return Err(ReceiveError::Receive(chmux::ReceiveError::Multiplexer));
+                                    return Err(RecvError::Receive(chmux::RecvError::Multiplexer));
                                 }
                             }
                         }
@@ -261,11 +261,11 @@ where
                             }
                             Ok(Err(err)) => {
                                 self.data = DataSource::None;
-                                return Err(ReceiveError::Deserialize(err));
+                                return Err(RecvError::Deserialize(err));
                             }
                             Err(err) => {
                                 self.data = DataSource::None;
-                                return Err(ReceiveError::Deserialize(DeserializationError::new(err)));
+                                return Err(RecvError::Deserialize(DeserializationError::new(err)));
                             }
                         }
                     }
@@ -306,7 +306,7 @@ where
 
                 // But error on ports that we expect but that are missing.
                 if !pds.expected.is_empty() {
-                    return Err(ReceiveError::MissingPorts(pds.expected.iter().map(|(port, _)| *port).collect()));
+                    return Err(RecvError::MissingPorts(pds.expected.iter().map(|(port, _)| *port).collect()));
                 }
             }
 

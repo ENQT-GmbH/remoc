@@ -16,7 +16,7 @@ use crate::{chmux, codec::CodecT, sync::RemoteSend};
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum RecvError {
     /// Receiving from a remote endpoint failed.
-    RemoteReceive(remote::ReceiveError),
+    RemoteReceive(remote::RecvError),
     /// Connecting a sent channel failed.
     RemoteConnect(chmux::ConnectError),
     /// Listening for a connection from a received channel failed.

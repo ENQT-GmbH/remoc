@@ -2,7 +2,7 @@ mod io;
 mod receiver;
 mod sender;
 
-pub(crate) use receiver::{PortDeserializer, ReceiveError, Receiver};
+pub(crate) use receiver::{PortDeserializer, Receiver, RecvError};
 pub(crate) use sender::{PortSerializer, SendError, SendErrorKind, Sender};
 
 /// Chunk queue length for big data (de-)serialization.

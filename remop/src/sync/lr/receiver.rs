@@ -22,9 +22,9 @@ use crate::{
 
 /// An error that occured during receiving from a remote endpoint.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum ReceiveError {
+pub enum RecvError {
     /// Receiving data over the chmux channel failed.
-    Receive(chmux::ReceiveError),
+    Receive(chmux::RecvError),
     /// Deserialization of received data failed.
     Deserialize(DeserializationError),
     /// chmux ports required for deserialization of received channels were not received.
@@ -33,23 +33,23 @@ pub enum ReceiveError {
     Connect(ConnectError),
 }
 
-impl From<remote::ReceiveError> for ReceiveError {
-    fn from(err: remote::ReceiveError) -> Self {
+impl From<remote::RecvError> for RecvError {
+    fn from(err: remote::RecvError) -> Self {
         match err {
-            remote::ReceiveError::Receive(err) => Self::Receive(err),
-            remote::ReceiveError::Deserialize(err) => Self::Deserialize(err),
-            remote::ReceiveError::MissingPorts(ports) => Self::MissingPorts(ports),
+            remote::RecvError::Receive(err) => Self::Receive(err),
+            remote::RecvError::Deserialize(err) => Self::Deserialize(err),
+            remote::RecvError::MissingPorts(ports) => Self::MissingPorts(ports),
         }
     }
 }
 
-impl From<ConnectError> for ReceiveError {
+impl From<ConnectError> for RecvError {
     fn from(err: ConnectError) -> Self {
         Self::Connect(err)
     }
 }
 
-impl fmt::Display for ReceiveError {
+impl fmt::Display for RecvError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::Receive(err) => write!(f, "receive error: {}", err),
@@ -64,7 +64,7 @@ impl fmt::Display for ReceiveError {
     }
 }
 
-impl Error for ReceiveError {}
+impl Error for RecvError {}
 
 /// The receiver part of a local/remote channel.
 pub struct Receiver<T, Codec> {
@@ -105,7 +105,7 @@ where
     }
 
     /// Receive an item from the remote endpoint.
-    pub async fn recv(&mut self) -> Result<Option<T>, ReceiveError> {
+    pub async fn recv(&mut self) -> Result<Option<T>, RecvError> {
         let receiver = self.get().await?;
         let item = receiver.recv().await?;
         Ok(item)

@@ -23,9 +23,7 @@ pub use client::{Client, Connect, ConnectError};
 pub use listener::{Listener, ListenerError, ListenerStream, Request};
 pub use multiplexer::Multiplexer;
 pub use port_allocator::{PortAllocator, PortNumber};
-pub use receiver::{
-    DataBuf, ReceiveAnyError, ReceiveChunkError, ReceiveError, Received, Receiver, ReceiverStream,
-};
+pub use receiver::{DataBuf, Received, Receiver, ReceiverStream, RecvAnyError, RecvChunkError, RecvError};
 pub use sender::{ChunkSender, Closed, SendError, Sender, SenderSink, TrySendError};
 
 /// Channel multiplexer protocol version.
