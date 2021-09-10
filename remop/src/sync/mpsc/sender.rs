@@ -287,6 +287,28 @@ where
     pub fn is_closed(&self) -> bool {
         *self.closed_rx.borrow()
     }
+
+    /// Sets the codec that will be used when sending this sender to a remote endpoint.
+    pub fn set_codec<NewCodec>(self) -> Sender<T, NewCodec, BUFFER> {
+        Sender {
+            tx: self.tx.clone(),
+            closed_rx: self.closed_rx.clone(),
+            remote_send_err_rx: self.remote_send_err_rx.clone(),
+            _dropped_tx: self._dropped_tx.clone(),
+            _codec: PhantomData,
+        }
+    }
+
+    /// Sets the buffer size that will be used when sending this sender to a remote endpoint.
+    pub fn set_buffer<const NEW_BUFFER: usize>(self) -> Sender<T, Codec, NEW_BUFFER> {
+        Sender {
+            tx: self.tx.clone(),
+            closed_rx: self.closed_rx.clone(),
+            remote_send_err_rx: self.remote_send_err_rx.clone(),
+            _dropped_tx: self._dropped_tx.clone(),
+            _codec: PhantomData,
+        }
+    }
 }
 
 /// Owned permit to send one value into the channel.

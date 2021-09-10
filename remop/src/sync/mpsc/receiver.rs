@@ -42,9 +42,10 @@ impl Error for ReceiveError {}
 ///
 /// Instances are created by the [channel] function.
 pub struct Receiver<T, Codec, const BUFFER: usize> {
-    inner: Option<ReceiverInner<T, Codec, BUFFER>>,
+    inner: Option<ReceiverInner<T>>,
     #[allow(clippy::type_complexity)]
-    successor_tx: Mutex<Option<tokio::sync::oneshot::Sender<ReceiverInner<T, Codec, BUFFER>>>>,
+    successor_tx: Mutex<Option<tokio::sync::oneshot::Sender<ReceiverInner<T>>>>,
+    _codec: PhantomData<Codec>,
 }
 
 impl<T, Codec, const BUFFER: usize> fmt::Debug for Receiver<T, Codec, BUFFER> {
@@ -53,11 +54,10 @@ impl<T, Codec, const BUFFER: usize> fmt::Debug for Receiver<T, Codec, BUFFER> {
     }
 }
 
-pub(crate) struct ReceiverInner<T, Codec, const BUFFER: usize> {
+pub(crate) struct ReceiverInner<T> {
     rx: tokio::sync::mpsc::Receiver<Result<T, ReceiveError>>,
     closed_tx: tokio::sync::watch::Sender<bool>,
     remote_send_err_tx: tokio::sync::watch::Sender<Option<RemoteSendError>>,
-    _codec: PhantomData<Codec>,
 }
 
 /// Mpsc receiver in transport.
@@ -77,8 +77,9 @@ impl<T, Codec, const BUFFER: usize> Receiver<T, Codec, BUFFER> {
         remote_send_err_tx: tokio::sync::watch::Sender<Option<RemoteSendError>>,
     ) -> Self {
         Self {
-            inner: Some(ReceiverInner { rx, closed_tx, remote_send_err_tx, _codec: PhantomData }),
+            inner: Some(ReceiverInner { rx, closed_tx, remote_send_err_tx }),
             successor_tx: Mutex::new(None),
+            _codec: PhantomData,
         }
     }
 
@@ -103,6 +104,16 @@ impl<T, Codec, const BUFFER: usize> Receiver<T, Codec, BUFFER> {
     /// Closes the receiving half of a channel without dropping it.
     pub fn close(&mut self) {
         let _ = self.inner.as_mut().unwrap().closed_tx.send(true);
+    }
+
+    /// Sets the codec that will be used when sending this receiver to a remote endpoint.
+    pub fn set_codec<NewCodec>(mut self) -> Receiver<T, NewCodec, BUFFER> {
+        Receiver { inner: self.inner.take(), successor_tx: Mutex::new(None), _codec: PhantomData }
+    }
+
+    /// Sets the buffer size that will be used when sending this receiver to a remote endpoint.
+    pub fn set_buffer<const NEW_BUFFER: usize>(mut self) -> Receiver<T, Codec, NEW_BUFFER> {
+        Receiver { inner: self.inner.take(), successor_tx: Mutex::new(None), _codec: PhantomData }
     }
 }
 
@@ -132,7 +143,7 @@ where
         let port = PortSerializer::connect(|connect, allocator| {
             tokio::spawn(async move {
                 // Receiver has been dropped after sending, so we receive its channels.
-                let ReceiverInner { mut rx, closed_tx, remote_send_err_tx, _codec } = match successor_rx.await {
+                let ReceiverInner { mut rx, closed_tx, remote_send_err_tx } = match successor_rx.await {
                     Ok(inner) => inner,
                     Err(_) => return,
                 };
