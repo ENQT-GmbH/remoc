@@ -1,5 +1,5 @@
 use bytes::Buf;
-use futures::{future, ready, FutureExt};
+use futures::{ready, FutureExt};
 use serde::{Deserialize, Serialize};
 use std::{
     error::Error,
@@ -14,7 +14,7 @@ use super::{
         remote::{self, PortDeserializer, PortSerializer},
         RemoteSendError, BACKCHANNEL_MSG_CLOSE, BACKCHANNEL_MSG_ERROR,
     },
-    Sender,
+    Distributor,
 };
 use crate::{chmux, codec::CodecT, sync::RemoteSend};
 
@@ -125,100 +125,14 @@ where
     T: RemoteSend + Clone,
     Codec: CodecT,
 {
-    /// Distribute received items over two receivers.
+    /// Distribute received items over multiple receivers.
     ///
-    /// Each value is received by either one of the receivers.
-    pub fn distribute(mut self) -> (Receiver<T, Codec, BUFFER>, Receiver<T, Codec, BUFFER>) {
-        let (tx1, rx1): (Sender<_, _, 1>, _) = super::channel(1);
-        let (tx2, rx2): (Sender<_, _, 1>, _) = super::channel(1);
-
-        tokio::spawn(async move {
-            let mut tx1 = Some(tx1);
-            let mut tx2 = Some(tx2);
-            let mut value = None;
-
-            'outer: loop {
-                // Obtain value from upstream channel.
-                while value.is_none() {
-                    if tx1.is_none() && tx2.is_none() {
-                        break 'outer;
-                    }
-
-                    let closed_tx1 = async {
-                        match &tx1 {
-                            Some(tx) => tx.closed().await,
-                            None => future::pending().await,
-                        }
-                    };
-
-                    let closed_tx2 = async {
-                        match &tx2 {
-                            Some(tx) => tx.closed().await,
-                            None => future::pending().await,
-                        }
-                    };
-
-                    tokio::select! {
-                        biased;
-
-                        res = self.recv() => {
-                            match res {
-                                Ok(Some(v)) => value = Some(v),
-                                _ => break 'outer,
-                            }
-                        }
-
-                        _ = closed_tx1 => tx1 = None,
-                        _ = closed_tx2 => tx2 = None,
-                    }
-                }
-
-                // Send value to either of the downstream channels.
-                let value1 = value.clone().unwrap();
-                let send_tx1 = async {
-                    match &tx1 {
-                        Some(tx) => tx.send(value1).await,
-                        None => future::pending().await,
-                    }
-                };
-
-                let value2 = value.clone().unwrap();
-                let send_tx2 = async {
-                    match &tx2 {
-                        Some(tx) => tx.send(value2).await,
-                        None => future::pending().await,
-                    }
-                };
-
-                tokio::select! {
-                    res = send_tx1 => {
-                        match res {
-                            Ok(()) => value = None,
-                            Err(err) => {
-                                if !err.is_closed() {
-                                    value = None;
-                                }
-                                tx1 = None;
-                            }
-                        }
-                    },
-
-                    res = send_tx2 => {
-                        match res {
-                            Ok(()) => value = None,
-                            Err(err) => {
-                                if !err.is_closed() {
-                                    value = None;
-                                }
-                                tx2 = None;
-                            }
-                        }
-                    },
-                }
-            }
-        });
-
-        (rx1, rx2)
+    /// Each value is received by one of the receivers.
+    ///
+    /// If `wait_on_empty` is true, the distributor waits if all subscribers are closed.
+    /// Otherwise it terminates.
+    pub fn distribute(self, wait_on_empty: bool) -> Distributor<T, Codec, BUFFER> {
+        Distributor::new(self, wait_on_empty)
     }
 }
 

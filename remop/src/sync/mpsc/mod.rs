@@ -2,9 +2,11 @@
 
 use super::RemoteSend;
 
+mod distributor;
 mod receiver;
 mod sender;
 
+pub use distributor::{DistributedReceiverHandle, Distributor};
 pub use receiver::{Receiver, RecvError, TransportedReceiver};
 pub use sender::{Permit, SendError, Sender, TransportedSender, TrySendError};
 
