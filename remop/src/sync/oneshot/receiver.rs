@@ -12,7 +12,7 @@ use crate::{chmux, codec::CodecT};
 
 /// An error occured during receiving over an oneshot channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum ReceiveError {
+pub enum RecvError {
     /// Sender dropped without sending a value.
     Closed,
     /// Receiving from a remote endpoint failed.
@@ -23,7 +23,7 @@ pub enum ReceiveError {
     RemoteListen(chmux::ListenerError),
 }
 
-impl fmt::Display for ReceiveError {
+impl fmt::Display for RecvError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::Closed => write!(f, "channel is closed"),
@@ -34,7 +34,7 @@ impl fmt::Display for ReceiveError {
     }
 }
 
-impl From<mpsc::RecvError> for ReceiveError {
+impl From<mpsc::RecvError> for RecvError {
     fn from(err: mpsc::RecvError) -> Self {
         match err {
             mpsc::RecvError::RemoteReceive(err) => Self::RemoteReceive(err),
@@ -44,11 +44,11 @@ impl From<mpsc::RecvError> for ReceiveError {
     }
 }
 
-impl Error for ReceiveError {}
+impl Error for RecvError {}
 
 /// An error occured during trying to receive over an oneshot channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum TryReceiveError {
+pub enum TryRecvError {
     /// No value has been received yet.
     Empty,
     /// Sender dropped without sending a value.
@@ -61,7 +61,7 @@ pub enum TryReceiveError {
     RemoteListen(chmux::ListenerError),
 }
 
-impl fmt::Display for TryReceiveError {
+impl fmt::Display for TryRecvError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::Empty => write!(f, "channel is empty"),
@@ -73,7 +73,7 @@ impl fmt::Display for TryReceiveError {
     }
 }
 
-impl From<mpsc::RecvError> for TryReceiveError {
+impl From<mpsc::RecvError> for TryRecvError {
     fn from(err: mpsc::RecvError) -> Self {
         match err {
             mpsc::RecvError::RemoteReceive(err) => Self::RemoteReceive(err),
@@ -83,13 +83,19 @@ impl From<mpsc::RecvError> for TryReceiveError {
     }
 }
 
-impl Error for TryReceiveError {}
+impl Error for TryRecvError {}
 
 /// Receive a value from the associated sender.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(bound(serialize = "T: RemoteSend, Codec: CodecT"))]
 #[serde(bound(deserialize = "T: RemoteSend, Codec: CodecT"))]
 pub struct Receiver<T, Codec>(pub(crate) mpsc::Receiver<T, Codec, 1>);
+
+impl<T, Codec> fmt::Debug for Receiver<T, Codec> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Receiver").finish_non_exhaustive()
+    }
+}
 
 impl<T, Codec> Receiver<T, Codec>
 where
@@ -102,15 +108,15 @@ where
     }
 
     /// Attempts to receive a value.
-    pub fn try_recv(&mut self) -> Result<T, TryReceiveError> {
+    pub fn try_recv(&mut self) -> Result<T, TryRecvError> {
         let waker = noop_waker();
         let mut cx = Context::from_waker(&waker);
 
         match self.0.poll_recv(&mut cx) {
             Poll::Ready(Ok(Some(v))) => Ok(v),
-            Poll::Ready(Ok(None)) => Err(TryReceiveError::Closed),
+            Poll::Ready(Ok(None)) => Err(TryRecvError::Closed),
             Poll::Ready(Err(err)) => Err(err.into()),
-            Poll::Pending => Err(TryReceiveError::Empty),
+            Poll::Pending => Err(TryRecvError::Empty),
         }
     }
 }
@@ -120,12 +126,12 @@ where
     T: DeserializeOwned + Send + 'static,
     Codec: CodecT,
 {
-    type Output = Result<T, ReceiveError>;
+    type Output = Result<T, RecvError>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         match ready!(Pin::into_inner(self).0.poll_recv(cx)) {
             Ok(Some(v)) => Poll::Ready(Ok(v)),
-            Ok(None) => Poll::Ready(Err(ReceiveError::Closed)),
+            Ok(None) => Poll::Ready(Err(RecvError::Closed)),
             Err(err) => Poll::Ready(Err(err.into())),
         }
     }

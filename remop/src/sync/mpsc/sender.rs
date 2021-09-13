@@ -138,7 +138,6 @@ impl<T> Error for TrySendError<T> where T: fmt::Debug {}
 /// Send values to the associated [Receiver](super::Receiver), which may be located on a remote endpoint.
 ///
 /// Instances are created by the [channel](super::channel) function.
-#[derive(Clone)]
 pub struct Sender<T, Codec, const BUFFER: usize> {
     tx: Weak<tokio::sync::mpsc::Sender<Result<T, RecvError>>>,
     closed_rx: tokio::sync::watch::Receiver<bool>,
@@ -150,6 +149,18 @@ pub struct Sender<T, Codec, const BUFFER: usize> {
 impl<T, Codec, const BUFFER: usize> fmt::Debug for Sender<T, Codec, BUFFER> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Sender").finish_non_exhaustive()
+    }
+}
+
+impl<T, Codec, const BUFFER: usize> Clone for Sender<T, Codec, BUFFER> {
+    fn clone(&self) -> Self {
+        Self {
+            tx: self.tx.clone(),
+            closed_rx: self.closed_rx.clone(),
+            remote_send_err_rx: self.remote_send_err_rx.clone(),
+            _dropped_tx: self._dropped_tx.clone(),
+            _codec: PhantomData,
+        }
     }
 }
 

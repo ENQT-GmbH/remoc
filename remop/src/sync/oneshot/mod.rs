@@ -8,7 +8,7 @@ use crate::codec::CodecT;
 mod receiver;
 mod sender;
 
-pub use receiver::{ReceiveError, Receiver, TryReceiveError};
+pub use receiver::{Receiver, RecvError, TryRecvError};
 pub use sender::{SendError, Sender};
 
 /// Create a new one-shot channel for sending single values across asynchronous tasks.

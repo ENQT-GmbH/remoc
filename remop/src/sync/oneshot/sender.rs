@@ -34,10 +34,16 @@ impl<T> From<mpsc::TrySendError<T>> for SendError<T> {
 impl<T> Error for SendError<T> where T: fmt::Debug {}
 
 /// Sends a value to the associated receiver.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(bound(serialize = "T: RemoteSend, Codec: CodecT"))]
 #[serde(bound(deserialize = "T: RemoteSend, Codec: CodecT"))]
 pub struct Sender<T, Codec>(pub(crate) mpsc::Sender<T, Codec, 1>);
+
+impl<T, Codec> fmt::Debug for Sender<T, Codec> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Sender").finish_non_exhaustive()
+    }
+}
 
 impl<T, Codec> Sender<T, Codec>
 where

@@ -11,6 +11,7 @@ pub mod mpsc;
 pub mod oneshot;
 pub mod raw;
 mod remote;
+pub mod rw_lock;
 pub mod watch;
 
 /// Error connecting a remote channel.
