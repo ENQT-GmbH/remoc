@@ -6,6 +6,7 @@ use std::{error::Error, fmt};
 
 pub mod broadcast;
 mod interlock;
+pub mod lazy;
 pub mod lr;
 pub mod mpsc;
 pub mod oneshot;

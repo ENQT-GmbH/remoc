@@ -1,7 +1,6 @@
-use std::sync::{Arc, Mutex};
-
 use futures::FutureExt;
 use serde::{ser, Deserialize, Serialize};
+use std::sync::{Arc, Mutex};
 
 use super::{
     super::{
