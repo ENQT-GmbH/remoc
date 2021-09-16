@@ -63,7 +63,7 @@ impl<T> fmt::Display for SendError<T> {
 impl<T> Error for SendError<T> where T: fmt::Debug {}
 
 /// Gathers ports to send to the remote endpoint during object serialization.
-pub(crate) struct PortSerializer {
+pub struct PortSerializer {
     allocator: chmux::PortAllocator,
     #[allow(clippy::type_complexity)]
     requests: Vec<(
@@ -119,8 +119,8 @@ impl PortSerializer {
 
 /// Sends data to a remote endpoint.
 ///
-/// Can serialize a base sender and a base receiver.
-pub(crate) struct Sender<T, Codec> {
+/// Can serialize values containing ports.
+pub struct Sender<T, Codec> {
     sender: chmux::Sender,
     allocator: chmux::PortAllocator,
     big_data: i8,

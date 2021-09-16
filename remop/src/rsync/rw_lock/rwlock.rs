@@ -285,7 +285,7 @@ where
         self.read.read().await
     }
 
-    /// Locks the current shared value for writing and returns a mutable reference to it.
+    /// Locks the current shared value for reading and writing and returns a mutable reference to it.
     ///
     /// To commit the new value [WriteGuard::commit] must be called, otherwise the
     /// changes will be lost.

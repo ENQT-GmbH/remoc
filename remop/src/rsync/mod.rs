@@ -1,4 +1,6 @@
-//! Synchronization primitives for use in asynchronous and remote contexts modelled after [tokio::sync].
+//! Synchronization primitives for use in asynchronous and remote contexts.
+//!
+//! This module is modelled after [tokio::sync] and follows its principles.
 
 use crate::chmux;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -11,7 +13,7 @@ pub mod lr;
 pub mod mpsc;
 pub mod oneshot;
 pub mod raw;
-mod remote;
+pub mod remote;
 pub mod rw_lock;
 pub mod watch;
 

@@ -57,7 +57,7 @@ impl fmt::Display for RecvError {
 impl Error for RecvError {}
 
 /// Gathers ports sent from the remote endpoint during deserialization.
-pub(crate) struct PortDeserializer {
+pub struct PortDeserializer {
     allocator: chmux::PortAllocator,
     /// Callbacks by remote port.
     #[allow(clippy::type_complexity)]
@@ -125,8 +125,8 @@ impl PortDeserializer {
 
 /// Receives data from remote endpoint.
 ///
-/// Can deserialize a base send and a base receiver.
-pub(crate) struct Receiver<T, Codec> {
+/// Can deserialize received values containing ports.
+pub struct Receiver<T, Codec> {
     receiver: chmux::Receiver,
     allocator: chmux::PortAllocator,
     recved: Option<Option<Received>>,

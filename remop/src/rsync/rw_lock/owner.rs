@@ -8,7 +8,7 @@ use super::{
 };
 use crate::codec::CodecT;
 
-/// The owner of read/write locks holding a shared value.
+/// The owner of [RwLock]s holding a shared value.
 ///
 /// All acquired locks become invalid when this is dropped.
 pub struct Owner<T, Codec> {
@@ -28,7 +28,7 @@ where
     T: RemoteSend + Clone + Sync,
     Codec: CodecT,
 {
-    /// Creates a new read/write lock owner with the specified shared value.
+    /// Creates a new [RwLock] owner with the specified shared value.
     pub fn new(mut value: T) -> Self {
         let (read_req_tx, read_req_rx) = mpsc::channel(1);
         let (write_req_tx, write_req_rx) = mpsc::channel(1);
