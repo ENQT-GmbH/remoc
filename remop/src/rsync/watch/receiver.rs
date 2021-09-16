@@ -52,9 +52,10 @@ impl fmt::Display for ChangedError {
 
 impl Error for ChangedError {}
 
-/// Receive values from the associated [Sender], which may be located on a remote endpoint.
+/// Receive values from the associated [Sender](super::Sender),
+/// which may be located on a remote endpoint.
 ///
-/// Instances are created by the [channel] function.
+/// Instances are created by the [channel](super::channel) function.
 #[derive(Clone)]
 pub struct Receiver<T, Codec> {
     rx: tokio::sync::watch::Receiver<Result<T, RecvError>>,

@@ -34,7 +34,7 @@ pub struct Cfg {
     pub ports_exhausted: PortsExhausted,
     /// Maximum size of received data per message in bytes.
     ///
-    /// [Receiver::recv_chunk] is not affected by this limit.
+    /// [Receiver::recv_chunk](super::Receiver::recv_chunk) is not affected by this limit.
     /// This can be configured on a per-receiver basis.
     ///
     /// By default this is 64 kB.
@@ -59,7 +59,8 @@ pub struct Cfg {
     /// Length of global send queue.
     /// Each element holds a chunk.
     ///
-    /// This limit the number of chunks sendable by using [Sender::try_send].
+    /// This limit the number of chunks sendable by using
+    /// [Sender::try_send](super::Sender::try_send).
     /// By default this is 32.
     /// This must not be zero.
     pub shared_send_queue: usize,

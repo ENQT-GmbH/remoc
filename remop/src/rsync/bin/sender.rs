@@ -11,7 +11,7 @@ use super::{
 };
 use crate::chmux;
 
-/// A raw chmux channel sender.
+/// A chmux channel sender.
 pub struct Sender {
     pub(super) sender: Option<Result<chmux::Sender, ConnectError>>,
     pub(super) sender_rx: tokio::sync::mpsc::UnboundedReceiver<Result<chmux::Sender, ConnectError>>,
@@ -19,7 +19,7 @@ pub struct Sender {
     pub(super) interlock: Arc<Mutex<Interlock>>,
 }
 
-/// A raw chmux channel sender in transport.
+/// A chmux channel sender in transport.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TransportedSender {
     /// chmux port number.

@@ -1,4 +1,6 @@
-//! Raw chmux channel.
+//! Chmux binary channels.
+//!
+//! Allow low-overhead exchange of binary data.
 
 use std::sync::{Arc, Mutex};
 

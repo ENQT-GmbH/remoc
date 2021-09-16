@@ -41,9 +41,10 @@ impl fmt::Display for RecvError {
 
 impl Error for RecvError {}
 
-/// Receive values from the associated [Sender], which may be located on a remote endpoint.
+/// Receive values from the associated [Sender](super::Sender),
+/// which may be located on a remote endpoint.
 ///
-/// Instances are created by the [channel] function.
+/// Instances are created by the [channel](super::channel) function.
 pub struct Receiver<T, Codec, const BUFFER: usize> {
     inner: Option<ReceiverInner<T>>,
     #[allow(clippy::type_complexity)]

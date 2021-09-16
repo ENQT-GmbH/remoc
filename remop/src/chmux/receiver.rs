@@ -335,23 +335,23 @@ impl Receiver {
 
     /// Maximum data size in bytes to receive per message.
     ///
-    /// The default value is specified by [Cfg::max_data_size].
+    /// The default value is specified by [Cfg::max_data_size](super::Cfg::max_data_size).
     ///
-    /// [recv_chunk] is not affected by this limit.
+    /// [recv_chunk](Self::recv_chunk) is not affected by this limit.
     pub fn max_data_size(&self) -> usize {
         self.max_data_size
     }
 
     /// Set maximum data size in bytes to receive per message.
     ///
-    /// [recv_chunk] is not affected by this limit.
+    /// [recv_chunk](Self::recv_chunk) is not affected by this limit.
     pub fn set_max_data_size(&mut self, max_data_size: usize) {
         self.max_data_size = max_data_size;
     }
 
     /// Maximum port count per message.
     ///
-    /// The default value is specified by [Cfg::max_received_ports].
+    /// The default value is specified by [Cfg::max_received_ports](super::Cfg::max_received_ports).
     pub fn max_ports(&self) -> usize {
         self.max_ports
     }
@@ -365,7 +365,7 @@ impl Receiver {
     ///
     /// Waits for data to become available.
     /// Received port open requests are silently rejected.
-    /// The size of the received data is limited by [max_data_size].
+    /// The size of the received data is limited by [max_data_size](Self::max_data_size).
     pub async fn recv(&mut self) -> Result<Option<DataBuf>, RecvError> {
         loop {
             match self.recv_any().await? {

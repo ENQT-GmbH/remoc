@@ -308,7 +308,8 @@ impl Sender {
 
     /// Sends port open requests over this port and returns the connect requests.
     ///
-    /// The receiver limits the number of ports sendable per call, see [Receiver::max_port_count].
+    /// The receiver limits the number of ports sendable per call, see
+    /// [Receiver::max_ports](super::Receiver::max_ports).
     pub async fn connect(&mut self, ports: Vec<PortNumber>, wait: bool) -> Result<Vec<Connect>, SendError> {
         let mut ports_response = Vec::new();
         let mut sent_txs = Vec::new();
@@ -394,7 +395,7 @@ impl Drop for Sender {
 
 /// Sends chunks of a message to the remote endpoint.
 ///
-/// You must call [finish] to finalize the sending of the message.
+/// You must call [finish](Self::finish) to finalize the sending of the message.
 /// Drop the chunk sender to cancel the message.
 pub struct ChunkSender<'a> {
     sender: &'a mut Sender,
@@ -445,8 +446,8 @@ impl<'a> ChunkSender<'a> {
     /// Sends a non-final chunk of a message.
     ///
     /// The boundaries of chunks within a message may change during transmission,
-    /// thus there is no guarantee that [Receiver::recv_chunk] will return the
-    /// same chunks as sent.
+    /// thus there is no guarantee that [Receiver::recv_chunk](super::Receiver::recv_chunk)
+    /// will return the same chunks as sent.
     pub async fn send(mut self, chunk: Bytes) -> Result<ChunkSender<'a>, SendError> {
         self.send_int(chunk, false).await?;
         Ok(self)
@@ -454,7 +455,8 @@ impl<'a> ChunkSender<'a> {
 
     /// Send the final chunk of a message.
     ///
-    /// This saves one multiplexer message compared to calling [send] followed by [finish].
+    /// This saves one multiplexer message compared to calling [send](Self::send)
+    /// followed by [finish](Self::finish).
     pub async fn send_final(mut self, chunk: Bytes) -> Result<(), SendError> {
         self.send_int(chunk, true).await
     }

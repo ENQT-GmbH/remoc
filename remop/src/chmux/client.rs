@@ -159,7 +159,7 @@ impl Connect {
     /// Returns once the connect request has been sent.
     ///
     /// It is guaranteed that the connect request will be made available via
-    /// the [Listener](crate::Listener) at the remote endpoint before messages
+    /// the [Listener](super::Listener) at the remote endpoint before messages
     /// sent on any port after this function returns will arrive.
     ///
     /// This will also return when the multiplexer has been terminated.

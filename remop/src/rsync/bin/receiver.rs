@@ -12,7 +12,7 @@ use super::{
 };
 use crate::chmux;
 
-/// A raw chmux channel receiver.
+/// A chmux channel receiver.
 pub struct Receiver {
     pub(super) receiver: Option<Result<chmux::Receiver, ConnectError>>,
     pub(super) sender_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<chmux::Sender, ConnectError>>>,
@@ -20,7 +20,7 @@ pub struct Receiver {
     pub(super) interlock: Arc<Mutex<Interlock>>,
 }
 
-/// A raw chmux channel receiver in transport.
+/// A chmux channel receiver in transport.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TransportedReceiver {
     /// chmux port number.

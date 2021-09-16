@@ -1,4 +1,4 @@
-//! ReMOP -- Remote multiplexed objects and ports
+//! ReMOP -- Remote multiplexed operations, objects and ports
 //!
 
 pub mod chmux;

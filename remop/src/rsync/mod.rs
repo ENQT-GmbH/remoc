@@ -6,13 +6,14 @@ use crate::chmux;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{error::Error, fmt};
 
+pub mod bin;
 pub mod broadcast;
 mod interlock;
 pub mod lazy;
+pub mod lazy_blob;
 pub mod lr;
 pub mod mpsc;
 pub mod oneshot;
-pub mod bin;
 pub mod remote;
 pub mod rw_lock;
 pub mod watch;

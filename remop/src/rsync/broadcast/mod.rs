@@ -1,4 +1,4 @@
-//! A single-producer, multi-consumer channel that only retains the last sent value.
+//! A multi-producer, multi-consumer broadcast queue. Each sent value is seen by all consumers.
 
 use serde::{Deserialize, Serialize};
 
