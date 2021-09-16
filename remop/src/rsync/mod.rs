@@ -12,7 +12,7 @@ pub mod lazy;
 pub mod lr;
 pub mod mpsc;
 pub mod oneshot;
-pub mod raw;
+pub mod bin;
 pub mod remote;
 pub mod rw_lock;
 pub mod watch;
