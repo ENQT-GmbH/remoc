@@ -1,11 +1,9 @@
 [package]
-name = "chrpc_macro"
-version = "0.8.0"
+name = "remop_macro"
+version = "0.8.0-pre1"
 authors = ["ENQT GmbH <su@enqt.de>", "Sebastian Urban <surban@surban.net>"]
 edition = "2018"
-description = "Procedural macro for chrpc. Do not use directly."
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Procedural macros for remop"
 
 [dependencies]
 proc-macro2 = "1"

@@ -2,9 +2,6 @@
 resolver = "2"
 members = [
     "remop",
-    #"chrpc",
-    #"chrpc_macro",
+    #"remop_macro",
+    "rpc_test"
 ]
-
-
-

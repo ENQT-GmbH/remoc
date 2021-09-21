@@ -1,16 +1,18 @@
 [package]
 name = "remop"
-version = "0.8.0-pre0"
+version = "0.8.0-pre1"
 authors = ["ENQT GmbH <su@enqt.de>", "Sebastian Urban <surban@surban.net>"]
 edition = "2018"
-description = "Remote multiplexed objects and ports"
+description = "Remote multiplexed operations, objects and ports"
 keywords = ["remote", "channel", "rpc", "stream", "multiplexer"]
 license = "Apache-2.0"
 
 [features]
-default = ["serde"]
+default = ["serde", "obj"]
+obj = ["remop_macro"]
 
 [dependencies]
+remop_macro = { version = "=0.8.0-pre1", path = "../remop_macro", optional = true }
 futures = "0.3"
 pin-project = "1.0"
 tokio = { version = "1.11", features = ["macros", "rt", "sync", "time"] }
