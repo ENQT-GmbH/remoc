@@ -27,6 +27,8 @@ use tokio::{
     try_join,
 };
 
+use crate::rsync::handle::HandleStorage;
+
 use super::{
     client::{Client, ConnectRequest, ConnectResponse},
     credit::{credit_monitor_pair, credit_send_pair, ChannelCreditMonitor, CreditProvider},
@@ -235,6 +237,8 @@ pub struct Multiplexer<TransportSink, TransportStream> {
     transport_sink: Option<TransportSink>,
     /// Transport receiver.
     transport_stream: Option<TransportStream>,
+    /// Handle storage.
+    handle_storage: HandleStorage,
 }
 
 impl<TransportSink, TransportStream> fmt::Debug for Multiplexer<TransportSink, TransportStream> {
@@ -312,6 +316,7 @@ where
             goodbye_received: false,
             transport_sink: Some(transport_sink),
             transport_stream: Some(transport_stream),
+            handle_storage: HandleStorage::new(),
         };
 
         let client = Client::new(
@@ -486,6 +491,7 @@ where
             sender_credit_user,
             Arc::downgrade(&hangup_recved),
             Arc::downgrade(&hangup_notify),
+            self.handle_storage.clone(),
         );
 
         let receiver = Receiver::new(
@@ -496,6 +502,7 @@ where
             receiver_tx,
             receiver_rx_data,
             receiver_credit_returner,
+            self.handle_storage.clone(),
         );
 
         (sender, receiver)

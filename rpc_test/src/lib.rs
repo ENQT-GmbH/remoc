@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use remop::{
-    codec::{CodecT},
+    codec::CodecT,
     robj::{async_trait, CallError, Server},
     rsync::mpsc,
 };

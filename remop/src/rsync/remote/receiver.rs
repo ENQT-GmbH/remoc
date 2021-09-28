@@ -15,6 +15,7 @@ use super::{io::ChannelBytesReader, BIG_DATA_CHUNK_QUEUE};
 use crate::{
     chmux::{self, Received, RecvChunkError},
     codec::{CodecT, DeserializationError},
+    rsync::handle::HandleStorage,
 };
 
 /// An error that occured during receiving from a remote endpoint.
@@ -72,6 +73,7 @@ pub struct PortDeserializer {
             >,
         ),
     >,
+    handle_storage: HandleStorage,
 }
 
 impl PortDeserializer {
@@ -80,8 +82,8 @@ impl PortDeserializer {
     }
 
     /// Create a new port deserializer and register it as active.
-    fn start(allocator: chmux::PortAllocator) -> Rc<RefCell<PortDeserializer>> {
-        let this = Rc::new(RefCell::new(Self { allocator, expected: HashMap::new() }));
+    fn start(allocator: chmux::PortAllocator, handle_storage: HandleStorage) -> Rc<RefCell<PortDeserializer>> {
+        let this = Rc::new(RefCell::new(Self { allocator, expected: HashMap::new(), handle_storage }));
         let weak = Rc::downgrade(&this);
         Self::INSTANCE.with(move |i| i.replace(weak));
         this
@@ -113,13 +115,28 @@ impl PortDeserializer {
         };
 
         let mut this =
-            this.try_borrow_mut().expect("PortDeserializer is referenced multiple times during serialization");
+            this.try_borrow_mut().expect("PortDeserializer is referenced multiple times during deserialization");
         let local_port =
             this.allocator.try_allocate().ok_or_else(|| serde::de::Error::custom("ports exhausted"))?;
         let local_port_num = *local_port;
         this.expected.insert(remote_port, (local_port, Box::new(callback)));
 
         Ok(local_port_num)
+    }
+
+    /// Returns the handle storage of the channel multiplexer.
+    pub(crate) fn handle_storage<E>() -> Result<HandleStorage, E>
+    where
+        E: serde::de::Error,
+    {
+        let this = match Self::INSTANCE.with(|i| i.borrow().upgrade()) {
+            Some(this) => this,
+            None => return Err(serde::de::Error::custom("a handle can only be deserialized during receiving")),
+        };
+        let this =
+            this.try_borrow().expect("PortDeserializer is referenced multiple times during deserialization");
+
+        Ok(this.handle_storage.clone())
     }
 }
 
@@ -183,11 +200,12 @@ where
                         Some(Received::BigData) => {
                             // Start deserialization thread.
                             let allocator = self.allocator.clone();
+                            let handle_storage = self.receiver.handle_storage();
                             let (tx, rx) = tokio::sync::mpsc::channel(BIG_DATA_CHUNK_QUEUE);
                             let task = task::spawn_blocking(move || {
                                 let cbr = ChannelBytesReader::new(rx);
 
-                                let pds_ref = PortDeserializer::start(allocator);
+                                let pds_ref = PortDeserializer::start(allocator, handle_storage);
                                 let item = <Codec as CodecT>::deserialize(cbr)?;
                                 let pds = PortDeserializer::finish(pds_ref);
 
@@ -213,7 +231,8 @@ where
                             continue 'restart;
                         };
 
-                        let pdf_ref = PortDeserializer::start(self.allocator.clone());
+                        let pdf_ref =
+                            PortDeserializer::start(self.allocator.clone(), self.receiver.handle_storage());
                         self.item = Some(<Codec as CodecT>::deserialize(data.reader())?);
                         self.port_deser = Some(PortDeserializer::finish(pdf_ref));
 

@@ -9,6 +9,8 @@ use futures::{
 use std::{collections::VecDeque, error::Error, fmt, mem, pin::Pin, sync::Arc};
 use tokio::sync::{mpsc, oneshot, Mutex};
 
+use crate::rsync::handle::HandleStorage;
+
 use super::{
     credit::{ChannelCreditReturner, UsedCredit},
     multiplexer::PortEvt,
@@ -280,6 +282,7 @@ pub struct Receiver {
     credits: ChannelCreditReturner,
     closed: bool,
     finished: bool,
+    handle_storage: HandleStorage,
     _drop_tx: oneshot::Sender<()>,
 }
 
@@ -297,9 +300,11 @@ impl fmt::Debug for Receiver {
 }
 
 impl Receiver {
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         local_port: u32, remote_port: u32, max_data_size: usize, max_port_count: usize,
         tx: mpsc::Sender<PortEvt>, rx: mpsc::UnboundedReceiver<PortReceiveMsg>, credits: ChannelCreditReturner,
+        handle_storage: HandleStorage,
     ) -> Self {
         let (_drop_tx, drop_rx) = oneshot::channel();
         let tx_drop = tx.clone();
@@ -319,6 +324,7 @@ impl Receiver {
             credits,
             closed: false,
             finished: false,
+            handle_storage,
             _drop_tx,
         }
     }
@@ -538,6 +544,11 @@ impl Receiver {
     /// Convert this into a stream.
     pub fn into_stream(self) -> ReceiverStream {
         ReceiverStream::new(self)
+    }
+
+    /// Returns the handle storage of the channel multiplexer.
+    pub fn handle_storage(&self) -> HandleStorage {
+        self.handle_storage.clone()
     }
 }
 

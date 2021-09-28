@@ -19,6 +19,7 @@ use super::{
 use crate::{
     chmux,
     codec::{CodecT, SerializationError},
+    rsync::handle::HandleStorage,
 };
 
 /// An error that occured during remote sending.
@@ -70,6 +71,7 @@ pub struct PortSerializer {
         chmux::PortNumber,
         Box<dyn FnOnce(chmux::Connect, chmux::PortAllocator) -> BoxFuture<'static, ()> + Send + 'static>,
     )>,
+    handle_storage: HandleStorage,
 }
 
 impl PortSerializer {
@@ -78,8 +80,8 @@ impl PortSerializer {
     }
 
     /// Create a new port serializer and register it as active.
-    fn start(allocator: chmux::PortAllocator) -> Rc<RefCell<Self>> {
-        let this = Rc::new(RefCell::new(Self { allocator, requests: Vec::new() }));
+    fn start(allocator: chmux::PortAllocator, handle_storage: HandleStorage) -> Rc<RefCell<Self>> {
+        let this = Rc::new(RefCell::new(Self { allocator, requests: Vec::new(), handle_storage }));
         let weak = Rc::downgrade(&this);
         Self::INSTANCE.with(move |i| i.replace(weak));
         this
@@ -115,6 +117,20 @@ impl PortSerializer {
 
         Ok(local_port_num)
     }
+
+    /// Returns the handle storage of the channel multiplexer.
+    pub(crate) fn handle_storage<E>() -> Result<HandleStorage, E>
+    where
+        E: serde::ser::Error,
+    {
+        let this = match Self::INSTANCE.with(|i| i.borrow().upgrade()) {
+            Some(this) => this,
+            None => return Err(ser::Error::custom("a handle can only be serialized for sending")),
+        };
+        let this = this.try_borrow().expect("PortSerializer is referenced multiple times during serialization");
+
+        Ok(this.handle_storage.clone())
+    }
 }
 
 /// Sends data to a remote endpoint.
@@ -138,10 +154,10 @@ where
     }
 
     fn serialize_buffered(
-        allocator: chmux::PortAllocator, item: &T, limit: usize,
+        allocator: chmux::PortAllocator, handle_storage: HandleStorage, item: &T, limit: usize,
     ) -> Result<Option<(BytesMut, PortSerializer)>, SerializationError> {
         let mut lw = LimitedBytesWriter::new(limit);
-        let ps_ref = PortSerializer::start(allocator);
+        let ps_ref = PortSerializer::start(allocator, handle_storage);
 
         match <Codec as CodecT>::serialize(&mut lw, &item) {
             _ if lw.overflow() => return Ok(None),
@@ -154,7 +170,8 @@ where
     }
 
     async fn serialize_streaming(
-        allocator: chmux::PortAllocator, item: T, tx: tokio::sync::mpsc::Sender<BytesMut>, chunk_size: usize,
+        allocator: chmux::PortAllocator, handle_storage: HandleStorage, item: T,
+        tx: tokio::sync::mpsc::Sender<BytesMut>, chunk_size: usize,
     ) -> Result<(T, PortSerializer, usize), (SerializationError, T)> {
         let cbw = ChannelBytesWriter::new(tx);
         let mut cbw = BufWriter::with_capacity(chunk_size, cbw);
@@ -163,7 +180,7 @@ where
         let item_arc_task = item_arc.clone();
 
         let result = task::spawn_blocking(move || {
-            let ps_ref = PortSerializer::start(allocator);
+            let ps_ref = PortSerializer::start(allocator, handle_storage);
 
             let item = item_arc_task.lock().unwrap();
             <Codec as CodecT>::serialize(&mut cbw, &*item)?;
@@ -199,7 +216,12 @@ where
         // Determine if it is worthy to try buffered serialization.
         let data_ps = if self.big_data <= 0 {
             // Try buffered serialization.
-            match Self::serialize_buffered(self.allocator.clone(), &item, self.sender.max_data_size()) {
+            match Self::serialize_buffered(
+                self.allocator.clone(),
+                self.sender.handle_storage(),
+                &item,
+                self.sender.max_data_size(),
+            ) {
                 Ok(Some(v)) => {
                     self.big_data = (self.big_data - 1).max(-BIG_DATA_LIMIT);
                     Some(v)
@@ -227,8 +249,13 @@ where
             None => {
                 // Stream data while serializing.
                 let (tx, mut rx) = tokio::sync::mpsc::channel(BIG_DATA_CHUNK_QUEUE);
-                let ser_task =
-                    Self::serialize_streaming(self.allocator.clone(), item, tx, self.sender.chunk_size());
+                let ser_task = Self::serialize_streaming(
+                    self.allocator.clone(),
+                    self.sender.handle_storage(),
+                    item,
+                    tx,
+                    self.sender.chunk_size(),
+                );
 
                 let mut sc = self.sender.send_chunks();
                 let send_task = async {
