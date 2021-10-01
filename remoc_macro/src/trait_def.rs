@@ -90,7 +90,7 @@ impl TraitDef {
 
         quote! {
             #attrs
-            #[::remop::robj::async_trait]
+            #[::remoc::robj::async_trait]
             #vis trait #ident #generics {
                 #defs
             }
@@ -126,7 +126,7 @@ impl TraitDef {
         }
 
         let mut impl_generics = ty_generics.clone();
-        let wc: WhereClause = syn::parse2(quote! { where Codec: ::remop::codec::CodecT }).unwrap();
+        let wc: WhereClause = syn::parse2(quote! { where Codec: ::remoc::codec::CodecT }).unwrap();
         impl_generics.make_where_clause().predicates.extend(wc.predicates);
 
         if with_target {
@@ -238,8 +238,8 @@ impl TraitDef {
             #[doc="Remote server for [#ident] taking the target object by value."]
             #vis struct #server #ty_generics {
                 target: Target,
-                req_rx: ::remop::rsync::mpsc::Receiver<
-                    ::remop::robj::Req<
+                req_rx: ::remoc::rsync::mpsc::Receiver<
+                    ::remoc::robj::Req<
                         #req_value #trait_generics,
                         #req_ref #trait_generics,
                         #req_ref_mut #trait_generics,
@@ -249,12 +249,12 @@ impl TraitDef {
             }
 
             #[async_trait(?Send)]
-            impl #impl_generics_impl ::remop::robj::Server <Target, Codec> for #server #impl_generics_ty #impl_generics_where
+            impl #impl_generics_impl ::remoc::robj::Server <Target, Codec> for #server #impl_generics_ty #impl_generics_where
             {
                 type Client = #client #trait_generics;
 
                 fn new(target: Target, request_buffer: usize) -> (Self, Self::Client) {
-                    let (req_tx, req_rx) = ::remop::rsync::mpsc::channel(request_buffer);
+                    let (req_tx, req_rx) = ::remoc::rsync::mpsc::channel(request_buffer);
                     (Self { target, req_rx }, Self::Client { req_tx };)
                 }
 
@@ -263,18 +263,18 @@ impl TraitDef {
 
                     loop {
                         match req_rx.recv().await {
-                            Ok(Some(::remop::robj::Req::Value(req))) => {
+                            Ok(Some(::remoc::robj::Req::Value(req))) => {
                                 req.dispatch(target).await;
                                 return None;
                             },
-                            Ok(Some(::remop::robj::Req::Ref(req))) => {
+                            Ok(Some(::remoc::robj::Req::Ref(req))) => {
                                 req.dispatch(&target).await;
                             },
-                            Ok(Some(::remop::robj::Req::RefMut(req))) => {
+                            Ok(Some(::remoc::robj::Req::RefMut(req))) => {
                                 req.dispatch(&mut target).await;
                             },
                             Ok(None) => return Some(target),
-                            Err(err) => ::remop::robj::log::trace!("Receiving request failed: {}", &err),
+                            Err(err) => ::remoc::robj::log::trace!("Receiving request failed: {}", &err),
                         }
                     }
                 }
@@ -298,19 +298,19 @@ impl TraitDef {
             #[doc="Remote server for [#ident] taking the target object by reference."]
             #vis struct #server #ty_generics {
                 target: &'target Target,
-                req_rx: ::remop::rsync::mpsc::Receiver<
-                    ::remop::robj::Req<(), #req_ref #trait_generics, ()>,
+                req_rx: ::remoc::rsync::mpsc::Receiver<
+                    ::remoc::robj::Req<(), #req_ref #trait_generics, ()>,
                     Codec, 1,
                 >,
             }
 
             #[async_trait(?Send)]
-            impl #impl_generics_impl ::remop::robj::ServerRef <'target, Target, Codec> for #server #impl_generics_ty #impl_generics_where
+            impl #impl_generics_impl ::remoc::robj::ServerRef <'target, Target, Codec> for #server #impl_generics_ty #impl_generics_where
             {
                 type Client = #client #trait_generics;
 
                 fn new(target: &'target Target, request_buffer: usize) -> (Self, Self::Client) {
-                    let (req_tx, req_rx) = ::remop::rsync::mpsc::channel(request_buffer);
+                    let (req_tx, req_rx) = ::remoc::rsync::mpsc::channel(request_buffer);
                     (Self { target, req_rx }, Self::Client { req_tx };)
                 }
 
@@ -319,12 +319,12 @@ impl TraitDef {
 
                     loop {
                         match req_rx.recv().await {
-                            Ok(Some(::remop::robj::Req::Ref(req))) => {
+                            Ok(Some(::remoc::robj::Req::Ref(req))) => {
                                 req.dispatch(target).await;
                             },
                             Ok(Some(_)) => (),
                             Ok(None) => break,
-                            Err(err) => ::remop::robj::log::trace!("Receiving request failed: {}", &err),
+                            Err(err) => ::remoc::robj::log::trace!("Receiving request failed: {}", &err),
                         }
                     }
                 }
@@ -348,18 +348,18 @@ impl TraitDef {
             #[doc="Remote server for [#ident] taking the target object by mutable reference."]
             #vis struct #server #ty_generics {
                 target: &'target mut Target,
-                req_rx: ::remop::rsync::mpsc::Receiver<
-                    ::remop::robj::Req<(), #req_ref #trait_generics, #req_ref_mut #trait_generics>,
+                req_rx: ::remoc::rsync::mpsc::Receiver<
+                    ::remoc::robj::Req<(), #req_ref #trait_generics, #req_ref_mut #trait_generics>,
                     Codec, 1,
                 >,
             }
 
-            impl #impl_generics_impl ::remop::robj::ServerRefMut <'target, Target, Codec> for #server #impl_generics_ty #impl_generics_where
+            impl #impl_generics_impl ::remoc::robj::ServerRefMut <'target, Target, Codec> for #server #impl_generics_ty #impl_generics_where
             {
                 type Client = #client #trait_generics;
 
                 fn new(target: &'target mut Target, request_buffer: usize) -> (Self, Self::Client) {
-                    let (req_tx, req_rx) = ::remop::rsync::mpsc::channel(request_buffer);
+                    let (req_tx, req_rx) = ::remoc::rsync::mpsc::channel(request_buffer);
                     (Self { target, req_rx }, Self::Client { req_tx };)
                 }
 
@@ -368,15 +368,15 @@ impl TraitDef {
 
                     loop {
                         match req_rx.recv().await {
-                            Ok(Some(::remop::robj::Req::Ref(req))) => {
+                            Ok(Some(::remoc::robj::Req::Ref(req))) => {
                                 req.dispatch(target).await;
                             },
-                            Ok(Some(::remop::robj::Req::RefMut(req))) => {
+                            Ok(Some(::remoc::robj::Req::RefMut(req))) => {
                                 req.dispatch(target).await;
                             },
                             Ok(Some(_)) => (),
                             Ok(None) => break,
-                            Err(err) => ::remop::robj::log::trace!("Receiving request failed: {}", &err),
+                            Err(err) => ::remoc::robj::log::trace!("Receiving request failed: {}", &err),
                         }
                     }
                 }
@@ -400,18 +400,18 @@ impl TraitDef {
             #[doc="Remote server for [#ident] taking the target object by shared reference."]
             #vis struct #server #ty_generics {
                 target: ::std::sync::Arc<Target>,
-                req_rx: ::remop::rsync::mpsc::Receiver<
-                    ::remop::robj::Req<(), #req_ref #trait_generics, ()>,
+                req_rx: ::remoc::rsync::mpsc::Receiver<
+                    ::remoc::robj::Req<(), #req_ref #trait_generics, ()>,
                     Codec, 1,
                 >,
             }
 
-            impl #impl_generics_impl ::remop::robj::ServerShared <Target, Codec> for #server #impl_generics_ty #impl_generics_where
+            impl #impl_generics_impl ::remoc::robj::ServerShared <Target, Codec> for #server #impl_generics_ty #impl_generics_where
             {
                 type Client = #client #trait_generics;
 
                 fn new(target: ::std::sync::Arc<Target>, request_buffer: usize) -> (Self, Self::Client) {
-                    let (req_tx, req_rx) = ::remop::rsync::mpsc::channel(request_buffer);
+                    let (req_tx, req_rx) = ::remoc::rsync::mpsc::channel(request_buffer);
                     (Self { target, req_rx }, Self::Client { req_tx };)
                 }
 
@@ -420,10 +420,10 @@ impl TraitDef {
 
                     loop {
                         match req_rx.recv().await {
-                            Ok(Some(::remop::robj::Req::Ref(req))) => {
+                            Ok(Some(::remoc::robj::Req::Ref(req))) => {
                                 if spawn {
                                     let target = target.clone();
-                                    ::remop::robj::spawn(async move {
+                                    ::remoc::robj::spawn(async move {
                                         req.dispatch(&*target).await;
                                     });
                                 } else {
@@ -432,7 +432,7 @@ impl TraitDef {
                             },
                             Ok(Some(_)) => (),
                             Ok(None) => break,
-                            Err(err) => ::remop::robj::log::trace!("Receiving request failed: {}", &err),
+                            Err(err) => ::remoc::robj::log::trace!("Receiving request failed: {}", &err),
                         }
                     }
                 }
@@ -455,19 +455,19 @@ impl TraitDef {
         quote! {
             #[doc="Remote server for [#ident] taking the target object by shared mutable reference."]
             #vis struct #server #ty_generics {
-                target: ::std::sync::Arc<::remop::rsync::LocalRwLock<Target>>,
-                req_rx: ::remop::rsync::mpsc::Receiver<
-                    ::remop::robj::Req<(), #req_ref #trait_generics, #req_ref_mut #trait_generics>,
+                target: ::std::sync::Arc<::remoc::rsync::LocalRwLock<Target>>,
+                req_rx: ::remoc::rsync::mpsc::Receiver<
+                    ::remoc::robj::Req<(), #req_ref #trait_generics, #req_ref_mut #trait_generics>,
                     Codec, 1,
                 >,
             }
 
-            impl #impl_generics_impl ::remop::robj::ServerShared <Target, Codec> for #server #impl_generics_ty #impl_generics_where
+            impl #impl_generics_impl ::remoc::robj::ServerShared <Target, Codec> for #server #impl_generics_ty #impl_generics_where
             {
                 type Client = #client #trait_generics;
 
-                fn new(target: ::std::sync::Arc<::remop::rsync::LocalRwLock<Target>>, request_buffer: usize) -> (Self, Self::Client) {
-                    let (req_tx, req_rx) = ::remop::rsync::mpsc::channel(request_buffer);
+                fn new(target: ::std::sync::Arc<::remoc::rsync::LocalRwLock<Target>>, request_buffer: usize) -> (Self, Self::Client) {
+                    let (req_tx, req_rx) = ::remoc::rsync::mpsc::channel(request_buffer);
                     (Self { target, req_rx }, Self::Client { req_tx };)
                 }
 
@@ -476,10 +476,10 @@ impl TraitDef {
 
                     loop {
                         match req_rx.recv().await {
-                            Ok(Some(::remop::robj::Req::Ref(req))) => {
+                            Ok(Some(::remoc::robj::Req::Ref(req))) => {
                                 if spawn {
                                     let target = target.clone().read_owned().await;
-                                    ::remop::robj::spawn(async move {
+                                    ::remoc::robj::spawn(async move {
                                         req.dispatch(&*target).await;
                                     });
                                 } else {
@@ -487,13 +487,13 @@ impl TraitDef {
                                     req.dispatch(&*target).await;
                                 }
                             },
-                            Ok(Some(::remop::robj::Req::RefMut(req))) => {
+                            Ok(Some(::remoc::robj::Req::RefMut(req))) => {
                                 let mut target = target.write().await;
                                 req.dispatch(&mut *target).await;
                             },
                             Ok(Some(_)) => (),
                             Ok(None) => break,
-                            Err(err) => ::remop::robj::log::trace!("Receiving request failed: {}", &err),
+                            Err(err) => ::remoc::robj::log::trace!("Receiving request failed: {}", &err),
                         }
                     }
                 }
@@ -549,8 +549,8 @@ impl TraitDef {
             #clone
             #attrs
             #vis struct #client_ident #ty_generics {
-                req_tx: ::remop::rsync::mpsc::Sender<
-                    ::remop::robj::Req<#req_value, #req_ref, #req_ref_mut>,
+                req_tx: ::remoc::rsync::mpsc::Sender<
+                    ::remoc::robj::Req<#req_value, #req_ref, #req_ref_mut>,
                     Codec, 1,
                 >,
             }

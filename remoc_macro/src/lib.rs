@@ -1,4 +1,4 @@
-//! Procedural macros for ReMOP.
+//! Procedural macros for ReMOC.
 
 use quote::quote;
 use syn::parse_macro_input;

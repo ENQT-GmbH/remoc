@@ -161,7 +161,7 @@ impl TraitMethod {
         let ident = to_pascal_case(&self.ident);
         let ret_ty = &self.ret_ty;
 
-        let mut entries = quote! { __reply_tx: ::remop::rsync::oneshot::Sender<#ret_ty, Codec>, };
+        let mut entries = quote! { __reply_tx: ::remoc::rsync::oneshot::Sender<#ret_ty, Codec>, };
         for NamedArg { attrs, ident, ty } in &self.args {
             let attrs = attribute_tokens(attrs);
             entries.append_all(quote! { #attrs #ident : #ty , });
@@ -185,7 +185,7 @@ impl TraitMethod {
         // Generate call code.
         let call = if self.cancel {
             quote! {
-                ::remop::robj::select! {
+                ::remoc::robj::select! {
                     biased;
                     () = __reply_tx.closed() => (),
                     result = target.#ident(#args) => {
@@ -230,9 +230,9 @@ impl TraitMethod {
 
         quote! {
             async fn #ident (#self_ref, #args) -> #ret_ty {
-                let (reply_tx, reply_rx) = ::remop::rsync::oneshot::channel();
+                let (reply_tx, reply_rx) = ::remoc::rsync::oneshot::channel();
                 let req_value = #req_enum :: #req_case { __reply_tx: reply_tx, #entries };
-                let req = ::remop::robj::Req::#req_type(req);
+                let req = ::remoc::robj::Req::#req_type(req);
                 self.req_tx.send(req).await.map_err(CallError::from)?;
                 let reply = reply_rx.await.map_err(CallError::from)?;
                 reply

@@ -5,7 +5,7 @@ use futures::{
     future::try_join,
     stream::StreamExt,
 };
-use remop::chmux;
+use remoc::chmux;
 use std::{io, time::Duration};
 use tokio::time::sleep;
 

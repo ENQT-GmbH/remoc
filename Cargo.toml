@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "remop",
-    #"remop_macro",
+    "remoc",
+    "remoc_macro",
     "rpc_test"
 ]

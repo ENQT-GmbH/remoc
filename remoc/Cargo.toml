@@ -1,18 +1,21 @@
 [package]
-name = "remop"
+name = "remoc"
 version = "0.8.0-pre1"
-authors = ["ENQT GmbH <su@enqt.de>", "Sebastian Urban <surban@surban.net>"]
+authors = ["Sebastian Urban <surban@surban.net>", "ENQT GmbH <su@enqt.de>"]
+readme = "README.md"
+repository = "https://github.com/ENQT-GmbH/remoc/"
 edition = "2018"
-description = "Remote multiplexed operations, objects and ports"
+description = "Remote multiplexed objects and channels"
 keywords = ["remote", "channel", "rpc", "stream", "multiplexer"]
+categories = ["asynchronous", "network-programming"]
 license = "Apache-2.0"
 
 [features]
 default = ["serde", "obj"]
-obj = ["remop_macro"]
+obj = ["remoc_macro"]
 
 [dependencies]
-remop_macro = { version = "=0.8.0-pre1", path = "../remop_macro", optional = true }
+remoc_macro = { version = "=0.8.0-pre1", path = "../remoc_macro", optional = true }
 futures = "0.3"
 pin-project = "1.0"
 tokio = { version = "1.11", features = ["macros", "rt", "sync", "time"] }

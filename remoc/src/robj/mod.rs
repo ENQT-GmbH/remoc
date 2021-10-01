@@ -54,7 +54,7 @@ pub use async_trait::async_trait;
 /// }
 /// ```
 ///
-pub use remop_macro::remote;
+pub use remoc_macro::remote;
 
 /// Call a method on a remotable trait failed.
 #[derive(Serialize, Deserialize)]

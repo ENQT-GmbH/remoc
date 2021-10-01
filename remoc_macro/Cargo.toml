@@ -1,0 +1,16 @@
+[package]
+name = "remoc_macro"
+version = "0.8.0-pre1"
+authors = ["Sebastian Urban <surban@surban.net>", "ENQT GmbH <su@enqt.de>"]
+repository = "https://github.com/ENQT-GmbH/remoc/"
+edition = "2018"
+description = "Procedural macros for remoc"
+license = "Apache-2.0"
+
+[dependencies]
+proc-macro2 = "1"
+syn = { version = "1", features = ["extra-traits", "full", "visit"] }
+quote = "1"
+
+[lib]
+proc-macro = true

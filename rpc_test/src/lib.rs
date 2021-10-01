@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use remop::{
+use remoc::{
     codec::CodecT,
     robj::{async_trait, CallError, Server},
     rsync::mpsc,
