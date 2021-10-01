@@ -263,9 +263,9 @@ where
                                     self.data = DataSource::None;
                                     continue 'restart;
                                 }
-                                Err(RecvChunkError::Multiplexer) => {
+                                Err(RecvChunkError::ChMux) => {
                                     self.data = DataSource::None;
-                                    return Err(RecvError::Receive(chmux::RecvError::Multiplexer));
+                                    return Err(RecvError::Receive(chmux::RecvError::ChMux));
                                 }
                             }
                         }

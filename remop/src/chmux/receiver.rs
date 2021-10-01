@@ -13,7 +13,7 @@ use crate::rsync::handle::HandleStorage;
 
 use super::{
     credit::{ChannelCreditReturner, UsedCredit},
-    multiplexer::PortEvt,
+    mux::PortEvt,
     Request,
 };
 
@@ -22,7 +22,7 @@ use super::{
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum RecvError {
     /// Multiplexer terminated.
-    Multiplexer,
+    ChMux,
     /// Data exceeds maximum size.
     ExceedsMaxDataSize(usize),
     /// Received ports exceed maximum count.
@@ -32,14 +32,14 @@ pub enum RecvError {
 impl RecvError {
     /// Returns true, if error is due to multiplexer being terminated.
     pub fn is_terminated(&self) -> bool {
-        matches!(self, Self::Multiplexer)
+        matches!(self, Self::ChMux)
     }
 }
 
 impl fmt::Display for RecvError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::Multiplexer => write!(f, "multiplexer terminated"),
+            Self::ChMux => write!(f, "multiplexer terminated"),
             Self::ExceedsMaxDataSize(max_size) => {
                 write!(f, "data exceeds maximum allowed size of {} bytes", max_size)
             }
@@ -57,20 +57,20 @@ impl Error for RecvError {}
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum RecvAnyError {
     /// Multiplexer terminated.
-    Multiplexer,
+    ChMux,
 }
 
 impl RecvAnyError {
     /// Returns true, if error is due to multiplexer being terminated.
     pub fn is_terminated(&self) -> bool {
-        matches!(self, Self::Multiplexer)
+        matches!(self, Self::ChMux)
     }
 }
 
 impl fmt::Display for RecvAnyError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::Multiplexer => write!(f, "multiplexer terminated"),
+            Self::ChMux => write!(f, "multiplexer terminated"),
         }
     }
 }
@@ -82,7 +82,7 @@ impl Error for RecvAnyError {}
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum RecvChunkError {
     /// Multiplexer terminated.
-    Multiplexer,
+    ChMux,
     /// Remote endpoint cancelled transmission.
     Cancelled,
 }
@@ -90,14 +90,14 @@ pub enum RecvChunkError {
 impl RecvChunkError {
     /// Returns true, if error is due to multiplexer being terminated.
     pub fn is_terminated(&self) -> bool {
-        matches!(self, Self::Multiplexer)
+        matches!(self, Self::ChMux)
     }
 }
 
 impl fmt::Display for RecvChunkError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::Multiplexer => write!(f, "multiplexer terminated"),
+            Self::ChMux => write!(f, "multiplexer terminated"),
             Self::Cancelled => write!(f, "transmission cancelled"),
         }
     }
@@ -450,7 +450,7 @@ impl Receiver {
                         }
                     }
 
-                    None => return Err(RecvChunkError::Multiplexer),
+                    None => return Err(RecvChunkError::ChMux),
                 },
             }
         }
@@ -527,7 +527,7 @@ impl Receiver {
                     return Ok(None);
                 }
 
-                None => return Err(RecvError::Multiplexer),
+                None => return Err(RecvError::ChMux),
             }
         }
     }

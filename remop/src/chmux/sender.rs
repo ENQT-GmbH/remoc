@@ -23,7 +23,7 @@ use crate::rsync::handle::HandleStorage;
 use super::{
     client::ConnectResponse,
     credit::{AssignedCredits, CreditUser},
-    multiplexer::PortEvt,
+    mux::PortEvt,
     Connect, ConnectError, PortNumber,
 };
 
@@ -32,7 +32,7 @@ use super::{
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SendError {
     /// The multiplexer terminated.
-    Multiplexer,
+    ChMux,
     /// Other side closed receiving end of channel.
     Closed {
         /// True, if remote endpoint still processes messages that were already sent.
@@ -44,14 +44,14 @@ impl SendError {
     /// Returns true, if error is due to channel being closed or multiplexer
     /// being terminated.
     pub fn is_terminated(&self) -> bool {
-        matches!(self, Self::Closed { .. } | Self::Multiplexer)
+        matches!(self, Self::Closed { .. } | Self::ChMux)
     }
 }
 
 impl fmt::Display for SendError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::Multiplexer => write!(f, "multiplexer terminated"),
+            Self::ChMux => write!(f, "multiplexer terminated"),
             Self::Closed { gracefully } => write!(
                 f,
                 "remote endpoint closed channel{}",
@@ -65,7 +65,7 @@ impl Error for SendError {}
 
 impl<T> From<mpsc::error::SendError<T>> for SendError {
     fn from(_err: mpsc::error::SendError<T>) -> Self {
-        Self::Multiplexer
+        Self::ChMux
     }
 }
 
@@ -99,7 +99,7 @@ impl From<mpsc::error::TrySendError<PortEvt>> for TrySendError {
     fn from(err: mpsc::error::TrySendError<PortEvt>) -> Self {
         match err {
             mpsc::error::TrySendError::Full(_) => Self::Full,
-            mpsc::error::TrySendError::Closed(_) => Self::Send(SendError::Multiplexer),
+            mpsc::error::TrySendError::Closed(_) => Self::Send(SendError::ChMux),
         }
     }
 }
@@ -333,7 +333,7 @@ impl Sender {
                             Err(ConnectError::Rejected)
                         }
                     }
-                    Err(_) => Err(ConnectError::Multiplexer),
+                    Err(_) => Err(ConnectError::ChMux),
                 }
             });
 

@@ -19,7 +19,7 @@ async fn uds_server() {
     let framed_rx = framed_rx.map(|data| data.map(|b| b.freeze()));
 
     let mux_cfg = chmux::Cfg::default();
-    let (mux, _, mut server) = chmux::Multiplexer::new(&mux_cfg, framed_tx, framed_rx).await.unwrap();
+    let (mux, _, mut server) = chmux::ChMux::new(&mux_cfg, framed_tx, framed_rx).await.unwrap();
 
     let mux_run = tokio::spawn(async move { mux.run().await.unwrap() });
 
@@ -51,7 +51,7 @@ async fn uds_client() {
     let framed_rx = framed_rx.map(|data| data.map(|b| b.freeze()));
 
     let mux_cfg = chmux::Cfg::default();
-    let (mux, client, _) = chmux::Multiplexer::new(&mux_cfg, framed_tx, framed_rx).await.unwrap();
+    let (mux, client, _) = chmux::ChMux::new(&mux_cfg, framed_tx, framed_rx).await.unwrap();
     let mux_run = tokio::spawn(async move { mux.run().await.unwrap() });
 
     {

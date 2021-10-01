@@ -8,7 +8,7 @@ use tokio::sync::{
     oneshot,
 };
 
-use super::{multiplexer::PortEvt, MultiplexError, SendError};
+use super::{mux::PortEvt, ChMuxError, SendError};
 
 // ===========================================================================
 // Credit accounting for sending data
@@ -78,13 +78,13 @@ impl CreditProvider {
     /// Provides the given count of channel credits for consumption.
     pub fn provide<SinkError, StreamError>(
         &self, credits: u32,
-    ) -> Result<(), MultiplexError<SinkError, StreamError>> {
+    ) -> Result<(), ChMuxError<SinkError, StreamError>> {
         let notify = {
             let mut inner = self.0.lock().unwrap();
 
             match inner.credits.checked_add(credits) {
                 Some(new_credits) => inner.credits = new_credits,
-                None => return Err(MultiplexError::Protocol("credits overflow".to_string())),
+                None => return Err(ChMuxError::Protocol("credits overflow".to_string())),
             };
 
             mem::take(&mut inner.notify)
@@ -128,7 +128,7 @@ impl CreditUser {
             let rx_channel = {
                 let channel = match self.channel.upgrade() {
                     Some(channel) => channel,
-                    None => return Err(SendError::Multiplexer),
+                    None => return Err(SendError::ChMux),
                 };
                 let mut channel = channel.lock().unwrap();
                 if let Some(gracefully) = channel.closed {
@@ -158,7 +158,7 @@ impl CreditUser {
 
         let channel = match self.channel.upgrade() {
             Some(channel) => channel,
-            None => return Err(SendError::Multiplexer),
+            None => return Err(SendError::ChMux),
         };
         let mut channel = channel.lock().unwrap();
         if let Some(gracefully) = channel.closed {
@@ -206,14 +206,14 @@ impl ChannelCreditMonitor {
     /// Use channel-specific credits.
     pub fn use_credits<SinkError, StreamError>(
         &self, credits: u32,
-    ) -> Result<UsedCredit, MultiplexError<SinkError, StreamError>> {
+    ) -> Result<UsedCredit, ChMuxError<SinkError, StreamError>> {
         let mut inner = self.0.lock().unwrap();
         match inner.used.checked_add(credits) {
             Some(new_used) if new_used <= inner.limit => {
                 inner.used = new_used;
                 Ok(UsedCredit(credits))
             }
-            _ => Err(MultiplexError::Protocol("remote endpoint used too many channel flow credits".to_string())),
+            _ => Err(ChMuxError::Protocol("remote endpoint used too many channel flow credits".to_string())),
         }
     }
 }

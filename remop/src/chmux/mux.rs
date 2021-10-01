@@ -37,13 +37,13 @@ use super::{
     port_allocator::{PortAllocator, PortNumber},
     receiver::{PortReceiveMsg, ReceivedData, ReceivedPortRequests, Receiver},
     sender::Sender,
-    Cfg, MultiplexError, PROTOCOL_VERSION,
+    Cfg, ChMuxError, PROTOCOL_VERSION,
 };
 
 /// Multiplexer protocol error.
 macro_rules! protocol_err {
     ($msg:expr) => {
-        super::MultiplexError::Protocol($msg.to_string())
+        super::ChMuxError::Protocol($msg.to_string())
     };
 }
 
@@ -200,7 +200,7 @@ impl TransportMsg {
 }
 
 /// Channel multiplexer.
-pub struct Multiplexer<TransportSink, TransportStream> {
+pub struct ChMux<TransportSink, TransportStream> {
     /// Trace id.
     trace_id: String,
     /// Our configuration.
@@ -241,9 +241,9 @@ pub struct Multiplexer<TransportSink, TransportStream> {
     handle_storage: HandleStorage,
 }
 
-impl<TransportSink, TransportStream> fmt::Debug for Multiplexer<TransportSink, TransportStream> {
+impl<TransportSink, TransportStream> fmt::Debug for ChMux<TransportSink, TransportStream> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Multiplexer")
+        f.debug_struct("ChMux")
             .field("trace_id", &self.trace_id)
             .field("local_cfg", &self.local_cfg)
             .field("remote_cfg", &self.remote_cfg)
@@ -254,7 +254,7 @@ impl<TransportSink, TransportStream> fmt::Debug for Multiplexer<TransportSink, T
 }
 
 impl<TransportSink, TransportSinkError, TransportStream, TransportStreamError>
-    Multiplexer<TransportSink, TransportStream>
+    ChMux<TransportSink, TransportStream>
 where
     TransportSink: Sink<Bytes, Error = TransportSinkError> + Send + Unpin,
     TransportSinkError: Error + Send + Sync + 'static,
@@ -269,7 +269,7 @@ where
     /// Panics if specified configuration does not obey limits documented in [Cfg].
     pub async fn new(
         cfg: &Cfg, mut transport_sink: TransportSink, mut transport_stream: TransportStream,
-    ) -> Result<(Self, Client, Listener), MultiplexError<TransportSinkError, TransportStreamError>> {
+    ) -> Result<(Self, Client, Listener), ChMuxError<TransportSinkError, TransportStreamError>> {
         // Check configuration.
         cfg.check();
 
@@ -283,7 +283,7 @@ where
         log::trace!("{}: exchanging hello", &trace_id);
         let fut = Self::exchange_hello(&trace_id, cfg, &mut transport_sink, &mut transport_stream);
         let (remote_protocol_version, remote_cfg) = match cfg.connection_timeout {
-            Some(dur) => timeout(dur, fut).await.map_err(|_| MultiplexError::Timeout)??,
+            Some(dur) => timeout(dur, fut).await.map_err(|_| ChMuxError::Timeout)??,
             None => fut.await?,
         };
 
@@ -297,7 +297,7 @@ where
         // Create user objects.
         let port_allocator = PortAllocator::new(cfg.max_ports);
         let remote_listener_dropped = Arc::new(AtomicBool::new(false));
-        let multiplexer = Multiplexer {
+        let multiplexer = ChMux {
             trace_id,
             remote_protocol_version,
             local_cfg: cfg.clone(),
@@ -335,13 +335,13 @@ where
     /// Feed transport message to sink and log it.
     async fn feed_msg(
         trace_id: &str, msg: TransportMsg, sink: &mut TransportSink,
-    ) -> Result<(), MultiplexError<TransportSinkError, TransportStreamError>> {
+    ) -> Result<(), ChMuxError<TransportSinkError, TransportStreamError>> {
         log::trace!("{} ==> {:?}", trace_id, &msg.msg);
-        sink.feed(msg.msg.to_vec().into()).await.map_err(MultiplexError::SinkError)?;
+        sink.feed(msg.msg.to_vec().into()).await.map_err(ChMuxError::SinkError)?;
 
         if let Some(data) = msg.data {
             log::trace!("{} ==> [{} bytes data]", trace_id, data.len());
-            sink.feed(data).await.map_err(MultiplexError::SinkError)?;
+            sink.feed(data).await.map_err(ChMuxError::SinkError)?;
         }
 
         Ok(())
@@ -350,19 +350,19 @@ where
     /// Flush sink and log it.
     async fn flush(
         trace_id: &str, sink: &mut TransportSink,
-    ) -> Result<(), MultiplexError<TransportSinkError, TransportStreamError>> {
+    ) -> Result<(), ChMuxError<TransportSinkError, TransportStreamError>> {
         log::trace!("{} ==> [flush]", trace_id);
-        sink.flush().await.map_err(MultiplexError::SinkError)
+        sink.flush().await.map_err(ChMuxError::SinkError)
     }
 
     /// Receive message and log it.
     async fn recv_msg(
         trace_id: &str, stream: &mut TransportStream,
-    ) -> Result<TransportMsg, MultiplexError<TransportSinkError, TransportStreamError>> {
+    ) -> Result<TransportMsg, ChMuxError<TransportSinkError, TransportStreamError>> {
         let msg_data = match stream.next().await {
             Some(Ok(msg_data)) => msg_data,
-            Some(Err(err)) => return Err(MultiplexError::StreamError(err)),
-            None => return Err(MultiplexError::StreamClosed),
+            Some(Err(err)) => return Err(ChMuxError::StreamError(err)),
+            None => return Err(ChMuxError::StreamClosed),
         };
 
         let msg = MultiplexMsg::from_slice(&msg_data)?;
@@ -374,8 +374,8 @@ where
                     log::trace!("{} <== [{} bytes data]", trace_id, data.len());
                     Some(data)
                 }
-                Some(Err(err)) => return Err(MultiplexError::StreamError(err)),
-                None => return Err(MultiplexError::StreamClosed),
+                Some(Err(err)) => return Err(ChMuxError::StreamError(err)),
+                None => return Err(ChMuxError::StreamClosed),
             }
         } else {
             None
@@ -387,7 +387,7 @@ where
     /// Exchange Hello message with remote endpoint.
     async fn exchange_hello(
         trace_id: &str, cfg: &Cfg, sink: &mut TransportSink, stream: &mut TransportStream,
-    ) -> Result<(u8, ExchangedCfg), MultiplexError<TransportSinkError, TransportStreamError>> {
+    ) -> Result<(u8, ExchangedCfg), ChMuxError<TransportSinkError, TransportStreamError>> {
         // Say hello to remote endpoint and send our configuration.
         let send_task = async {
             Self::feed_msg(trace_id, TransportMsg::new(MultiplexMsg::Reset), sink).await?;
@@ -410,7 +410,7 @@ where
                         break Ok((version, cfg))
                     }
                     Ok(_) => (),
-                    Err(MultiplexError::Protocol(_)) => (),
+                    Err(ChMuxError::Protocol(_)) => (),
                     Err(err) => return Err(err),
                 }
             }
@@ -549,7 +549,7 @@ where
     async fn send_task(
         trace_id: &str, mut sink: &mut TransportSink, ping_interval: Option<Duration>,
         mut rx: mpsc::Receiver<SendCmd>,
-    ) -> Result<(), MultiplexError<TransportSinkError, TransportStreamError>> {
+    ) -> Result<(), ChMuxError<TransportSinkError, TransportStreamError>> {
         async fn get_next_ping(ping_interval: Option<Duration>) {
             match ping_interval {
                 Some(interval) => sleep(interval).await,
@@ -560,7 +560,7 @@ where
         let mut next_ping = get_next_ping(ping_interval).fuse().boxed();
 
         loop {
-            SinkReady::new(&mut sink).await.map_err(MultiplexError::SinkError)?;
+            SinkReady::new(&mut sink).await.map_err(ChMuxError::SinkError)?;
 
             tokio::select! {
                 biased;
@@ -602,7 +602,7 @@ where
     async fn recv_task(
         trace_id: &str, stream: &mut TransportStream, connection_timeout: Option<Duration>,
         tx: mpsc::Sender<TransportMsg>,
-    ) -> Result<(), MultiplexError<TransportSinkError, TransportStreamError>> {
+    ) -> Result<(), ChMuxError<TransportSinkError, TransportStreamError>> {
         async fn get_connection_timeout(connection_timeout: Option<Duration>) {
             match connection_timeout {
                 Some(timeout) => sleep(timeout).await,
@@ -626,7 +626,7 @@ where
                     next_timeout = get_connection_timeout(connection_timeout).fuse().boxed();
                 },
 
-                () = &mut next_timeout => return Err(MultiplexError::Timeout),
+                () = &mut next_timeout => return Err(ChMuxError::Timeout),
             }
         }
 
@@ -637,7 +637,7 @@ where
     ///
     /// The dispatcher terminates when the client, server and all channels have been dropped or
     /// the transport is closed.
-    pub async fn run(mut self) -> Result<(), MultiplexError<TransportSinkError, TransportStreamError>> {
+    pub async fn run(mut self) -> Result<(), ChMuxError<TransportSinkError, TransportStreamError>> {
         let trace_id = self.trace_id.clone();
         let mut transport_sink = self.transport_sink.take().unwrap();
         let mut transport_stream = self.transport_stream.take().unwrap();
@@ -752,7 +752,7 @@ where
     /// Handle local event that results in sending a message to the remote endpoint.
     async fn handle_event(
         &mut self, trace_id: &str, permit: Permit<'_, SendCmd>, event: GlobalEvt,
-    ) -> Result<(), MultiplexError<TransportSinkError, TransportStreamError>> {
+    ) -> Result<(), ChMuxError<TransportSinkError, TransportStreamError>> {
         log::trace!("{}: processing event {:?}", trace_id, &event);
 
         fn send_msg(permit: Permit<'_, SendCmd>, msg: MultiplexMsg) {
@@ -897,14 +897,14 @@ where
     /// Handle message received from remote endpoint.
     async fn handle_received_msg(
         &mut self, _trace_id: &str, received_msg: TransportMsg,
-    ) -> Result<(), MultiplexError<TransportSinkError, TransportStreamError>> {
+    ) -> Result<(), ChMuxError<TransportSinkError, TransportStreamError>> {
         let TransportMsg { msg, data } = received_msg;
         // log::trace!("{}: processing received message {:?}", trace_id, &msg);
 
         match msg {
             // Connection reset by remote endpoint.
             MultiplexMsg::Reset => {
-                return Err(MultiplexError::Reset);
+                return Err(ChMuxError::Reset);
             }
 
             // Hello message only allowed when establishing connection.
@@ -1176,7 +1176,7 @@ where
     }
 }
 
-impl<TransportSink, TransportStream> Drop for Multiplexer<TransportSink, TransportStream> {
+impl<TransportSink, TransportStream> Drop for ChMux<TransportSink, TransportStream> {
     fn drop(&mut self) {
         // Should be present to ensure correct drop order.
     }

@@ -9,7 +9,7 @@ use std::{error::Error, fmt, pin::Pin, sync::Arc};
 use tokio::sync::{mpsc, oneshot, Mutex};
 
 use super::{
-    multiplexer::PortEvt,
+    mux::PortEvt,
     port_allocator::{PortAllocator, PortNumber},
     receiver::Receiver,
     sender::Sender,

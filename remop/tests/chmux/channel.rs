@@ -53,12 +53,10 @@ async fn basic() {
     let b_rx = b_rx.map(Ok::<_, io::Error>);
 
     println!("Connecting...");
-    let ((a_mux, a_client, a_server), (b_mux, b_client, mut b_server)) = try_join(
-        chmux::Multiplexer::new(&cfg("a_mux"), a_tx, a_rx),
-        chmux::Multiplexer::new(&cfg2("b_mux"), b_tx, b_rx),
-    )
-    .await
-    .unwrap();
+    let ((a_mux, a_client, a_server), (b_mux, b_client, mut b_server)) =
+        try_join(chmux::ChMux::new(&cfg("a_mux"), a_tx, a_rx), chmux::ChMux::new(&cfg2("b_mux"), b_tx, b_rx))
+            .await
+            .unwrap();
     println!("Connected: a_mux={:?}, b_mux={:?}", &a_mux, &b_mux);
 
     let (a_mux_done_tx, a_mux_done_rx) = oneshot::channel();
@@ -164,12 +162,10 @@ async fn hangup() {
     let b_rx = b_rx.map(Ok::<_, io::Error>);
 
     println!("Connecting...");
-    let ((a_mux, a_client, a_server), (b_mux, b_client, mut b_server)) = try_join(
-        chmux::Multiplexer::new(&cfg("a_mux"), a_tx, a_rx),
-        chmux::Multiplexer::new(&cfg2("b_mux"), b_tx, b_rx),
-    )
-    .await
-    .unwrap();
+    let ((a_mux, a_client, a_server), (b_mux, b_client, mut b_server)) =
+        try_join(chmux::ChMux::new(&cfg("a_mux"), a_tx, a_rx), chmux::ChMux::new(&cfg2("b_mux"), b_tx, b_rx))
+            .await
+            .unwrap();
     println!("Connected: a_mux={:?}, b_mux={:?}", &a_mux, &b_mux);
 
     let (a_mux_done_tx, a_mux_done_rx) = oneshot::channel();

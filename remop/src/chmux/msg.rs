@@ -4,7 +4,7 @@ use std::{
     time::Duration,
 };
 
-use super::{Cfg, MultiplexError};
+use super::{Cfg, ChMuxError};
 
 macro_rules! invalid_data {
     ($msg:expr) => {
@@ -303,8 +303,8 @@ impl MultiplexMsg {
 
     pub(crate) fn from_slice<SinkError, StreamError>(
         data: &[u8],
-    ) -> Result<Self, MultiplexError<SinkError, StreamError>> {
-        Self::read(data).map_err(|err| MultiplexError::Protocol(err.to_string()))
+    ) -> Result<Self, ChMuxError<SinkError, StreamError>> {
+        Self::read(data).map_err(|err| ChMuxError::Protocol(err.to_string()))
     }
 }
 

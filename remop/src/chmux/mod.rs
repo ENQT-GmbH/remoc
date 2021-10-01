@@ -13,7 +13,7 @@ mod client;
 mod credit;
 mod listener;
 mod msg;
-mod multiplexer;
+mod mux;
 mod port_allocator;
 mod receiver;
 mod sender;
@@ -21,7 +21,7 @@ mod sender;
 pub use cfg::{Cfg, PortsExhausted};
 pub use client::{Client, Connect, ConnectError};
 pub use listener::{Listener, ListenerError, ListenerStream, Request};
-pub use multiplexer::Multiplexer;
+pub use mux::ChMux;
 pub use port_allocator::{PortAllocator, PortNumber};
 pub use receiver::{DataBuf, Received, Receiver, ReceiverStream, RecvAnyError, RecvChunkError, RecvError};
 pub use sender::{ChunkSender, Closed, SendError, Sender, SenderSink, TrySendError};
@@ -31,7 +31,7 @@ pub const PROTOCOL_VERSION: u8 = 2;
 
 /// Channel multiplexer error.
 #[derive(Debug)]
-pub enum MultiplexError<SinkError, StreamError> {
+pub enum ChMuxError<SinkError, StreamError> {
     /// An error was encountered while sending data to the transport sink.
     SinkError(SinkError),
     /// An error was encountered while receiving data from the transport stream.
@@ -47,7 +47,7 @@ pub enum MultiplexError<SinkError, StreamError> {
     Protocol(String),
 }
 
-impl<SinkError, StreamError> fmt::Display for MultiplexError<SinkError, StreamError>
+impl<SinkError, StreamError> fmt::Display for ChMuxError<SinkError, StreamError>
 where
     SinkError: fmt::Display,
     StreamError: fmt::Display,
@@ -64,7 +64,7 @@ where
     }
 }
 
-impl<SinkError, StreamError> Error for MultiplexError<SinkError, StreamError>
+impl<SinkError, StreamError> Error for ChMuxError<SinkError, StreamError>
 where
     SinkError: Error,
     StreamError: Error,

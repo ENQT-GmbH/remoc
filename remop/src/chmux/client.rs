@@ -34,7 +34,7 @@ pub enum ConnectError {
     /// Connection has been rejected by server.
     Rejected,
     /// A multiplexer error has occured or it has been terminated.
-    Multiplexer,
+    ChMux,
 }
 
 impl fmt::Display for ConnectError {
@@ -44,7 +44,7 @@ impl fmt::Display for ConnectError {
             Self::RemotePortsExhausted => write!(f, "all remote ports are in use"),
             Self::TooManyPendingConnectionRequests => write!(f, "too many connection requests are pending"),
             Self::Rejected => write!(f, "connection has been rejected by server"),
-            Self::Multiplexer => write!(f, "multiplexer error"),
+            Self::ChMux => write!(f, "multiplexer error"),
         }
     }
 }
@@ -173,7 +173,7 @@ impl Future for Connect {
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let result = ready!(Pin::into_inner(self).response.poll_unpin(cx));
-        Poll::Ready(result.map_err(|_| ConnectError::Multiplexer)?)
+        Poll::Ready(result.map_err(|_| ConnectError::ChMux)?)
     }
 }
 
@@ -281,7 +281,7 @@ impl Client {
                     if listener_dropped.load(Ordering::SeqCst) {
                         Err(ConnectError::Rejected)
                     } else {
-                        Err(ConnectError::Multiplexer)
+                        Err(ConnectError::ChMux)
                     }
                 }
             }
