@@ -30,7 +30,7 @@ pub use sender::{ChunkSender, Closed, SendError, Sender, SenderSink, TrySendErro
 pub const PROTOCOL_VERSION: u8 = 2;
 
 /// Channel multiplexer error.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ChMuxError<SinkError, StreamError> {
     /// An error was encountered while sending data to the transport sink.
     SinkError(SinkError),

@@ -9,13 +9,12 @@ use futures::{
 use std::{collections::VecDeque, error::Error, fmt, mem, pin::Pin, sync::Arc};
 use tokio::sync::{mpsc, oneshot, Mutex};
 
-use crate::rsync::handle::HandleStorage;
-
 use super::{
     credit::{ChannelCreditReturner, UsedCredit},
     mux::PortEvt,
-    Request,
+    PortAllocator, Request,
 };
+use crate::rsync::handle::HandleStorage;
 
 /// An error occured during receiving a data message.
 #[derive(Debug, Clone)]
@@ -282,6 +281,7 @@ pub struct Receiver {
     credits: ChannelCreditReturner,
     closed: bool,
     finished: bool,
+    port_allocator: PortAllocator,
     handle_storage: HandleStorage,
     _drop_tx: oneshot::Sender<()>,
 }
@@ -304,7 +304,7 @@ impl Receiver {
     pub(crate) fn new(
         local_port: u32, remote_port: u32, max_data_size: usize, max_port_count: usize,
         tx: mpsc::Sender<PortEvt>, rx: mpsc::UnboundedReceiver<PortReceiveMsg>, credits: ChannelCreditReturner,
-        handle_storage: HandleStorage,
+        port_allocator: PortAllocator, handle_storage: HandleStorage,
     ) -> Self {
         let (_drop_tx, drop_rx) = oneshot::channel();
         let tx_drop = tx.clone();
@@ -324,6 +324,7 @@ impl Receiver {
             credits,
             closed: false,
             finished: false,
+            port_allocator,
             handle_storage,
             _drop_tx,
         }
@@ -544,6 +545,11 @@ impl Receiver {
     /// Convert this into a stream.
     pub fn into_stream(self) -> ReceiverStream {
         ReceiverStream::new(self)
+    }
+
+    /// Returns the port allocator of the channel multiplexer.
+    pub fn port_allocator(&self) -> PortAllocator {
+        self.port_allocator.clone()
     }
 
     /// Returns the handle storage of the channel multiplexer.

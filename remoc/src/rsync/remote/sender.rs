@@ -67,10 +67,8 @@ impl<T> Error for SendError<T> where T: fmt::Debug {}
 pub struct PortSerializer {
     allocator: chmux::PortAllocator,
     #[allow(clippy::type_complexity)]
-    requests: Vec<(
-        chmux::PortNumber,
-        Box<dyn FnOnce(chmux::Connect, chmux::PortAllocator) -> BoxFuture<'static, ()> + Send + 'static>,
-    )>,
+    requests:
+        Vec<(chmux::PortNumber, Box<dyn FnOnce(chmux::Connect) -> BoxFuture<'static, ()> + Send + 'static>)>,
     handle_storage: HandleStorage,
 }
 
@@ -99,7 +97,7 @@ impl PortSerializer {
     ///
     /// Returns the local port number and calls the specified function with the connect object.
     pub(crate) fn connect<E>(
-        callback: impl FnOnce(chmux::Connect, chmux::PortAllocator) -> BoxFuture<'static, ()> + Send + 'static,
+        callback: impl FnOnce(chmux::Connect) -> BoxFuture<'static, ()> + Send + 'static,
     ) -> Result<u32, E>
     where
         E: serde::ser::Error,
@@ -133,12 +131,11 @@ impl PortSerializer {
     }
 }
 
-/// Sends data to a remote endpoint.
+/// Sends arbitrary values to a remote endpoint.
 ///
-/// Can serialize values containing ports.
+/// Values may be or contain any channel from this crate.
 pub struct Sender<T, Codec> {
     sender: chmux::Sender,
-    allocator: chmux::PortAllocator,
     big_data: i8,
     _data: PhantomData<T>,
     _codec: PhantomData<Codec>,
@@ -149,8 +146,9 @@ where
     T: Serialize + Send + 'static,
     Codec: CodecT,
 {
-    pub fn new(sender: chmux::Sender, allocator: chmux::PortAllocator) -> Self {
-        Self { sender, allocator, big_data: 0, _data: PhantomData, _codec: PhantomData }
+    /// Create a remote sender from a ChMux sender.
+    pub fn new(sender: chmux::Sender) -> Self {
+        Self { sender, big_data: 0, _data: PhantomData, _codec: PhantomData }
     }
 
     fn serialize_buffered(
@@ -217,7 +215,7 @@ where
         let data_ps = if self.big_data <= 0 {
             // Try buffered serialization.
             match Self::serialize_buffered(
-                self.allocator.clone(),
+                self.sender.port_allocator(),
                 self.sender.handle_storage(),
                 &item,
                 self.sender.max_data_size(),
@@ -250,7 +248,7 @@ where
                 // Stream data while serializing.
                 let (tx, mut rx) = tokio::sync::mpsc::channel(BIG_DATA_CHUNK_QUEUE);
                 let ser_task = Self::serialize_streaming(
-                    self.allocator.clone(),
+                    self.sender.port_allocator(),
                     self.sender.handle_storage(),
                     item,
                     tx,
@@ -312,10 +310,9 @@ where
         // chmux connect requests.
         //
         // We have to spawn a task for this to ensure cancellation safety.
-        let allocator = self.allocator.clone();
         tokio::spawn(async move {
             for (callback, connect) in callbacks.into_iter().zip(connects.into_iter()) {
-                callback(connect, allocator.clone()).await;
+                callback(connect).await;
             }
         });
 

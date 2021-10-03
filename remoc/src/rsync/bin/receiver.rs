@@ -66,7 +66,7 @@ impl Serialize for Receiver {
             interlock.sender.start_send()
         };
 
-        let port = PortSerializer::connect(|connect, _| {
+        let port = PortSerializer::connect(|connect| {
             async move {
                 let _ = interlock_confirm.send(());
 
@@ -95,7 +95,7 @@ impl<'de> Deserialize<'de> for Receiver {
         let TransportedReceiver { port } = TransportedReceiver::deserialize(deserializer)?;
 
         let (receiver_tx, receiver_rx) = tokio::sync::mpsc::unbounded_channel();
-        PortDeserializer::accept(port, |local_port, request, _| {
+        PortDeserializer::accept(port, |local_port, request| {
             async move {
                 match request.accept_from(local_port).await {
                     Ok((_, raw_rx)) => {

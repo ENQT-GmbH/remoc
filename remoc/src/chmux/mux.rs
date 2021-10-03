@@ -491,6 +491,7 @@ where
             sender_credit_user,
             Arc::downgrade(&hangup_recved),
             Arc::downgrade(&hangup_notify),
+            self.port_allocator.clone(),
             self.handle_storage.clone(),
         );
 
@@ -502,6 +503,7 @@ where
             receiver_tx,
             receiver_rx_data,
             receiver_credit_returner,
+            self.port_allocator.clone(),
             self.handle_storage.clone(),
         );
 

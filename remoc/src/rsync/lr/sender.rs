@@ -147,13 +147,13 @@ where
             interlock.receiver.start_send()
         };
 
-        let port = PortSerializer::connect(|connect, allocator| {
+        let port = PortSerializer::connect(|connect| {
             async move {
                 let _ = interlock_confirm.send(());
 
                 match connect.await {
                     Ok((_, raw_rx)) => {
-                        let rx = remote::Receiver::new(raw_rx, allocator);
+                        let rx = remote::Receiver::new(raw_rx);
                         let _ = receiver_tx.send(Ok(rx));
                     }
                     Err(err) => {
@@ -181,11 +181,11 @@ where
         let TransportedSender::<T, Codec> { port, .. } = TransportedSender::deserialize(deserializer)?;
 
         let (sender_tx, sender_rx) = tokio::sync::mpsc::unbounded_channel();
-        PortDeserializer::accept(port, |local_port, request, allocator| {
+        PortDeserializer::accept(port, |local_port, request| {
             async move {
                 match request.accept_from(local_port).await {
                     Ok((raw_tx, _)) => {
-                        let tx = remote::Sender::new(raw_tx, allocator);
+                        let tx = remote::Sender::new(raw_tx);
                         let _ = sender_tx.send(Ok(tx));
                     }
                     Err(err) => {
