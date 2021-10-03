@@ -280,7 +280,7 @@ where
         };
 
         // Say hello to remote endpoint and exchange configurations.
-        log::trace!("{}: exchanging hello", &trace_id);
+        log::tlrace!("{}: exchanging hello", &trace_id);
         let fut = Self::exchange_hello(&trace_id, cfg, &mut transport_sink, &mut transport_stream);
         let (remote_protocol_version, remote_cfg) = match cfg.connection_timeout {
             Some(dur) => timeout(dur, fut).await.map_err(|_| ChMuxError::Timeout)??,
@@ -491,6 +491,7 @@ where
             sender_credit_user,
             Arc::downgrade(&hangup_recved),
             Arc::downgrade(&hangup_notify),
+            self.port_allocator.clone(),
             self.handle_storage.clone(),
         );
 
@@ -502,6 +503,7 @@ where
             receiver_tx,
             receiver_rx_data,
             receiver_credit_returner,
+            self.port_allocator.clone(),
             self.handle_storage.clone(),
         );
 

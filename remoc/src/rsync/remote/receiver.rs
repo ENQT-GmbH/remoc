@@ -140,12 +140,11 @@ impl PortDeserializer {
     }
 }
 
-/// Receives data from remote endpoint.
+/// Receives arbitrary values from a remote endpoint.
 ///
-/// Can deserialize received values containing ports.
+/// Values may be or contain any channel from this crate.
 pub struct Receiver<T, Codec> {
     receiver: chmux::Receiver,
-    allocator: chmux::PortAllocator,
     recved: Option<Option<Received>>,
     data: DataSource<T>,
     item: Option<T>,
@@ -168,10 +167,10 @@ where
     T: DeserializeOwned + Send + 'static,
     Codec: CodecT,
 {
-    pub fn new(receiver: chmux::Receiver, allocator: chmux::PortAllocator) -> Self {
+    /// Create a remote receiver from a ChMux receiver.
+    pub fn new(receiver: chmux::Receiver) -> Self {
         Self {
             receiver,
-            allocator,
             recved: None,
             data: DataSource::None,
             item: None,
@@ -199,7 +198,7 @@ where
                         Some(Received::Data(data)) => DataSource::Buffered(Some(data)),
                         Some(Received::BigData) => {
                             // Start deserialization thread.
-                            let allocator = self.allocator.clone();
+                            let allocator = self.receiver.port_allocator();
                             let handle_storage = self.receiver.handle_storage();
                             let (tx, rx) = tokio::sync::mpsc::channel(BIG_DATA_CHUNK_QUEUE);
                             let task = task::spawn_blocking(move || {
@@ -232,7 +231,7 @@ where
                         };
 
                         let pdf_ref =
-                            PortDeserializer::start(self.allocator.clone(), self.receiver.handle_storage());
+                            PortDeserializer::start(self.receiver.port_allocator(), self.receiver.handle_storage());
                         self.item = Some(<Codec as CodecT>::deserialize(data.reader())?);
                         self.port_deser = Some(PortDeserializer::finish(pdf_ref));
 
@@ -319,7 +318,7 @@ where
                 // forward compatibility.
                 for request in requests {
                     if let Some((local_port, callback)) = pds.expected.remove(&request.remote_port()) {
-                        tokio::spawn(callback(local_port, request, self.allocator.clone()));
+                        tokio::spawn(callback(local_port, request, self.receiver.port_allocator()));
                     }
                 }
 
