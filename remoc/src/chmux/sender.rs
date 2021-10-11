@@ -41,10 +41,9 @@ pub enum SendError {
 }
 
 impl SendError {
-    /// Returns true, if error is due to channel being closed or multiplexer
-    /// being terminated.
-    pub fn is_terminated(&self) -> bool {
-        matches!(self, Self::Closed { .. } | Self::ChMux)
+    /// Returns true, if error it due to channel being closed.
+    pub fn is_closed(&self) -> bool {
+        matches!(self, Self::Closed { .. })
     }
 }
 

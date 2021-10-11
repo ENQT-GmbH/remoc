@@ -35,7 +35,7 @@ pub use async_trait::async_trait;
 ///
 /// # Example
 ///
-/// ```
+/// ```ignore
 /// pub enum IncreaseError {
 ///     Overflow,
 ///     Call(CallError),

@@ -1,4 +1,8 @@
+//! Channel multiplexer configuration.
+
 use std::time::Duration;
+
+use super::msg::MAX_MSG_LENGTH;
 
 /// Behavior when ports are exhausted and a connect is requested.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -49,6 +53,7 @@ pub struct Cfg {
     ///
     /// By default this is 16 kB.
     /// This must be at least 4 bytes.
+    /// This must not exceed 2^32 - 16 = 4294967279.
     pub chunk_size: u32,
     /// Size of receive buffer of each port in bytes.
     /// The size of the received data can exceed this value.
@@ -92,7 +97,10 @@ impl Default for Cfg {
 }
 
 impl Cfg {
-    /// Checks the configuration
+    /// Checks the configuration.
+    ///
+    /// # Panics
+    /// Panics if the configuration is invalid.
     pub(crate) fn check(&self) {
         if self.max_ports > 2u32.pow(31) {
             panic!("maximum ports must not exceed 2^31");
@@ -113,5 +121,14 @@ impl Cfg {
         if self.connect_queue == 0 {
             panic!("connect queue length must not be zero");
         }
+    }
+
+    /// Returns the maximum size of a frame that can be received by a
+    /// channel multiplexer using this configuration.
+    ///
+    /// # Panics
+    /// Panics if the configuration is invalid.
+    pub fn max_frame_length(&self) -> u32 {
+        (MAX_MSG_LENGTH as u32).checked_add(self.chunk_size).expect("maximum frame size exceeds u32::MAX")
     }
 }

@@ -22,6 +22,8 @@ use crate::{
     rsync::handle::HandleStorage,
 };
 
+pub use crate::chmux::Closed;
+
 /// An error that occured during remote sending.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SendError<T> {
@@ -43,6 +45,14 @@ pub enum SendErrorKind {
 impl<T> SendError<T> {
     pub(crate) fn new(kind: SendErrorKind, item: T) -> Self {
         Self { kind, item }
+    }
+
+    /// Returns true, if error it due to channel being closed.
+    pub fn is_closed(&self) -> bool {
+        match &self.kind {
+            SendErrorKind::Send(err) => err.is_closed(),
+            _ => false,
+        }
     }
 }
 
@@ -317,5 +327,15 @@ where
         });
 
         Ok(())
+    }
+
+    /// True, once the remote endpoint has closed its receiver.
+    pub fn is_closed(&self) -> bool {
+        self.sender.is_closed()
+    }
+
+    /// Returns a future that will resolve when the remote endpoint closes its receiver.
+    pub fn closed(&self) -> Closed {
+        self.sender.closed()
     }
 }
