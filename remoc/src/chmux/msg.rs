@@ -143,6 +143,12 @@ pub const MSG_PORT_DATA_FLAG_FIRST: u8 = 0b00000001;
 pub const MSG_PORT_DATA_FLAG_LAST: u8 = 0b00000010;
 pub const MSG_PORT_DATA_FLAG_WAIT: u8 = 0b00000100;
 
+/// Maximum message length.
+///
+/// Currently this is 16 to reserve space for further use.
+/// Port data, limited by the maximum chunk size, may be append to a message.
+pub const MAX_MSG_LENGTH: usize = 16;
+
 impl MultiplexMsg {
     pub(crate) fn write(&self, mut writer: impl io::Write) -> Result<(), io::Error> {
         match self {
