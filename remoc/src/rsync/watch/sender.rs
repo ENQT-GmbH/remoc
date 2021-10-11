@@ -204,7 +204,7 @@ where
         let (successor_tx, successor_rx) = tokio::sync::oneshot::channel();
         *self.successor_tx.lock().unwrap() = Some(successor_tx);
 
-        let port = PortSerializer::connect(|connect, allocator| {
+        let port = PortSerializer::connect(|connect| {
             tokio::spawn(async move {
                 // Sender has been dropped after sending, so we receive its channels.
                 let SenderInner { tx, remote_send_err_rx, current_err, .. } = match successor_rx.await {
@@ -224,7 +224,7 @@ where
                 };
 
                 // Decode raw received data using remote receiver.
-                let mut remote_rx = remote::Receiver::<Result<T, RecvError>, Codec>::new(raw_rx, allocator);
+                let mut remote_rx = remote::Receiver::<Result<T, RecvError>, Codec>::new(raw_rx);
 
                 // Process events.
                 loop {
@@ -287,7 +287,7 @@ where
         let remote_send_err_tx2 = remote_send_err_tx.clone();
 
         // Accept chmux port request.
-        PortDeserializer::accept(port, |local_port, request, allocator| {
+        PortDeserializer::accept(port, |local_port, request| {
             tokio::spawn(async move {
                 // Accept chmux connection request.
                 let (raw_tx, mut raw_rx) = match request.accept_from(local_port).await {
@@ -299,7 +299,7 @@ where
                 };
 
                 // Encode data using remote sender for sending.
-                let mut remote_tx = remote::Sender::<Result<T, RecvError>, Codec>::new(raw_tx, allocator);
+                let mut remote_tx = remote::Sender::<Result<T, RecvError>, Codec>::new(raw_tx);
 
                 // Process events.
                 let mut backchannel_active = true;

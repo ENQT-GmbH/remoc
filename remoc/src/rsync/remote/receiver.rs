@@ -66,11 +66,7 @@ pub struct PortDeserializer {
         u32,
         (
             chmux::PortNumber,
-            Box<
-                dyn FnOnce(chmux::PortNumber, chmux::Request, chmux::PortAllocator) -> BoxFuture<'static, ()>
-                    + Send
-                    + 'static,
-            >,
+            Box<dyn FnOnce(chmux::PortNumber, chmux::Request) -> BoxFuture<'static, ()> + Send + 'static>,
         ),
     >,
     handle_storage: HandleStorage,
@@ -102,9 +98,7 @@ impl PortDeserializer {
     /// Returns the local port number and calls the specified function with the received connect request.
     pub fn accept<E>(
         remote_port: u32,
-        callback: impl FnOnce(chmux::PortNumber, chmux::Request, chmux::PortAllocator) -> BoxFuture<'static, ()>
-            + Send
-            + 'static,
+        callback: impl FnOnce(chmux::PortNumber, chmux::Request) -> BoxFuture<'static, ()> + Send + 'static,
     ) -> Result<u32, E>
     where
         E: serde::de::Error,
@@ -230,8 +224,10 @@ where
                             continue 'restart;
                         };
 
-                        let pdf_ref =
-                            PortDeserializer::start(self.receiver.port_allocator(), self.receiver.handle_storage());
+                        let pdf_ref = PortDeserializer::start(
+                            self.receiver.port_allocator(),
+                            self.receiver.handle_storage(),
+                        );
                         self.item = Some(<Codec as CodecT>::deserialize(data.reader())?);
                         self.port_deser = Some(PortDeserializer::finish(pdf_ref));
 
@@ -318,7 +314,7 @@ where
                 // forward compatibility.
                 for request in requests {
                     if let Some((local_port, callback)) = pds.expected.remove(&request.remote_port()) {
-                        tokio::spawn(callback(local_port, request, self.receiver.port_allocator()));
+                        tokio::spawn(callback(local_port, request));
                     }
                 }
 

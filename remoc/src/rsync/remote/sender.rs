@@ -67,10 +67,8 @@ impl<T> Error for SendError<T> where T: fmt::Debug {}
 pub struct PortSerializer {
     allocator: chmux::PortAllocator,
     #[allow(clippy::type_complexity)]
-    requests: Vec<(
-        chmux::PortNumber,
-        Box<dyn FnOnce(chmux::Connect, chmux::PortAllocator) -> BoxFuture<'static, ()> + Send + 'static>,
-    )>,
+    requests:
+        Vec<(chmux::PortNumber, Box<dyn FnOnce(chmux::Connect) -> BoxFuture<'static, ()> + Send + 'static>)>,
     handle_storage: HandleStorage,
 }
 
@@ -99,7 +97,7 @@ impl PortSerializer {
     ///
     /// Returns the local port number and calls the specified function with the connect object.
     pub(crate) fn connect<E>(
-        callback: impl FnOnce(chmux::Connect, chmux::PortAllocator) -> BoxFuture<'static, ()> + Send + 'static,
+        callback: impl FnOnce(chmux::Connect) -> BoxFuture<'static, ()> + Send + 'static,
     ) -> Result<u32, E>
     where
         E: serde::ser::Error,
@@ -312,10 +310,9 @@ where
         // chmux connect requests.
         //
         // We have to spawn a task for this to ensure cancellation safety.
-        let allocator = self.sender.port_allocator();
         tokio::spawn(async move {
             for (callback, connect) in callbacks.into_iter().zip(connects.into_iter()) {
-                callback(connect, allocator.clone()).await;
+                callback(connect).await;
             }
         });
 

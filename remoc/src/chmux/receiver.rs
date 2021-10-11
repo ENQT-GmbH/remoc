@@ -9,9 +9,12 @@ use futures::{
 use std::{collections::VecDeque, error::Error, fmt, mem, pin::Pin, sync::Arc};
 use tokio::sync::{mpsc, oneshot, Mutex};
 
+use super::{
+    credit::{ChannelCreditReturner, UsedCredit},
+    mux::PortEvt,
+    PortAllocator, Request,
+};
 use crate::rsync::handle::HandleStorage;
-
-use super::{PortAllocator, Request, credit::{ChannelCreditReturner, UsedCredit}, mux::PortEvt, port_allocator};
 
 /// An error occured during receiving a data message.
 #[derive(Debug, Clone)]
@@ -547,7 +550,7 @@ impl Receiver {
     /// Returns the port allocator of the channel multiplexer.
     pub fn port_allocator(&self) -> PortAllocator {
         self.port_allocator.clone()
-    }    
+    }
 
     /// Returns the handle storage of the channel multiplexer.
     pub fn handle_storage(&self) -> HandleStorage {

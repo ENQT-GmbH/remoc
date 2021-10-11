@@ -1,9 +1,9 @@
 //! ReMOC🐙 — Remote multiplexed objects and channels
 //!
 
-mod connect;
 pub mod chmux;
 pub mod codec;
+mod connect;
 pub mod rfn;
 pub mod robj;
 pub mod rsync;

@@ -20,7 +20,12 @@ use tokio::sync::{mpsc, oneshot, Mutex};
 
 use crate::rsync::handle::HandleStorage;
 
-use super::{Connect, ConnectError, PortAllocator, PortNumber, client::ConnectResponse, credit::{AssignedCredits, CreditUser}, mux::PortEvt};
+use super::{
+    client::ConnectResponse,
+    credit::{AssignedCredits, CreditUser},
+    mux::PortEvt,
+    Connect, ConnectError, PortAllocator, PortNumber,
+};
 
 /// An error occured during sending of a message.
 #[derive(Debug, Clone)]
@@ -165,7 +170,8 @@ impl Sender {
     pub(crate) fn new(
         local_port: u32, remote_port: u32, chunk_size: usize, max_data_size: usize, tx: mpsc::Sender<PortEvt>,
         credits: CreditUser, hangup_recved: Weak<AtomicBool>,
-        hangup_notify: Weak<Mutex<Option<Vec<oneshot::Sender<()>>>>>, port_allocator: PortAllocator, handle_storage: HandleStorage,
+        hangup_notify: Weak<Mutex<Option<Vec<oneshot::Sender<()>>>>>, port_allocator: PortAllocator,
+        handle_storage: HandleStorage,
     ) -> Self {
         let (_drop_tx, drop_rx) = oneshot::channel();
         let tx_drop = tx.clone();

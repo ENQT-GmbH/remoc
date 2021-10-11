@@ -280,7 +280,7 @@ where
         };
 
         // Say hello to remote endpoint and exchange configurations.
-        log::tlrace!("{}: exchanging hello", &trace_id);
+        log::trace!("{}: exchanging hello", &trace_id);
         let fut = Self::exchange_hello(&trace_id, cfg, &mut transport_sink, &mut transport_stream);
         let (remote_protocol_version, remote_cfg) = match cfg.connection_timeout {
             Some(dur) => timeout(dur, fut).await.map_err(|_| ChMuxError::Timeout)??,
