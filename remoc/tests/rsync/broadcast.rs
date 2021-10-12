@@ -89,6 +89,7 @@ async fn simple() {
     for i in 0..128 {
         println!("Sending {}", i);
         let (reply_tx, mut reply_rx) = mpsc::channel::<_, _, 1, 1>(1);
+        let tx = tx.clone();
         tx.send((i, reply_tx)).unwrap();
 
         if i == 64 {

@@ -13,6 +13,13 @@ pub enum SendError<T> {
     Failed,
 }
 
+impl<T> SendError<T> {
+    /// True, if remote endpoint has closed the channel.
+    pub fn is_closed(&self) -> bool {
+        matches!(self, Self::Closed(_))
+    }
+}
+
 impl<T> fmt::Display for SendError<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
