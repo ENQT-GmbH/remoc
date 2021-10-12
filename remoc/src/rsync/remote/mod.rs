@@ -8,7 +8,7 @@ mod receiver;
 mod sender;
 
 pub use receiver::{PortDeserializer, Receiver, RecvError};
-pub use sender::{PortSerializer, SendError, SendErrorKind, Sender};
+pub use sender::{Closed, PortSerializer, SendError, SendErrorKind, Sender};
 
 use super::RemoteSend;
 use crate::{chmux, codec::CodecT};
