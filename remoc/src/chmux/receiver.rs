@@ -386,6 +386,10 @@ impl Receiver {
 
     /// Receives chunks of data over the channel.
     ///
+    /// This should be called when [recv_any](Self::recv_any) returns [Received::BigData]
+    /// to obtain the received data chunk by chunk.
+    /// [None] is returned after the last chunk of a message.
+    ///
     /// This is unlimited in size.
     pub async fn recv_chunk(&mut self) -> Result<Option<Bytes>, RecvChunkError> {
         if self.finished {

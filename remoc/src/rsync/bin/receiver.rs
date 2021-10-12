@@ -1,7 +1,9 @@
-use std::sync::{Arc, Mutex};
-
 use futures::FutureExt;
 use serde::{ser, Deserialize, Serialize};
+use std::{
+    fmt,
+    sync::{Arc, Mutex},
+};
 
 use super::{
     super::{
@@ -18,6 +20,12 @@ pub struct Receiver {
     pub(super) sender_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<chmux::Sender, ConnectError>>>,
     pub(super) receiver_rx: tokio::sync::mpsc::UnboundedReceiver<Result<chmux::Receiver, ConnectError>>,
     pub(super) interlock: Arc<Mutex<Interlock>>,
+}
+
+impl fmt::Debug for Receiver {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Receiver").finish_non_exhaustive()
+    }
 }
 
 /// A chmux channel receiver in transport.
