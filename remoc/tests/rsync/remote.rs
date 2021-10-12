@@ -97,6 +97,7 @@ async fn close_notify() {
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<u8>().await;
 
     println!("Checking that channel is not closed");
+    assert!(!a_tx.is_closed());
     let close_notify = a_tx.closed();
     if timeout(Duration::from_secs(1), close_notify).await.is_ok() {
         panic!("close notification before closure");
@@ -107,6 +108,7 @@ async fn close_notify() {
 
     println!("Waiting for close notification");
     a_tx.closed().await;
+    assert!(a_tx.is_closed());
 
     println!("Testing if send fails");
     if a_tx.send(1).await.is_ok() {

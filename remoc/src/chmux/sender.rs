@@ -115,7 +115,6 @@ pub struct Closed {
 
 impl Closed {
     fn new(hangup_notify: &Weak<std::sync::Mutex<Option<Vec<oneshot::Sender<()>>>>>) -> Self {
-        let hangup_notify = hangup_notify.clone();
         if let Some(hangup_notify) = hangup_notify.upgrade() {
             if let Some(notifiers) = hangup_notify.lock().unwrap().as_mut() {
                 let (tx, rx) = oneshot::channel();
