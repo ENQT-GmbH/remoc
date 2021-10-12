@@ -3,12 +3,9 @@ use remoc::{
     codec::JsonCodec,
     rsync::{broadcast, mpsc},
 };
-use std::time::Duration;
-use tokio::time::sleep;
 
 use crate::loop_channel_with_cfg;
 
-//#[tokio::test(flavor = "multi_thread", worker_threads = 16)]
 #[tokio::test]
 async fn simple() {
     crate::init();
@@ -67,8 +64,9 @@ async fn simple() {
         }
     });
 
+    let (rx3_go_tx, rx3_go_rx) = tokio::sync::oneshot::channel();
     let rx3_task = tokio::spawn(async move {
-        sleep(Duration::from_secs(5)).await;
+        rx3_go_rx.await.unwrap();
 
         let mut lagged = false;
         loop {
@@ -87,10 +85,15 @@ async fn simple() {
         assert!(lagged, "RX3 did not lag behind");
     });
 
+    let mut rx3_go_tx = Some(rx3_go_tx);
     for i in 0..128 {
         println!("Sending {}", i);
         let (reply_tx, mut reply_rx) = mpsc::channel::<_, _, 1, 1>(1);
         tx.send((i, reply_tx)).unwrap();
+
+        if i == 64 {
+            rx3_go_tx.take().unwrap().send(()).unwrap();
+        }
 
         for r in 1..=2 {
             println!("Waiting for reply {}/2", r);
