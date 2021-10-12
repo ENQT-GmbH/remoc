@@ -1,4 +1,3 @@
-use bytes::Bytes;
 use chmux::{PortsExhausted, SendError};
 use futures::{channel::oneshot, future::try_join, stream::StreamExt};
 use remoc::chmux;

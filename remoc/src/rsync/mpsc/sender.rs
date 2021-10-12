@@ -34,7 +34,7 @@ pub enum SendError<T> {
 }
 
 impl<T> SendError<T> {
-    /// True, if the remote end closed the channel.
+    /// True, if the remote endpoint closed the channel.
     pub fn is_closed(&self) -> bool {
         matches!(self, Self::Closed(_))
     }
