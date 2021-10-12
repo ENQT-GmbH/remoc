@@ -33,10 +33,22 @@ where
     T: RemoteSend,
 {
     let cfg = remoc::chmux::Cfg::default();
+    loop_channel_with_cfg(&cfg).await
+}
+
+pub async fn loop_channel_with_cfg<T>(
+    cfg: &remoc::chmux::Cfg,
+) -> (
+    (remote::Sender<T, JsonCodec>, remote::Receiver<T, JsonCodec>),
+    (remote::Sender<T, JsonCodec>, remote::Receiver<T, JsonCodec>),
+)
+where
+    T: RemoteSend,
+{
     loop_transport!(0, transport_a_tx, transport_a_rx, transport_b_tx, transport_b_rx);
     try_join!(
-        remoc::connect_framed(&cfg, transport_a_tx, transport_a_rx),
-        remoc::connect_framed(&cfg, transport_b_tx, transport_b_rx),
+        remoc::connect_framed(cfg, transport_a_tx, transport_a_rx),
+        remoc::connect_framed(cfg, transport_b_tx, transport_b_rx),
     )
     .expect("creating remote loop channel failed")
 }

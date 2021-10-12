@@ -1,4 +1,4 @@
-use futures::future::{self};
+use futures::future;
 use rand::Rng;
 use remoc::{codec::JsonCodec, rsync::mpsc};
 use std::time::Duration;

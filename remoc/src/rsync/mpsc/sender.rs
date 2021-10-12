@@ -199,9 +199,11 @@ where
         tokio::spawn(async move {
             loop {
                 tokio::select! {
-                    _ = closed_rx.changed() => {
-                        if *closed_rx.borrow() {
-                            break;
+                    res = closed_rx.changed() => {
+                        match res {
+                            Ok(()) if *closed_rx.borrow() => break,
+                            Ok(()) => (),
+                            Err(_) => break,
                         }
                     },
                     _ = dropped_rx.recv() => break,

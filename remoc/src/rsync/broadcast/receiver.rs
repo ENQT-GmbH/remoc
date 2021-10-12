@@ -32,6 +32,18 @@ pub enum RecvError {
     RemoteListen(chmux::ListenerError),
 }
 
+impl RecvError {
+    /// True, if all senders have been dropped.
+    pub fn is_closed(&self) -> bool {
+        matches!(self, Self::Closed)
+    }
+
+    /// True, if the receiver has lagged behind and messages have been lost.
+    pub fn is_lagged(&self) -> bool {
+        matches!(self, Self::Lagged)
+    }
+}
+
 impl fmt::Display for RecvError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
