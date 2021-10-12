@@ -76,6 +76,12 @@ pub struct Receiver<T, Codec> {
     pub(super) interlock: Arc<Mutex<Interlock>>,
 }
 
+impl<T, Codec> fmt::Debug for Receiver<T, Codec> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Receiver").finish_non_exhaustive()
+    }
+}
+
 /// A raw chmux channel receiver in transport.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TransportedReceiver<T, Codec> {

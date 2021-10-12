@@ -19,6 +19,8 @@ use crate::{
     codec::{CodecT, SerializationError},
 };
 
+pub use super::super::remote::Closed;
+
 /// An error that occured during remote sending.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SendError<T> {
@@ -42,6 +44,14 @@ pub enum SendErrorKind {
 impl<T> SendError<T> {
     pub(crate) fn new(kind: SendErrorKind, item: T) -> Self {
         Self { kind, item }
+    }
+
+    /// Returns true, if error it due to channel being closed.
+    pub fn is_closed(&self) -> bool {
+        match &self.kind {
+            SendErrorKind::Send(err) => err.is_closed(),
+            _ => false,
+        }
     }
 }
 
@@ -87,6 +97,12 @@ pub struct Sender<T, Codec> {
     pub(super) interlock: Arc<Mutex<Interlock>>,
 }
 
+impl<T, Codec> fmt::Debug for Sender<T, Codec> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Sender").finish_non_exhaustive()
+    }
+}
+
 /// A local/remote channel sender in transport.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TransportedSender<T, Codec> {
@@ -103,26 +119,31 @@ where
     T: Serialize + Send + 'static,
     Codec: CodecT,
 {
-    async fn connect(&mut self) {
+    /// Establishes the connection and returns a reference to the remote sender.
+    async fn get(&mut self) -> Result<&mut remote::Sender<T, Codec>, ConnectError> {
         if self.sender.is_none() {
             self.sender = Some(self.sender_rx.recv().await.unwrap_or(Err(ConnectError::Dropped)));
         }
-    }
 
-    /// Establishes the connection and returns a reference to the remote sender.
-    async fn get(&mut self) -> Result<&mut remote::Sender<T, Codec>, ConnectError> {
-        self.connect().await;
         self.sender.as_mut().unwrap().as_mut().map_err(|err| err.clone())
     }
 
     /// Sends an item over the channel.
-    ///
-    /// The item may contain ports that will be serialized and connected as well.
     pub async fn send(&mut self, item: T) -> Result<(), SendError<T>> {
         match self.get().await {
             Ok(sender) => Ok(sender.send(item).await?),
             Err(err) => Err(SendError::new(SendErrorKind::Connect(err), item)),
         }
+    }
+
+    /// True, once the remote endpoint has closed its receiver.
+    pub async fn is_closed(&mut self) -> Result<bool, ConnectError> {
+        Ok(self.get().await?.is_closed())
+    }
+
+    /// Returns a future that will resolve when the remote endpoint closes its receiver.
+    pub async fn closed(&mut self) -> Result<Closed, ConnectError> {
+        Ok(self.get().await?.closed())
     }
 }
 
