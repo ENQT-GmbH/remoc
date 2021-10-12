@@ -1,32 +1,8 @@
-use std::time::Duration;
-
-use bytes::Bytes;
-use futures::{try_join, StreamExt};
 use rand::{Rng, RngCore};
-use remoc::{
-    chmux,
-    codec::JsonCodec,
-    rsync::{remote, RemoteSend},
-};
+use std::time::Duration;
 use tokio::time::timeout;
 
-use crate::loop_transport;
-
-async fn loop_channel<T>() -> (
-    (remote::Sender<T, JsonCodec>, remote::Receiver<T, JsonCodec>),
-    (remote::Sender<T, JsonCodec>, remote::Receiver<T, JsonCodec>),
-)
-where
-    T: RemoteSend,
-{
-    let cfg = chmux::Cfg::default();
-    loop_transport!(0, transport_a_tx, transport_a_rx, transport_b_tx, transport_b_rx);
-    try_join!(
-        remoc::connect_framed(&cfg, transport_a_tx, transport_a_rx),
-        remoc::connect_framed(&cfg, transport_b_tx, transport_b_rx),
-    )
-    .expect("creating remote loop channel failed")
-}
+use crate::loop_channel;
 
 #[tokio::test]
 async fn negation() {

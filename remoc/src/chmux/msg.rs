@@ -193,6 +193,7 @@ impl MultiplexMsg {
             }
             MultiplexMsg::PortData { port, first, last, wait, ports } => {
                 writer.write_u8(MSG_PORT_DATA)?;
+                writer.write_u32::<LE>(*port)?;
                 let mut flags = 0;
                 if *first {
                     flags |= MSG_PORT_DATA_FLAG_FIRST;
@@ -204,7 +205,6 @@ impl MultiplexMsg {
                     flags |= MSG_PORT_DATA_FLAG_WAIT;
                 }
                 writer.write_u8(flags)?;
-                writer.write_u32::<LE>(*port)?;
                 for p in ports {
                     writer.write_u32::<LE>(*p)?;
                 }
