@@ -34,6 +34,13 @@ pub enum SendError {
     RemoteForward,
 }
 
+impl SendError {
+    /// True, if all receivers have been dropped.
+    pub fn is_closed(&self) -> bool {
+        matches!(self, Self::Closed)
+    }
+}
+
 impl fmt::Display for SendError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -142,6 +149,7 @@ where
         self.inner.as_ref().unwrap().tx.is_closed()
     }
 
+    /// Creates a new receiver subscribed to this sender.
     pub fn subscribe(&self) -> Receiver<T, Codec> {
         let inner = self.inner.as_ref().unwrap();
         Receiver::new(inner.tx.subscribe(), inner.remote_send_err_tx.clone())
@@ -302,20 +310,19 @@ where
                 let mut remote_tx = remote::Sender::<Result<T, RecvError>, Codec>::new(raw_tx);
 
                 // Process events.
-                let mut backchannel_active = true;
                 loop {
                     tokio::select! {
                         biased;
 
                         // Backchannel message from remote endpoint.
-                        backchannel_msg = raw_rx.recv(), if backchannel_active => {
+                        backchannel_msg = raw_rx.recv() => {
                             match backchannel_msg {
                                 Ok(Some(mut msg)) if msg.remaining() >= 1 => {
                                     if msg.get_u8() == BACKCHANNEL_MSG_ERROR {
                                         let _ = remote_send_err_tx.try_send(RemoteSendError::Forward);
                                     }
                                 }
-                                _ => backchannel_active = false,
+                                _ => break,
                             }
                         }
 

@@ -42,6 +42,13 @@ pub enum ChangedError {
     Closed,
 }
 
+impl ChangedError {
+    /// True, if remote endpoint has closed channel.
+    pub fn is_closed(&self) -> bool {
+        matches!(self, Self::Closed)
+    }
+}
+
 impl fmt::Display for ChangedError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
