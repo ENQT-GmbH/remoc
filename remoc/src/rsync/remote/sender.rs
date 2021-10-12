@@ -44,6 +44,14 @@ impl<T> SendError<T> {
     pub(crate) fn new(kind: SendErrorKind, item: T) -> Self {
         Self { kind, item }
     }
+
+    /// Returns true, if error it due to channel being closed.
+    pub fn is_closed(&self) -> bool {
+        match &self.kind {
+            SendErrorKind::Send(err) => err.is_closed(),
+            _ => false,
+        }
+    }
 }
 
 impl fmt::Display for SendErrorKind {

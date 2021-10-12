@@ -1,13 +1,11 @@
 use bytes::Bytes;
 use chmux::{PortsExhausted, SendError};
-use futures::{
-    channel::{mpsc, oneshot},
-    future::try_join,
-    stream::StreamExt,
-};
+use futures::{channel::oneshot, future::try_join, stream::StreamExt};
 use remoc::chmux;
-use std::{io, time::Duration};
+use std::time::Duration;
 use tokio::time::sleep;
+
+use crate::loop_transport;
 
 fn cfg(trace_id: &str) -> chmux::Cfg {
     chmux::Cfg {
@@ -45,14 +43,8 @@ fn cfg2(trace_id: &str) -> chmux::Cfg {
 async fn basic() {
     crate::init();
 
-    let queue_length = 0;
-    let (a_tx, b_rx) = mpsc::channel::<Bytes>(queue_length);
-    let (b_tx, a_rx) = mpsc::channel::<Bytes>(queue_length);
-
-    let a_rx = a_rx.map(Ok::<_, io::Error>);
-    let b_rx = b_rx.map(Ok::<_, io::Error>);
-
     println!("Connecting...");
+    loop_transport!(0, a_tx, a_rx, b_tx, b_rx);
     let ((a_mux, a_client, a_server), (b_mux, b_client, mut b_server)) =
         try_join(chmux::ChMux::new(&cfg("a_mux"), a_tx, a_rx), chmux::ChMux::new(&cfg2("b_mux"), b_tx, b_rx))
             .await
@@ -154,14 +146,8 @@ async fn basic() {
 async fn hangup() {
     crate::init();
 
-    let queue_length = 10;
-    let (a_tx, b_rx) = mpsc::channel::<Bytes>(queue_length);
-    let (b_tx, a_rx) = mpsc::channel::<Bytes>(queue_length);
-
-    let a_rx = a_rx.map(Ok::<_, io::Error>);
-    let b_rx = b_rx.map(Ok::<_, io::Error>);
-
     println!("Connecting...");
+    loop_transport!(0, a_tx, a_rx, b_tx, b_rx);
     let ((a_mux, a_client, a_server), (b_mux, b_client, mut b_server)) =
         try_join(chmux::ChMux::new(&cfg("a_mux"), a_tx, a_rx), chmux::ChMux::new(&cfg2("b_mux"), b_tx, b_rx))
             .await

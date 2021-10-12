@@ -14,6 +14,5 @@ mod connect;
 pub mod rfn;
 pub mod robj;
 pub mod rsync;
-pub mod transport;
 
 pub use connect::{connect_framed, connect_io, ConnectError};
