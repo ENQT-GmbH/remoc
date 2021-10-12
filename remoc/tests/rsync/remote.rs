@@ -88,7 +88,7 @@ async fn big_msg() {
     }
     drop(a_tx);
 
-    reply_task.await.expect("reply task failed");    
+    reply_task.await.expect("reply task failed");
 }
 
 #[tokio::test]

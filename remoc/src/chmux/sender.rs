@@ -1,6 +1,6 @@
 use bytes::Bytes;
 use futures::{
-    future::BoxFuture,
+    future::{self, BoxFuture},
     ready,
     sink::Sink,
     task::{Context, Poll},
@@ -114,18 +114,24 @@ pub struct Closed {
 }
 
 impl Closed {
-    fn new(hangup_notify: &Weak<Mutex<Option<Vec<oneshot::Sender<()>>>>>) -> Self {
+    fn new(hangup_notify: &Weak<std::sync::Mutex<Option<Vec<oneshot::Sender<()>>>>>) -> Self {
         let hangup_notify = hangup_notify.clone();
-        let fut = async move {
-            if let Some(hangup_notify) = hangup_notify.upgrade() {
-                if let Some(notifiers) = hangup_notify.lock().await.as_mut() {
-                    let (tx, rx) = oneshot::channel();
-                    notifiers.push(tx);
-                    let _ = rx.await;
+        if let Some(hangup_notify) = hangup_notify.upgrade() {
+            if let Some(notifiers) = hangup_notify.lock().unwrap().as_mut() {
+                let (tx, rx) = oneshot::channel();
+                notifiers.push(tx);
+                Self {
+                    fut: async move {
+                        let _ = rx.await;
+                    }
+                    .boxed(),
                 }
+            } else {
+                Self { fut: future::ready(()).boxed() }
             }
-        };
-        Self { fut: fut.boxed() }
+        } else {
+            Self { fut: future::ready(()).boxed() }
+        }
     }
 }
 
@@ -145,7 +151,7 @@ pub struct Sender {
     tx: mpsc::Sender<PortEvt>,
     credits: CreditUser,
     hangup_recved: Weak<AtomicBool>,
-    hangup_notify: Weak<Mutex<Option<Vec<oneshot::Sender<()>>>>>,
+    hangup_notify: Weak<std::sync::Mutex<Option<Vec<oneshot::Sender<()>>>>>,
     port_allocator: PortAllocator,
     handle_storage: HandleStorage,
     _drop_tx: oneshot::Sender<()>,
@@ -169,7 +175,7 @@ impl Sender {
     pub(crate) fn new(
         local_port: u32, remote_port: u32, chunk_size: usize, max_data_size: usize, tx: mpsc::Sender<PortEvt>,
         credits: CreditUser, hangup_recved: Weak<AtomicBool>,
-        hangup_notify: Weak<Mutex<Option<Vec<oneshot::Sender<()>>>>>, port_allocator: PortAllocator,
+        hangup_notify: Weak<std::sync::Mutex<Option<Vec<oneshot::Sender<()>>>>>, port_allocator: PortAllocator,
         handle_storage: HandleStorage,
     ) -> Self {
         let (_drop_tx, drop_rx) = oneshot::channel();
