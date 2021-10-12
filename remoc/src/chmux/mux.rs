@@ -22,7 +22,7 @@ use std::{
     time::Duration,
 };
 use tokio::{
-    sync::{mpsc, mpsc::Permit, oneshot, Mutex},
+    sync::{mpsc, mpsc::Permit, oneshot},
     time::{sleep, timeout},
     try_join,
 };
@@ -78,7 +78,7 @@ enum PortState {
         /// Remote receiver has been closed, thus no more data should be sent to remote port.
         remote_receiver_closed: Arc<AtomicBool>,
         /// Notification senders for when remote receiver has been closed.
-        remote_receiver_closed_notify: Arc<Mutex<Option<Vec<oneshot::Sender<()>>>>>,
+        remote_receiver_closed_notify: Arc<std::sync::Mutex<Option<Vec<oneshot::Sender<()>>>>>,
         /// Remote receiver has been dropped, thus no more sent data will be processed and
         /// no port credits will be returned.
         remote_receiver_dropped: bool,
@@ -458,7 +458,7 @@ where
         let (receiver_credit_monitor, receiver_credit_returner) =
             credit_monitor_pair(self.local_cfg.receive_buffer);
 
-        let hangup_notify = Arc::new(Mutex::new(Some(Vec::new())));
+        let hangup_notify = Arc::new(std::sync::Mutex::new(Some(Vec::new())));
         let hangup_recved = Arc::new(AtomicBool::new(false));
 
         if let Some(PortState::Connected { remote_port, .. }) = self.ports.insert(
@@ -1070,7 +1070,8 @@ where
                 }
             }
 
-            // Remote hang up indicates that it does not want to receive any more data on a port.
+            // Remote indicates that the receiver for a port has been closed and it wishes
+            // to receive no more data on that port.
             MultiplexMsg::ReceiveClose { port } => {
                 if let Some(PortState::Connected {
                     sender_credit_provider,
@@ -1080,13 +1081,16 @@ where
                 }) = self.ports.get_mut(&port)
                 {
                     if !remote_receiver_closed.load(Ordering::SeqCst) {
+                        log::trace!("disable credits provider");
+
                         // Disable credits provider.
                         sender_credit_provider.close(true);
 
                         // Send hangup notifications.
                         remote_receiver_closed.store(true, Ordering::SeqCst);
-                        let notifies = remote_receiver_closed_notify.lock().await.take().unwrap();
+                        let notifies = remote_receiver_closed_notify.lock().unwrap().take().unwrap();
                         for tx in notifies {
+                            log::trace!("sending close notify");
                             let _ = tx.send(());
                         }
 
@@ -1121,7 +1125,7 @@ where
 
                         // Send hangup notifications.
                         remote_receiver_closed.store(true, Ordering::SeqCst);
-                        let notifies = remote_receiver_closed_notify.lock().await.take().unwrap();
+                        let notifies = remote_receiver_closed_notify.lock().unwrap().take().unwrap();
                         for tx in notifies {
                             let _ = tx.send(());
                         }
