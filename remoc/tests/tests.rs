@@ -7,6 +7,7 @@ use std::{net::Ipv4Addr, sync::Once};
 use tokio::net::{TcpListener, TcpStream};
 
 mod chmux;
+mod codec;
 mod rsync;
 
 static INIT: Once = Once::new();
