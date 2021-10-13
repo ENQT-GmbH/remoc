@@ -174,6 +174,7 @@ where
         usize::try_from(self.len).map_err(|_| UsizeExceeded(self.len))
     }
 
+    /// Fetches and caches the binary data from the provider.
     async fn fetch(&self) -> Result<(), FetchError> {
         let mut fetch_task = self.fetch_task.lock().await;
 
