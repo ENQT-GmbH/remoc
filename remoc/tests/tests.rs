@@ -3,9 +3,11 @@ use remoc::{
     codec::JsonCodec,
     rsync::{remote, RemoteSend},
 };
-use std::sync::Once;
+use std::{net::Ipv4Addr, sync::Once};
+use tokio::net::{TcpListener, TcpStream};
 
 mod chmux;
+mod codec;
 mod rsync;
 
 static INIT: Once = Once::new();
@@ -51,4 +53,29 @@ where
         remoc::connect_framed(cfg, transport_b_tx, transport_b_rx),
     )
     .expect("creating remote loop channel failed")
+}
+
+pub async fn tcp_loop_channel<T>(
+    tcp_port: u16,
+) -> (
+    (remote::Sender<T, JsonCodec>, remote::Receiver<T, JsonCodec>),
+    (remote::Sender<T, JsonCodec>, remote::Receiver<T, JsonCodec>),
+)
+where
+    T: RemoteSend,
+{
+    let server = async move {
+        let listener = TcpListener::bind((Ipv4Addr::new(127, 0, 0, 1), tcp_port)).await.unwrap();
+        let (socket, _) = listener.accept().await.unwrap();
+        let (socket_rx, socket_tx) = socket.into_split();
+        remoc::connect_io(Default::default(), socket_rx, socket_tx).await
+    };
+
+    let client = async move {
+        let socket = TcpStream::connect((Ipv4Addr::new(127, 0, 0, 1), tcp_port)).await.unwrap();
+        let (socket_rx, socket_tx) = socket.into_split();
+        remoc::connect_io(Default::default(), socket_rx, socket_tx).await
+    };
+
+    try_join!(server, client).expect("creating remote TCP loop channel failed")
 }

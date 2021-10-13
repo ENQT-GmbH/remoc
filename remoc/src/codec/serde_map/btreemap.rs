@@ -1,7 +1,9 @@
-//! Serializes a `BTreeMap<K, V>` as a `Vec<(K, V)>`.
+//! Serializes and deserializes a [BTreeMap]`<K, V>` as a [Vec]`<(K, V)>`.
 //!
-//! Use by applying the attribute `#[serde(with="chmux::serde_map::btreemap")]` on a field.
+//! This is necessary for the [JsonCodec](crate::codec::JsonCodec) since it does not
+//! support non-string keys on dictionaries.
 //!
+//! Use by applying the attribute `#[serde(with="remoc::codec::serde_map::btreemap")]` on a field.
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::BTreeMap;

@@ -2,7 +2,7 @@ use rand::{Rng, RngCore};
 use std::time::Duration;
 use tokio::time::timeout;
 
-use crate::loop_channel;
+use crate::{loop_channel, tcp_loop_channel};
 
 #[tokio::test]
 async fn negation() {
@@ -35,6 +35,42 @@ async fn negation() {
 async fn big_msg() {
     crate::init();
     let ((mut a_tx, mut a_rx), (mut b_tx, mut b_rx)) = loop_channel::<Vec<u8>>().await;
+
+    let reply_task = tokio::spawn(async move {
+        while let Some(mut msg) = b_rx.recv().await.unwrap() {
+            msg.reverse();
+            match b_tx.send(msg).await {
+                Ok(()) => (),
+                Err(err) if err.is_closed() => break,
+                Err(err) => panic!("reply sending failed: {}", err),
+            }
+        }
+    });
+
+    let mut rng = rand::thread_rng();
+    for _ in 1..10 {
+        let size = rng.gen_range(0..1_000_000);
+        let mut data: Vec<u8> = Vec::new();
+        data.resize(size, 0);
+        rng.fill_bytes(&mut data);
+
+        let data_send = data.clone();
+        println!("Sending message of length {}", data.len());
+        a_tx.send(data_send).await.unwrap();
+        let mut data_recv = a_rx.recv().await.unwrap().unwrap();
+        println!("Received reply of length {}", data_recv.len());
+        data_recv.reverse();
+        assert_eq!(data, data_recv, "wrong reply");
+    }
+    drop(a_tx);
+
+    reply_task.await.expect("reply task failed");
+}
+
+#[tokio::test]
+async fn tcp_big_msg() {
+    crate::init();
+    let ((mut a_tx, mut a_rx), (mut b_tx, mut b_rx)) = tcp_loop_channel::<Vec<u8>>(9877).await;
 
     let reply_task = tokio::spawn(async move {
         while let Some(mut msg) = b_rx.recv().await.unwrap() {
