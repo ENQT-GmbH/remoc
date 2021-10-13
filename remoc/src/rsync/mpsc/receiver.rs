@@ -161,7 +161,7 @@ where
         *self.successor_tx.lock().unwrap() = Some(successor_tx);
 
         let port = PortSerializer::connect(|connect| {
-            tokio::spawn(async move {
+            async move {
                 // Receiver has been dropped after sending, so we receive its channels.
                 let ReceiverInner { mut rx, closed_tx, remote_send_err_tx } = match successor_rx.await {
                     Ok(inner) => inner,
@@ -217,8 +217,7 @@ where
                         }
                     }
                 }
-            })
-            .map(|_| ())
+            }
             .boxed()
         })?;
 
@@ -249,7 +248,7 @@ where
         let (remote_send_err_tx, mut remote_send_err_rx) = tokio::sync::watch::channel(None);
 
         PortDeserializer::accept(port, |local_port, request| {
-            tokio::spawn(async move {
+            async move {
                 // Accept chmux connection request.
                 let (mut raw_tx, raw_rx) = match request.accept_from(local_port).await {
                     Ok(tx_rx) => tx_rx,
@@ -300,8 +299,7 @@ where
                         }
                     }
                 }
-            })
-            .map(|_| ())
+            }
             .boxed()
         })?;
 
