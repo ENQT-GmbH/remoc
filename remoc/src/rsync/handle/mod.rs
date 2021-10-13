@@ -59,6 +59,10 @@ impl HandleStorage {
     }
 
     /// Insert a new entry into the storage and return its key.
+    ///
+    /// # Panics
+    /// Panics when a duplicate UUID is generated and inserted into the storage.
+    /// The probability of this is happening is extremely low.
     pub fn insert(&self, entry: HandleEntry) -> Uuid {
         let key = Uuid::new_v4();
         let mut entries = self.entries.lock().unwrap();
@@ -158,12 +162,10 @@ impl<Codec> Default for State<Codec> {
 impl<Codec> fmt::Debug for State<Codec> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::Empty => write!(f, "Empty"),
-            Self::LocalCreated { .. } => f.debug_struct("LocalCreated").finish_non_exhaustive(),
-            Self::LocalReceived { id, .. } => {
-                f.debug_struct("LocalReceived").field("id", id).finish_non_exhaustive()
-            }
-            Self::Remote { id, .. } => f.debug_struct("Remote").field("id", id).finish_non_exhaustive(),
+            Self::Empty => write!(f, "EmptyHandle"),
+            Self::LocalCreated { .. } => write!(f, "LocalCreatedHandle"),
+            Self::LocalReceived { id, .. } => f.debug_struct("LocalReceivedHandle").field("id", id).finish(),
+            Self::Remote { id, .. } => f.debug_struct("RemoteHandle").field("id", id).finish(),
         }
     }
 }
@@ -180,13 +182,14 @@ pub struct Handle<T, Codec> {
 
 impl<T, Codec> fmt::Debug for Handle<T, Codec> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Handle").field("state", &self.state).finish_non_exhaustive()
+        write!(f, "{:?}", &self.state)
     }
 }
 
 impl<T, Codec> Handle<T, Codec>
 where
     T: Send + Sync + 'static,
+    Codec: CodecT,
 {
     /// Creates a new handle for the value.
     pub fn new(value: T) -> Self {
@@ -274,6 +277,18 @@ where
             }
             None => Err(HandleError::Unknown),
         }
+    }
+
+    /// Change the data type of the handle.
+    ///
+    /// Before the handle can be dereferenced the type must be changed back to the original
+    /// type, otherwise a [HandleError::MismatchedType] error will occur.
+    ///
+    /// This is useful when you need to send a handle of a private type to a remote endpoint.
+    /// You can do so by creating a public, empty proxy struct and sending handles of this
+    /// type to remote endpoints.
+    pub fn cast<TNew>(self) -> Handle<TNew, Codec> {
+        Handle { state: self.state.clone(), _data: PhantomData }
     }
 }
 

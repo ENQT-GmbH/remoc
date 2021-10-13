@@ -5,13 +5,14 @@ use crate::loop_channel;
 #[tokio::test]
 async fn simple() {
     crate::init();
-    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<oneshot::Receiver<i16, JsonCodec>>().await;
+    let ((mut a_tx, _), (_, mut b_rx)) =
+        loop_channel::<(oneshot::Sender<i16, JsonCodec>, oneshot::Receiver<i16, JsonCodec>)>().await;
 
-    println!("Sending remote oneshot channel receiver");
+    println!("Sending remote oneshot channel sender and receiver");
     let (tx, rx) = oneshot::channel();
-    a_tx.send(rx).await.unwrap();
-    println!("Receiving remote oneshot channel receiver");
-    let rx = b_rx.recv().await.unwrap().unwrap();
+    a_tx.send((tx, rx)).await.unwrap();
+    println!("Receiving remote oneshot channel sender and receiver");
+    let (tx, rx) = b_rx.recv().await.unwrap().unwrap();
 
     let i = 512;
     println!("Sending {}", i);
