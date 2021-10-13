@@ -14,6 +14,8 @@ async fn simple() {
     let local_handle = Handle::new(value.clone());
     println!("Created handle: {:?}", &local_handle);
 
+    let _other_handle: Handle<_, JsonCodec> = Handle::new(123);
+
     println!("Sending handle to remote");
     a_tx.send(local_handle).await.unwrap();
     println!("Receiving handle");

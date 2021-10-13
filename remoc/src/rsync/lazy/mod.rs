@@ -1,15 +1,19 @@
 //! Lazy transmission of values.
 
+use futures::{
+    future::{self, BoxFuture, MaybeDone},
+    FutureExt,
+};
 use serde::{Deserialize, Serialize};
-use std::{error::Error, fmt, ops::Deref};
+use std::{error::Error, fmt, marker::PhantomData, ops::Deref, pin::Pin, sync::Arc};
 use tokio::sync::Mutex;
 
-use super::{oneshot, remote, RemoteSend};
+use super::{mpsc, oneshot, remote, RemoteSend};
 use crate::{chmux, codec::CodecT};
 
-/// An error occured during receiving a lazily transmitted value.
+/// An error occured during fetching a lazily transmitted value.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum LazyError {
+pub enum FetchError {
     /// Provider dropped before getting the value.
     Dropped,
     /// Receiving from a remote endpoint failed.
@@ -20,7 +24,7 @@ pub enum LazyError {
     RemoteListen(chmux::ListenerError),
 }
 
-impl fmt::Display for LazyError {
+impl fmt::Display for FetchError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::Dropped => write!(f, "lazy provider dropped"),
@@ -31,7 +35,7 @@ impl fmt::Display for LazyError {
     }
 }
 
-impl From<oneshot::RecvError> for LazyError {
+impl From<oneshot::RecvError> for FetchError {
     fn from(err: oneshot::RecvError) -> Self {
         match err {
             oneshot::RecvError::Closed => Self::Dropped,
@@ -42,7 +46,7 @@ impl From<oneshot::RecvError> for LazyError {
     }
 }
 
-impl Error for LazyError {}
+impl Error for FetchError {}
 
 /// Lazy provider.
 ///
@@ -86,15 +90,20 @@ impl Drop for Provider {
 /// Lazy consumer.
 ///
 /// Allow the reception of a value when requested.
+#[derive(Serialize, Deserialize)]
+#[serde(bound(serialize = "T: RemoteSend, Codec: CodecT"))]
+#[serde(bound(deserialize = "T: RemoteSend, Codec: CodecT"))]
 pub struct Lazy<T, Codec> {
-    value: tokio::sync::RwLock<Option<Result<T, LazyError>>>,
-    request_tx: Mutex<Option<oneshot::Sender<(), Codec>>>,
-    value_rx: Mutex<Option<oneshot::Receiver<T, Codec>>>,
+    request_tx: mpsc::Sender<oneshot::Sender<T, Codec>, Codec, 1>,
+    #[serde(skip)]
+    #[serde(default)]
+    #[allow(clippy::type_complexity)]
+    fetch_task: Arc<Mutex<Option<Pin<Box<MaybeDone<BoxFuture<'static, Result<Arc<T>, FetchError>>>>>>>>,
 }
 
 impl<T, Codec> fmt::Debug for Lazy<T, Codec> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Lazy").finish_non_exhaustive()
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Lazy").finish()
     }
 }
 
@@ -115,52 +124,44 @@ where
 
     /// Creates a new pair of lazy consumer and provider with the specified value.
     pub fn provided(value: T) -> (Self, Provider) {
-        let (value_tx, value_rx) = oneshot::channel();
-        let (request_tx, request_rx) = oneshot::channel();
+        let (request_tx, mut request_rx) = mpsc::channel::<oneshot::Sender<T, Codec>, _, 1, 1>(1);
         let (keep_tx, keep_rx) = tokio::sync::oneshot::channel();
 
         tokio::spawn(async move {
             tokio::select! {
-                biased;
-
+                res = request_rx.recv() => {
+                    if let Ok(Some(value_tx)) = res {
+                        let _ = value_tx.send(value);
+                    }
+                },
                 Err(_) = keep_rx => (),
-
-                Ok(()) = request_rx => {
-                    let _ = value_tx.send(value);
-                }
             }
         });
 
         let provider = Provider { keep_tx: Some(keep_tx) };
-        let lazy = Lazy {
-            value: tokio::sync::RwLock::new(None),
-            request_tx: Mutex::new(Some(request_tx)),
-            value_rx: Mutex::new(Some(value_rx)),
-        };
+        let lazy = Lazy { request_tx, fetch_task: Default::default() };
 
         (lazy, provider)
     }
 
     /// Fetches and caches the value from the provider.
     async fn fetch(&self) {
-        if self.value.read().await.is_some() {
-            return;
+        let mut fetch_task = self.fetch_task.lock().await;
+
+        if fetch_task.is_none() {
+            let req_tx = self.request_tx.clone();
+            *fetch_task = Some(Box::pin(future::maybe_done(
+                async move {
+                    let (value_tx, value_rx) = oneshot::channel();
+                    let _ = req_tx.send(value_tx).await;
+                    let value = value_rx.await?;
+                    Ok(Arc::new(value))
+                }
+                .boxed(),
+            )));
         }
 
-        let mut value = self.value.write().await;
-        if value.is_some() {
-            return;
-        }
-
-        if let Some(request_tx) = self.request_tx.lock().await.take() {
-            let _ = request_tx.send(());
-        }
-
-        let mut value_rx_opt = self.value_rx.lock().await;
-        if let Some(value_rx) = &mut *value_rx_opt {
-            *value = Some(value_rx.await.map_err(|err| err.into()));
-            *value_rx_opt = None;
-        }
+        fetch_task.as_mut().unwrap().await;
     }
 
     /// Requests the value and returns a reference to it.
@@ -168,27 +169,33 @@ where
     /// The value is stored locally once received and subsequent
     /// invocations of this function will return a reference to
     /// the local copy.
-    pub async fn get(&self) -> Result<Ref<'_, T>, LazyError> {
+    pub async fn get(&self) -> Result<Ref<'_, T>, FetchError> {
         self.fetch().await;
 
-        let guard = self.value.read().await;
-        if let Err(err) = guard.as_ref().unwrap() {
-            return Err(err.clone());
+        let mut res_task = self.fetch_task.lock().await;
+        match res_task.as_mut().unwrap().as_mut().output_mut().unwrap() {
+            Ok(value) => Ok(Ref { value: value.clone(), _lifetime: PhantomData }),
+            Err(err) => Err(err.clone()),
         }
-
-        let value_guard = tokio::sync::RwLockReadGuard::map(guard, |o| o.as_ref().unwrap().as_ref().unwrap());
-        Ok(Ref(value_guard))
     }
 
     /// Consumes this object and returns the value.
-    pub async fn into_inner(self) -> Result<T, LazyError> {
+    pub async fn into_inner(self) -> Result<T, FetchError> {
         self.fetch().await;
-        self.value.into_inner().unwrap()
+
+        let mut res_task = self.fetch_task.lock().await;
+        res_task.as_mut().unwrap().as_mut().take_output().unwrap().map(|arc| match Arc::try_unwrap(arc) {
+            Ok(value) => value,
+            Err(_) => unreachable!("no other reference can exist"),
+        })
     }
 }
 
 /// A reference to a lazily received value.
-pub struct Ref<'a, T>(tokio::sync::RwLockReadGuard<'a, T>);
+pub struct Ref<'a, T> {
+    value: Arc<T>,
+    _lifetime: PhantomData<&'a ()>,
+}
 
 impl<'a, T> fmt::Debug for Ref<'a, T>
 where
@@ -203,6 +210,12 @@ impl<'a, T> Deref for Ref<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        &*self.0
+        &*self.value
+    }
+}
+
+impl<'a, T> Drop for Ref<'a, T> {
+    fn drop(&mut self) {
+        // empty
     }
 }
