@@ -2,7 +2,8 @@
 
 pub mod msg;
 mod owner;
-mod rwlock;
+#[allow(clippy::module_inception)]
+mod rw_lock;
 
 pub use owner::Owner;
-pub use rwlock::{CommitError, LockError, ReadGuard, ReadLock, RwLock, WriteGuard};
+pub use rw_lock::{CommitError, LockError, ReadGuard, ReadLock, RwLock, WriteGuard};
