@@ -67,7 +67,7 @@ impl<TransportSinkError, TransportStreamError> From<remote::ConnectError>
 /// # Panics
 /// Panics if the chmux configuration is invalid.
 pub async fn connect_framed<TransportSink, TransportSinkError, TransportStream, TransportStreamError, T, Codec>(
-    chmux_cfg: &chmux::Cfg, transport_sink: TransportSink, transport_stream: TransportStream,
+    chmux_cfg: chmux::Cfg, transport_sink: TransportSink, transport_stream: TransportStream,
 ) -> Result<
     (remote::Sender<T, Codec>, remote::Receiver<T, Codec>),
     ConnectError<TransportSinkError, TransportStreamError>,
@@ -95,7 +95,7 @@ where
 /// # Panics
 /// Panics if the chmux configuration is invalid.
 pub async fn connect_io<Read, Write, T, Codec>(
-    chmux_cfg: &chmux::Cfg, input: Read, output: Write,
+    chmux_cfg: chmux::Cfg, input: Read, output: Write,
 ) -> Result<(remote::Sender<T, Codec>, remote::Receiver<T, Codec>), ConnectError<io::Error, io::Error>>
 where
     Read: AsyncRead + Send + Sync + Unpin + 'static,

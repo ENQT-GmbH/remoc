@@ -11,7 +11,7 @@ async fn simple() {
     crate::init();
     let cfg = remoc::chmux::Cfg { chunk_size: 4, receive_buffer: 4, ..Default::default() };
     let ((mut a_tx, _), (_, mut b_rx)) =
-        loop_channel_with_cfg::<broadcast::Receiver<(i16, mpsc::Sender<(), JsonCodec, 1>), JsonCodec, 16>>(&cfg)
+        loop_channel_with_cfg::<broadcast::Receiver<(i16, mpsc::Sender<(), JsonCodec, 1>), JsonCodec, 16>>(cfg)
             .await;
 
     let (tx, rx1) = broadcast::channel::<_, _, 16>(16);

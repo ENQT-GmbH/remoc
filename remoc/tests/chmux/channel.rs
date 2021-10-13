@@ -45,7 +45,7 @@ async fn basic() {
     println!("Connecting...");
     loop_transport!(0, a_tx, a_rx, b_tx, b_rx);
     let ((a_mux, a_client, a_server), (b_mux, b_client, mut b_server)) =
-        try_join(chmux::ChMux::new(&cfg("a_mux"), a_tx, a_rx), chmux::ChMux::new(&cfg2("b_mux"), b_tx, b_rx))
+        try_join(chmux::ChMux::new(cfg("a_mux"), a_tx, a_rx), chmux::ChMux::new(cfg2("b_mux"), b_tx, b_rx))
             .await
             .unwrap();
     println!("Connected: a_mux={:?}, b_mux={:?}", &a_mux, &b_mux);
@@ -148,7 +148,7 @@ async fn hangup() {
     println!("Connecting...");
     loop_transport!(0, a_tx, a_rx, b_tx, b_rx);
     let ((a_mux, a_client, a_server), (b_mux, b_client, mut b_server)) =
-        try_join(chmux::ChMux::new(&cfg("a_mux"), a_tx, a_rx), chmux::ChMux::new(&cfg2("b_mux"), b_tx, b_rx))
+        try_join(chmux::ChMux::new(cfg("a_mux"), a_tx, a_rx), chmux::ChMux::new(cfg2("b_mux"), b_tx, b_rx))
             .await
             .unwrap();
     println!("Connected: a_mux={:?}, b_mux={:?}", &a_mux, &b_mux);

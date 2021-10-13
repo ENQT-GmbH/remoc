@@ -268,7 +268,7 @@ where
     /// # Panics
     /// Panics if specified configuration does not obey limits documented in [Cfg].
     pub async fn new(
-        cfg: &Cfg, mut transport_sink: TransportSink, mut transport_stream: TransportStream,
+        cfg: Cfg, mut transport_sink: TransportSink, mut transport_stream: TransportStream,
     ) -> Result<(Self, Client, Listener), ChMuxError<TransportSinkError, TransportStreamError>> {
         // Check configuration.
         cfg.check();
@@ -281,7 +281,7 @@ where
 
         // Say hello to remote endpoint and exchange configurations.
         log::trace!("{}: exchanging hello", &trace_id);
-        let fut = Self::exchange_hello(&trace_id, cfg, &mut transport_sink, &mut transport_stream);
+        let fut = Self::exchange_hello(&trace_id, &cfg, &mut transport_sink, &mut transport_stream);
         let (remote_protocol_version, remote_cfg) = match cfg.connection_timeout {
             Some(dur) => timeout(dur, fut).await.map_err(|_| ChMuxError::Timeout)??,
             None => fut.await?,
@@ -300,7 +300,7 @@ where
         let multiplexer = ChMux {
             trace_id,
             remote_protocol_version,
-            local_cfg: cfg.clone(),
+            local_cfg: cfg,
             remote_cfg: remote_cfg.clone(),
             connect_rx: Some(connect_rx),
             listen_tx: Some((listen_wait_tx, listen_no_wait_tx)),
