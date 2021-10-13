@@ -245,6 +245,7 @@ impl From<Bytes> for DataBuf {
 }
 
 /// Received data or port requests.
+#[derive(Debug)]
 pub enum Received {
     /// Binary data.
     Data(DataBuf),

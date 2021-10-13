@@ -303,7 +303,7 @@ where
         let (new_value_tx, new_value_rx) = oneshot::channel();
         let (confirm_tx, confirm_rx) = oneshot::channel();
 
-        let _ = self.req_tx.send(WriteRequest { value_tx, new_value_rx, confirm_tx });
+        let _ = self.req_tx.send(WriteRequest { value_tx, new_value_rx, confirm_tx }).await;
         let value = value_rx.await?;
 
         Ok(WriteGuard { value: Some(value), new_value_tx: Some(new_value_tx), confirm_rx: Some(confirm_rx) })
@@ -331,13 +331,13 @@ where
     Codec: CodecT,
 {
     /// Consumes the guard and commits the changes to the shared value.
-    pub async fn commit(mut this: Self) -> Result<(), CommitError> {
-        let new_value = this.value.take().unwrap();
+    pub async fn commit(mut self) -> Result<(), CommitError> {
+        let new_value = self.value.take().unwrap();
 
-        let new_value_tx = this.new_value_tx.take().unwrap();
+        let new_value_tx = self.new_value_tx.take().unwrap();
         new_value_tx.send(new_value)?;
 
-        let confirm_rx = this.confirm_rx.take().unwrap();
+        let confirm_rx = self.confirm_rx.take().unwrap();
         confirm_rx.await?;
 
         Ok(())

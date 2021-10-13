@@ -140,7 +140,7 @@ where
         let remote_send_err_tx = self.remote_send_err_tx.clone();
 
         let port = PortSerializer::connect(|connect| {
-            tokio::spawn(async move {
+            async move {
                 // Establish chmux channel.
                 let (raw_tx, mut raw_rx) = match connect.await {
                     Ok(tx_rx) => tx_rx,
@@ -185,8 +185,7 @@ where
                         }
                     }
                 }
-            })
-            .map(|_| ())
+            }
             .boxed()
         })?;
 
@@ -215,7 +214,7 @@ where
         let (remote_send_err_tx, mut remote_send_err_rx) = tokio::sync::mpsc::channel(ERROR_QUEUE);
 
         PortDeserializer::accept(port, |local_port, request| {
-            tokio::spawn(async move {
+            async move {
                 // Accept chmux connection request.
                 let (mut raw_tx, raw_rx) = match request.accept_from(local_port).await {
                     Ok(tx_rx) => tx_rx,
@@ -254,8 +253,7 @@ where
                         }
                     }
                 }
-            })
-            .map(|_| ())
+            }
             .boxed()
         })?;
 

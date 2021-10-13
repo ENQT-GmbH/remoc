@@ -320,11 +320,9 @@ where
         // chmux connect requests.
         //
         // We have to spawn a task for this to ensure cancellation safety.
-        tokio::spawn(async move {
-            for (callback, connect) in callbacks.into_iter().zip(connects.into_iter()) {
-                callback(connect).await;
-            }
-        });
+        for (callback, connect) in callbacks.into_iter().zip(connects.into_iter()) {
+            tokio::spawn(callback(connect));
+        }
 
         Ok(())
     }
