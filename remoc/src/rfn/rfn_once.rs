@@ -5,7 +5,7 @@ use std::fmt;
 use super::{msg::RFnRequest, CallError};
 use crate::{
     codec::CodecT,
-    rsync::{oneshot, RemoteSend},
+    rch::{oneshot, RemoteSend},
 };
 
 /// Provides a remotely callable async FnOnce function.

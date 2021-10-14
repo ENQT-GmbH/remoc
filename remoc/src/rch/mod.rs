@@ -1,4 +1,4 @@
-//! Synchronization primitives for use in asynchronous and remote contexts.
+//! Remote channels.
 //!
 //! This module is modelled after [tokio::sync] and follows its principles.
 
@@ -8,15 +8,11 @@ use std::{error::Error, fmt};
 
 pub mod bin;
 pub mod broadcast;
-pub mod handle;
 mod interlock;
-pub mod lazy;
-pub mod lazy_blob;
 pub mod lr;
 pub mod mpsc;
 pub mod oneshot;
 pub mod remote;
-pub mod rw_lock;
 pub mod watch;
 
 /// Error connecting a remote channel.

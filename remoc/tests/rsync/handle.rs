@@ -1,7 +1,7 @@
 use crate::loop_channel;
 use remoc::{
     codec::JsonCodec,
-    rsync::handle::{Handle, HandleError},
+    robj::handle::{Handle, HandleError},
 };
 
 #[tokio::test]

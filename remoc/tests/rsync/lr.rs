@@ -1,4 +1,4 @@
-use remoc::{codec::JsonCodec, rsync::lr};
+use remoc::{codec::JsonCodec, rch::lr};
 
 use crate::loop_channel;
 

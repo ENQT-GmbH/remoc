@@ -1,6 +1,6 @@
 use remoc::{
     codec::JsonCodec,
-    rsync::rw_lock::{Owner, RwLock},
+    robj::rw_lock::{Owner, RwLock},
 };
 
 use crate::loop_channel;

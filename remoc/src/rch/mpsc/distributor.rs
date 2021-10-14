@@ -1,7 +1,7 @@
 use futures::future;
 
 use super::{channel, Permit, Receiver, Sender};
-use crate::{codec::CodecT, rsync::RemoteSend};
+use crate::{codec::CodecT, rch::RemoteSend};
 
 struct DistributedReceiver<T, Codec, const BUFFER: usize> {
     tx: Sender<T, Codec, BUFFER>,

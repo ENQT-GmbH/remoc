@@ -1,7 +1,7 @@
 use bytes::{Buf, Bytes};
 use futures::join;
 use rand::{Rng, RngCore};
-use remoc::{chmux::Received, rsync::bin};
+use remoc::{chmux::Received, rch::bin};
 
 use crate::loop_channel;
 

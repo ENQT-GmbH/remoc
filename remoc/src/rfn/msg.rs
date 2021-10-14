@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     codec::CodecT,
-    rsync::{oneshot, RemoteSend},
+    rch::{oneshot, RemoteSend},
 };
 
 /// Remote function call request.

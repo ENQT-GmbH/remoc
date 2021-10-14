@@ -13,9 +13,8 @@ use tokio::task::{self, JoinHandle};
 
 use super::{io::ChannelBytesReader, BIG_DATA_CHUNK_QUEUE};
 use crate::{
-    chmux::{self, Received, RecvChunkError},
+    chmux::{self, AnyStorage, Received, RecvChunkError},
     codec::{CodecT, DeserializationError},
-    rsync::handle::HandleStorage,
 };
 
 /// An error that occured during receiving from a remote endpoint.
@@ -69,7 +68,7 @@ pub struct PortDeserializer {
             Box<dyn FnOnce(chmux::PortNumber, chmux::Request) -> BoxFuture<'static, ()> + Send + 'static>,
         ),
     >,
-    handle_storage: HandleStorage,
+    storage: AnyStorage,
 }
 
 impl PortDeserializer {
@@ -78,8 +77,8 @@ impl PortDeserializer {
     }
 
     /// Create a new port deserializer and register it as active.
-    fn start(allocator: chmux::PortAllocator, handle_storage: HandleStorage) -> Rc<RefCell<PortDeserializer>> {
-        let this = Rc::new(RefCell::new(Self { allocator, expected: HashMap::new(), handle_storage }));
+    fn start(allocator: chmux::PortAllocator, storage: AnyStorage) -> Rc<RefCell<PortDeserializer>> {
+        let this = Rc::new(RefCell::new(Self { allocator, expected: HashMap::new(), storage }));
         let weak = Rc::downgrade(&this);
         Self::INSTANCE.with(move |i| i.replace(weak));
         this
@@ -118,8 +117,8 @@ impl PortDeserializer {
         Ok(local_port_num)
     }
 
-    /// Returns the handle storage of the channel multiplexer.
-    pub(crate) fn handle_storage<E>() -> Result<HandleStorage, E>
+    /// Returns the data storage of the channel multiplexer.
+    pub(crate) fn storage<E>() -> Result<AnyStorage, E>
     where
         E: serde::de::Error,
     {
@@ -130,7 +129,7 @@ impl PortDeserializer {
         let this =
             this.try_borrow().expect("PortDeserializer is referenced multiple times during deserialization");
 
-        Ok(this.handle_storage.clone())
+        Ok(this.storage.clone())
     }
 }
 
@@ -193,7 +192,7 @@ where
                         Some(Received::BigData) => {
                             // Start deserialization thread.
                             let allocator = self.receiver.port_allocator();
-                            let handle_storage = self.receiver.handle_storage();
+                            let handle_storage = self.receiver.storage();
                             let (tx, rx) = tokio::sync::mpsc::channel(BIG_DATA_CHUNK_QUEUE);
                             let task = task::spawn_blocking(move || {
                                 let cbr = ChannelBytesReader::new(rx);
@@ -224,10 +223,8 @@ where
                             continue 'restart;
                         };
 
-                        let pdf_ref = PortDeserializer::start(
-                            self.receiver.port_allocator(),
-                            self.receiver.handle_storage(),
-                        );
+                        let pdf_ref =
+                            PortDeserializer::start(self.receiver.port_allocator(), self.receiver.storage());
                         self.item = Some(<Codec as CodecT>::deserialize(data.reader())?);
                         self.port_deser = Some(PortDeserializer::finish(pdf_ref));
 

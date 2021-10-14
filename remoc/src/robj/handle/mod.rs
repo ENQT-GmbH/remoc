@@ -3,7 +3,6 @@
 use serde::{Deserialize, Serialize};
 use std::{
     any::Any,
-    collections::HashMap,
     fmt,
     marker::PhantomData,
     mem,
@@ -13,11 +12,14 @@ use std::{
 use tokio::sync::{OwnedRwLockMappedWriteGuard, OwnedRwLockReadGuard, OwnedRwLockWriteGuard};
 use uuid::Uuid;
 
-use super::{
-    mpsc,
-    remote::{PortDeserializer, PortSerializer},
+use crate::{
+    chmux::{AnyBox, AnyEntry},
+    codec::CodecT,
+    rch::{
+        mpsc,
+        remote::{PortDeserializer, PortSerializer},
+    },
 };
-use crate::codec::CodecT;
 
 /// An error during getting the value of a handle.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -39,57 +41,6 @@ impl fmt::Display for HandleError {
 }
 
 impl std::error::Error for HandleError {}
-
-/// Box containing any value that is Send, Sync and static.
-pub type AnyBox = Box<dyn Any + Send + Sync + 'static>;
-
-/// Stores arbitrary data using automatically generated keys.
-#[derive(Clone)]
-pub struct HandleStorage {
-    entries: Arc<std::sync::Mutex<HandleMap>>,
-}
-
-type HandleEntry = Arc<tokio::sync::RwLock<Option<AnyBox>>>;
-type HandleMap = HashMap<Uuid, HandleEntry>;
-
-impl HandleStorage {
-    /// Creates a new handle storage.
-    pub fn new() -> Self {
-        Self { entries: Arc::new(std::sync::Mutex::new(HandleMap::new())) }
-    }
-
-    /// Insert a new entry into the storage and return its key.
-    ///
-    /// # Panics
-    /// Panics when a duplicate UUID is generated and inserted into the storage.
-    /// The probability of this is happening is extremely low.
-    pub fn insert(&self, entry: HandleEntry) -> Uuid {
-        let key = Uuid::new_v4();
-        let mut entries = self.entries.lock().unwrap();
-        if entries.insert(key, entry).is_some() {
-            panic!("duplicate UUID");
-        }
-        key
-    }
-
-    /// Returns the value from the handle storage for the specified key.
-    pub fn get(&self, key: Uuid) -> Option<HandleEntry> {
-        let entries = self.entries.lock().unwrap();
-        entries.get(&key).cloned()
-    }
-
-    /// Removes the value for the specified key from the handle storage and returns it.
-    pub fn remove(&self, key: Uuid) -> Option<HandleEntry> {
-        let mut entries = self.entries.lock().unwrap();
-        entries.remove(&key)
-    }
-}
-
-impl Default for HandleStorage {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 /// Provider for a handle.
 pub struct Provider {
@@ -130,7 +81,7 @@ enum State<Codec> {
     /// Value has been created locally.
     LocalCreated {
         /// Reference to value.
-        entry: HandleEntry,
+        entry: AnyEntry,
         /// Keep notification.
         keep_rx: tokio::sync::watch::Receiver<bool>,
     },
@@ -138,7 +89,7 @@ enum State<Codec> {
     /// a remote endpoint.
     LocalReceived {
         /// Reference to value.
-        entry: HandleEntry,
+        entry: AnyEntry,
         /// Id in local handle storage.
         id: Uuid,
         /// Dropped notification.
@@ -324,7 +275,7 @@ where
     {
         let (id, dropped_tx) = match self.state.clone() {
             State::LocalCreated { entry, mut keep_rx, .. } => {
-                let handle_storage = PortSerializer::handle_storage()?;
+                let handle_storage = PortSerializer::storage()?;
                 let id = handle_storage.insert(entry.clone());
 
                 let (dropped_tx, mut dropped_rx) = mpsc::channel::<_, _, 1, 1>(1);
@@ -372,7 +323,7 @@ where
     {
         let TransportedHandle { id, dropped_tx, .. } = TransportedHandle::<T, Codec>::deserialize(deserializer)?;
 
-        let handle_storage = PortDeserializer::handle_storage()?;
+        let handle_storage = PortDeserializer::storage()?;
         let state = match handle_storage.remove(id) {
             Some(entry) => State::LocalReceived { entry, id, dropped_tx },
             None => State::Remote { id, dropped_tx },

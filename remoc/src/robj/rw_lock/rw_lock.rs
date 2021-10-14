@@ -6,11 +6,12 @@ use std::{
     sync::Arc,
 };
 
-use super::{
-    super::{mpsc, oneshot, remote, RemoteSend},
-    msg::{ReadRequest, Value, WriteRequest},
+use super::msg::{ReadRequest, Value, WriteRequest};
+use crate::{
+    chmux,
+    codec::CodecT,
+    rch::{mpsc, oneshot, remote, RemoteSend},
 };
-use crate::{chmux, codec::CodecT};
 
 /// An error occured during locking of an RwLock value for reading or writing.
 #[derive(Clone, Debug, Serialize, Deserialize)]

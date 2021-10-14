@@ -1,6 +1,6 @@
 use futures::future;
 use rand::Rng;
-use remoc::{codec::JsonCodec, rsync::mpsc};
+use remoc::{codec::JsonCodec, rch::mpsc};
 use std::time::Duration;
 use tokio::time::sleep;
 

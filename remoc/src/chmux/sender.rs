@@ -18,13 +18,11 @@ use std::{
 };
 use tokio::sync::{mpsc, oneshot, Mutex};
 
-use crate::rsync::handle::HandleStorage;
-
 use super::{
     client::ConnectResponse,
     credit::{AssignedCredits, CreditUser},
     mux::PortEvt,
-    Connect, ConnectError, PortAllocator, PortNumber,
+    AnyStorage, Connect, ConnectError, PortAllocator, PortNumber,
 };
 
 /// An error occured during sending of a message.
@@ -152,7 +150,7 @@ pub struct Sender {
     hangup_recved: Weak<AtomicBool>,
     hangup_notify: Weak<std::sync::Mutex<Option<Vec<oneshot::Sender<()>>>>>,
     port_allocator: PortAllocator,
-    handle_storage: HandleStorage,
+    storage: AnyStorage,
     _drop_tx: oneshot::Sender<()>,
 }
 
@@ -175,7 +173,7 @@ impl Sender {
         local_port: u32, remote_port: u32, chunk_size: usize, max_data_size: usize, tx: mpsc::Sender<PortEvt>,
         credits: CreditUser, hangup_recved: Weak<AtomicBool>,
         hangup_notify: Weak<std::sync::Mutex<Option<Vec<oneshot::Sender<()>>>>>, port_allocator: PortAllocator,
-        handle_storage: HandleStorage,
+        storage: AnyStorage,
     ) -> Self {
         let (_drop_tx, drop_rx) = oneshot::channel();
         let tx_drop = tx.clone();
@@ -194,7 +192,7 @@ impl Sender {
             hangup_recved,
             hangup_notify,
             port_allocator,
-            handle_storage,
+            storage,
             _drop_tx,
         }
     }
@@ -402,9 +400,9 @@ impl Sender {
         self.port_allocator.clone()
     }
 
-    /// Returns the handle storage of the channel multiplexer.
-    pub fn handle_storage(&self) -> HandleStorage {
-        self.handle_storage.clone()
+    /// Returns the arbitrary data storage of the channel multiplexer.
+    pub fn storage(&self) -> AnyStorage {
+        self.storage.clone()
     }
 }
 

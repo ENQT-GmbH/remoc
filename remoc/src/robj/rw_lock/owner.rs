@@ -2,11 +2,13 @@ use std::fmt;
 use tokio::task::JoinHandle;
 
 use super::{
-    super::{mpsc, watch, RemoteSend},
     msg::{ReadRequest, Value, WriteRequest},
     ReadLock, RwLock,
 };
-use crate::codec::CodecT;
+use crate::{
+    codec::CodecT,
+    rch::{mpsc, watch, RemoteSend},
+};
 
 /// The owner of [RwLock]s holding a shared value.
 ///

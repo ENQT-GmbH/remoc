@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::{
     chmux,
-    rsync::{mpsc, oneshot, remote},
+    rch::{mpsc, oneshot, remote},
 };
 
 /// Attribute that must be applied on traits and their implementations that

@@ -12,9 +12,8 @@ use tokio::sync::{mpsc, oneshot, Mutex};
 use super::{
     credit::{ChannelCreditReturner, UsedCredit},
     mux::PortEvt,
-    PortAllocator, Request,
+    AnyStorage, PortAllocator, Request,
 };
-use crate::rsync::handle::HandleStorage;
 
 /// An error occured during receiving a data message.
 #[derive(Debug, Clone)]
@@ -283,7 +282,7 @@ pub struct Receiver {
     closed: bool,
     finished: bool,
     port_allocator: PortAllocator,
-    handle_storage: HandleStorage,
+    storage: AnyStorage,
     _drop_tx: oneshot::Sender<()>,
 }
 
@@ -305,7 +304,7 @@ impl Receiver {
     pub(crate) fn new(
         local_port: u32, remote_port: u32, max_data_size: usize, max_port_count: usize,
         tx: mpsc::Sender<PortEvt>, rx: mpsc::UnboundedReceiver<PortReceiveMsg>, credits: ChannelCreditReturner,
-        port_allocator: PortAllocator, handle_storage: HandleStorage,
+        port_allocator: PortAllocator, storage: AnyStorage,
     ) -> Self {
         let (_drop_tx, drop_rx) = oneshot::channel();
         let tx_drop = tx.clone();
@@ -326,7 +325,7 @@ impl Receiver {
             closed: false,
             finished: false,
             port_allocator,
-            handle_storage,
+            storage,
             _drop_tx,
         }
     }
@@ -557,9 +556,9 @@ impl Receiver {
         self.port_allocator.clone()
     }
 
-    /// Returns the handle storage of the channel multiplexer.
-    pub fn handle_storage(&self) -> HandleStorage {
-        self.handle_storage.clone()
+    /// Returns the arbitrary data storage of the channel multiplexer.
+    pub fn storage(&self) -> AnyStorage {
+        self.storage.clone()
     }
 }
 

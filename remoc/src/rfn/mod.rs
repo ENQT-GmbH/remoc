@@ -5,7 +5,7 @@ use std::{error::Error, fmt};
 
 use crate::{
     chmux,
-    rsync::{oneshot, remote},
+    rch::{oneshot, remote},
 };
 
 pub mod msg;

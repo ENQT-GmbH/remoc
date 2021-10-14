@@ -1,6 +1,6 @@
 use crate::loop_channel;
 use rand::{thread_rng, Rng, RngCore};
-use remoc::{codec::JsonCodec, rsync::lazy_blob::LazyBlob};
+use remoc::{codec::JsonCodec, robj::lazy_blob::LazyBlob};
 
 #[tokio::test]
 async fn simple() {

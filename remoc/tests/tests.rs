@@ -1,7 +1,7 @@
 use futures::{try_join, StreamExt};
 use remoc::{
     codec::JsonCodec,
-    rsync::{remote, RemoteSend},
+    rch::{remote, RemoteSend},
 };
 use std::{net::Ipv4Addr, sync::Once};
 use tokio::net::{TcpListener, TcpStream};

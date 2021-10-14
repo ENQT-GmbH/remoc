@@ -8,6 +8,7 @@
 
 use std::{error::Error, fmt};
 
+mod any_storage;
 mod cfg;
 mod client;
 mod credit;
@@ -18,6 +19,7 @@ mod port_allocator;
 mod receiver;
 mod sender;
 
+pub use any_storage::{AnyBox, AnyEntry, AnyStorage};
 pub use cfg::{Cfg, PortsExhausted};
 pub use client::{Client, Connect, ConnectError};
 pub use listener::{Listener, ListenerError, ListenerStream, Request};

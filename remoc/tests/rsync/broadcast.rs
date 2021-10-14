@@ -1,7 +1,7 @@
 use futures::try_join;
 use remoc::{
     codec::JsonCodec,
-    rsync::{broadcast, mpsc},
+    rch::{broadcast, mpsc},
 };
 
 use crate::loop_channel_with_cfg;
