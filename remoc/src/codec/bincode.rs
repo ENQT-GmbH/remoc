@@ -7,9 +7,9 @@ use super::{CodecT, DeserializationError, SerializationError};
 /// See [bincode] for details.
 /// This uses the default function configuration.
 #[derive(Clone, Serialize, Deserialize)]
-pub struct BincodeCodec;
+pub struct Bincode;
 
-impl CodecT for BincodeCodec {
+impl CodecT for Bincode {
     fn serialize<Writer, Item>(writer: Writer, item: &Item) -> Result<(), super::SerializationError>
     where
         Writer: std::io::Write,

@@ -1,5 +1,5 @@
 use futures::{try_join, StreamExt};
-use remoc::{codec::JsonCodec, rch::remote, RemoteSend};
+use remoc::{codec::Json, rch::remote, RemoteSend};
 use std::{net::Ipv4Addr, sync::Once};
 use tokio::net::{TcpListener, TcpStream};
 
@@ -24,10 +24,8 @@ macro_rules! loop_transport {
     };
 }
 
-pub async fn loop_channel<T>() -> (
-    (remote::Sender<T, JsonCodec>, remote::Receiver<T, JsonCodec>),
-    (remote::Sender<T, JsonCodec>, remote::Receiver<T, JsonCodec>),
-)
+pub async fn loop_channel<T>(
+) -> ((remote::Sender<T, Json>, remote::Receiver<T, Json>), (remote::Sender<T, Json>, remote::Receiver<T, Json>))
 where
     T: RemoteSend,
 {
@@ -37,10 +35,7 @@ where
 
 pub async fn loop_channel_with_cfg<T>(
     cfg: remoc::chmux::Cfg,
-) -> (
-    (remote::Sender<T, JsonCodec>, remote::Receiver<T, JsonCodec>),
-    (remote::Sender<T, JsonCodec>, remote::Receiver<T, JsonCodec>),
-)
+) -> ((remote::Sender<T, Json>, remote::Receiver<T, Json>), (remote::Sender<T, Json>, remote::Receiver<T, Json>))
 where
     T: RemoteSend,
 {
@@ -54,10 +49,7 @@ where
 
 pub async fn tcp_loop_channel<T>(
     tcp_port: u16,
-) -> (
-    (remote::Sender<T, JsonCodec>, remote::Receiver<T, JsonCodec>),
-    (remote::Sender<T, JsonCodec>, remote::Receiver<T, JsonCodec>),
-)
+) -> ((remote::Sender<T, Json>, remote::Receiver<T, Json>), (remote::Sender<T, Json>, remote::Receiver<T, Json>))
 where
     T: RemoteSend,
 {

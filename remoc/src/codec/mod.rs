@@ -13,7 +13,7 @@ pub type ArcError = Arc<dyn Error + Send + Sync + 'static>;
 
 /// An error consisting of a string message.
 #[derive(Debug, Clone)]
-pub struct ErrorMsg(pub String);
+struct ErrorMsg(pub String);
 
 impl fmt::Display for ErrorMsg {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -131,31 +131,31 @@ pub mod serde_map;
 #[cfg(feature = "codec-bincode")]
 mod bincode;
 #[cfg(feature = "codec-bincode")]
-pub use self::bincode::BincodeCodec;
+pub use self::bincode::Bincode;
 #[cfg(feature = "default-codec-bincode")]
 /// Default codec is Bincode.
-pub type DefaultCodec = BincodeCodec;
+pub type Defaut = Bincode;
 
 #[cfg(feature = "codec-cbor")]
 mod cbor;
 #[cfg(feature = "codec-cbor")]
-pub use cbor::CborCodec;
+pub use cbor::Cbor;
 #[cfg(feature = "default-codec-cbor")]
 /// Default codec is CBOR.
-pub type DefaultCodec = CborCodec;
+pub type Defaut = Cbor;
 
 #[cfg(feature = "codec-json")]
 mod json;
 #[cfg(feature = "codec-json")]
-pub use json::JsonCodec;
+pub use json::Json;
 #[cfg(feature = "default-codec-json")]
 /// Default codec is JSON.
-pub type DefaultCodec = JsonCodec;
+pub type Defaut = Json;
 
 #[cfg(feature = "codec-messagepack")]
 mod messagepack;
 #[cfg(feature = "codec-messagepack")]
-pub use messagepack::MessagepackCodec;
+pub use messagepack::Messagepack;
 #[cfg(feature = "default-codec-messagepack")]
 /// Default codec is MessagePack.
-pub type DefaultCodec = MessagepackCodec;
+pub type Defaut = Messagepack;

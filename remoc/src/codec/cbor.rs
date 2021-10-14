@@ -6,9 +6,9 @@ use super::{CodecT, DeserializationError, SerializationError};
 ///
 /// See [serde_cbor] for details.
 #[derive(Clone, Serialize, Deserialize)]
-pub struct CborCodec;
+pub struct Cbor;
 
-impl CodecT for CborCodec {
+impl CodecT for Cbor {
     fn serialize<Writer, Item>(writer: Writer, item: &Item) -> Result<(), super::SerializationError>
     where
         Writer: std::io::Write,

@@ -7,9 +7,9 @@ use super::{CodecT, DeserializationError, SerializationError};
 /// See [rmp_serde] for details.
 /// This serializes sturctures as maps.
 #[derive(Clone, Serialize, Deserialize)]
-pub struct MessagepackCodec;
+pub struct Messagepack;
 
-impl CodecT for MessagepackCodec {
+impl CodecT for Messagepack {
     fn serialize<Writer, Item>(mut writer: Writer, item: &Item) -> Result<(), super::SerializationError>
     where
         Writer: std::io::Write,

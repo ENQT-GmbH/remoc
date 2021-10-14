@@ -6,9 +6,9 @@ use super::{CodecT, DeserializationError, SerializationError};
 ///
 /// See [serde_json] for details.
 #[derive(Clone, Serialize, Deserialize)]
-pub struct JsonCodec;
+pub struct Json;
 
-impl CodecT for JsonCodec {
+impl CodecT for Json {
     fn serialize<Writer, Item>(writer: Writer, item: &Item) -> Result<(), super::SerializationError>
     where
         Writer: std::io::Write,
