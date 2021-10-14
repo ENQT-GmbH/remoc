@@ -1,4 +1,4 @@
-//! Remote objects.
+//! Remote trait calling.
 
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;

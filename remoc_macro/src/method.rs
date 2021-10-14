@@ -185,7 +185,7 @@ impl TraitMethod {
         // Generate call code.
         let call = if self.cancel {
             quote! {
-                ::remoc::robj::select! {
+                ::remoc::rtc::select! {
                     biased;
                     () = __reply_tx.closed() => (),
                     result = target.#ident(#args) => {
@@ -232,7 +232,7 @@ impl TraitMethod {
             async fn #ident (#self_ref, #args) -> #ret_ty {
                 let (reply_tx, reply_rx) = ::remoc::rsync::oneshot::channel();
                 let req_value = #req_enum :: #req_case { __reply_tx: reply_tx, #entries };
-                let req = ::remoc::robj::Req::#req_type(req);
+                let req = ::remoc::rtc::Req::#req_type(req);
                 self.req_tx.send(req).await.map_err(CallError::from)?;
                 let reply = reply_rx.await.map_err(CallError::from)?;
                 reply

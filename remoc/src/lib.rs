@@ -12,7 +12,7 @@ pub mod chmux;
 pub mod codec;
 mod connect;
 pub mod rfn;
-pub mod robj;
+pub mod rtc;
 pub mod rsync;
 
 pub use connect::{connect_framed, connect_io, ConnectError};
