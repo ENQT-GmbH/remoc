@@ -2,19 +2,19 @@ use serde::{Deserialize, Serialize};
 
 use super::{CodecT, DeserializationError, SerializationError};
 
-/// JSON codec.
+/// CBOR codec.
 ///
-/// See [serde_json] for details.
+/// See [serde_cbor] for details.
 #[derive(Clone, Serialize, Deserialize)]
-pub struct JsonCodec;
+pub struct CborCodec;
 
-impl CodecT for JsonCodec {
+impl CodecT for CborCodec {
     fn serialize<Writer, Item>(writer: Writer, item: &Item) -> Result<(), super::SerializationError>
     where
         Writer: std::io::Write,
         Item: serde::Serialize,
     {
-        serde_json::to_writer(writer, item).map_err(SerializationError::new)
+        serde_cbor::to_writer(writer, item).map_err(SerializationError::new)
     }
 
     fn deserialize<Reader, Item>(reader: Reader) -> Result<Item, super::DeserializationError>
@@ -22,6 +22,6 @@ impl CodecT for JsonCodec {
         Reader: std::io::Read,
         Item: serde::de::DeserializeOwned,
     {
-        serde_json::from_reader(reader).map_err(DeserializationError::new)
+        serde_cbor::from_reader(reader).map_err(DeserializationError::new)
     }
 }

@@ -5,7 +5,7 @@
 //! Both [connect_framed] and [connect_io] spawn the channel multiplexer onto a separate task and
 //! thus the transport must have static lifetime and be [Send] and [Sync].
 //! To avoid this, you can create and run the channel multiplexer manually.
-//! To do so, instance [ChMux](chmux::ChMux) directly and invoke [remote::connect](rsync::remote::connect)
+//! To do so, instance [ChMux](chmux::ChMux) directly and invoke [remote::connect](rch::remote::connect)
 //! to create the initial channel.
 
 #![deny(unsafe_code)]

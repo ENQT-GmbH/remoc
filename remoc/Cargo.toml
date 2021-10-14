@@ -11,14 +11,18 @@ categories = ["asynchronous", "network-programming"]
 license = "Apache-2.0"
 
 [features]
-default = ["serde", "obj", "serde_json"]
+default = ["serde", "obj", "default-codec-json", "codec-bincode", "codec-cbor", "codec-json", "codec-messagepack"]
 obj = ["remoc_macro"]
 
 # Codecs
-json-codec = ["serde_json"]
-bincode-codec = ["bincode"]
-cbor-codec = ["serde_cbor"]
-messagepack-codec = ["rmp-serde"]
+codec-bincode = ["bincode"]
+default-codec-bincode = ["codec-bincode"]
+codec-cbor = ["serde_cbor"]
+default-codec-cbor = ["codec-cbor"]
+codec-json = ["serde_json"]
+default-codec-json = ["codec-json"]
+codec-messagepack = ["rmp-serde"]
+default-codec-messagepack = ["codec-messagepack"]
 
 [dependencies]
 remoc_macro = { version = "=0.8.0-pre1", path = "../remoc_macro", optional = true }
@@ -36,6 +40,7 @@ lazy_static = "1.4"
 uuid = { version = "0.8", features = ["serde", "v4"] }
 
 serde = { version = "1.0", features = ["derive"], optional = true }
+
 
 # Codecs
 serde_json = { version = "1.0", optional = true }
