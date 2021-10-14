@@ -10,7 +10,8 @@ use super::msg::{ReadRequest, Value, WriteRequest};
 use crate::{
     chmux,
     codec::CodecT,
-    rch::{mpsc, oneshot, remote, RemoteSend},
+    rch::{mpsc, oneshot, remote},
+    RemoteSend,
 };
 
 /// An error occured during locking of an RwLock value for reading or writing.

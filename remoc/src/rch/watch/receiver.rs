@@ -10,7 +10,7 @@ use super::{
     },
     Ref, ERROR_QUEUE,
 };
-use crate::{chmux, codec::CodecT, rch::RemoteSend};
+use crate::{chmux, codec::CodecT, RemoteSend};
 
 /// An error occured during receiving over a watch channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]

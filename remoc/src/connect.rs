@@ -9,7 +9,8 @@ use tokio_util::codec::LengthDelimitedCodec;
 use crate::{
     chmux::{self, ChMux, ChMuxError},
     codec::CodecT,
-    rch::{remote, RemoteSend},
+    rch::remote,
+    RemoteSend,
 };
 
 /// Connection error.

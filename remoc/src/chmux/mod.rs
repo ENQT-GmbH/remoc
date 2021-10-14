@@ -3,9 +3,6 @@
 //! Multiplexes multiple channels over a single channel (or anything that implements Sink and Stream).
 //!
 
-#![deny(unsafe_code)]
-#![warn(missing_docs)]
-
 use std::{error::Error, fmt};
 
 mod any_storage;

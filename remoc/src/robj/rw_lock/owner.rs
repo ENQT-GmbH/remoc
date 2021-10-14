@@ -7,7 +7,8 @@ use super::{
 };
 use crate::{
     codec::CodecT,
-    rch::{mpsc, watch, RemoteSend},
+    rch::{mpsc, watch},
+    RemoteSend,
 };
 
 /// The owner of [RwLock]s holding a shared value.

@@ -4,7 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     codec::CodecT,
-    rch::{mpsc, oneshot, watch, RemoteSend},
+    rch::{mpsc, oneshot, watch},
+    RemoteSend,
 };
 
 /// A read request from a lock to the owner.

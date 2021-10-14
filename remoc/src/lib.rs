@@ -8,12 +8,17 @@
 //! To do so, instance [ChMux](chmux::ChMux) directly and invoke [remote::connect](rsync::remote::connect)
 //! to create the initial channel.
 
+#![deny(unsafe_code)]
+#![warn(missing_docs)]
+
 pub mod chmux;
 pub mod codec;
 mod connect;
 pub mod rch;
+mod remote_send;
 pub mod rfn;
 pub mod robj;
 pub mod rtc;
 
 pub use connect::{connect_framed, connect_io, ConnectError};
+pub use remote_send::RemoteSend;
