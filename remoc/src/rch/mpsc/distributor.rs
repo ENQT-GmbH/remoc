@@ -1,17 +1,18 @@
 use futures::future;
 
-use super::{channel, Permit, Receiver, Sender};
+use super::{super::buffer, channel, Permit, Receiver, Sender};
 use crate::{codec, RemoteSend};
 
-struct DistributedReceiver<T, Codec, const BUFFER: usize> {
-    tx: Sender<T, Codec, BUFFER>,
+struct DistributedReceiver<T, Codec, Buffer> {
+    tx: Sender<T, Codec, Buffer>,
     remove_rx: Option<tokio::sync::mpsc::UnboundedReceiver<()>>,
 }
 
-impl<T, Codec, const BUFFER: usize> DistributedReceiver<T, Codec, BUFFER>
+impl<T, Codec, Buffer> DistributedReceiver<T, Codec, Buffer>
 where
     T: RemoteSend + Clone,
     Codec: codec::Codec,
+    Buffer: buffer::Size,
 {
     async fn reserve(&mut self) -> Option<Permit<T>> {
         let tx = self.tx.clone();
@@ -56,31 +57,34 @@ impl DistributedReceiverHandle {
 ///
 /// Distribution is stopped and all subscribers are closed when the distributor
 /// is dropped.
-pub struct Distributor<T, Codec, const BUFFER: usize> {
+pub struct Distributor<T, Codec = codec::Default, Buffer = buffer::Default> {
+    #[allow(clippy::type_complexity)]
     sub_tx: tokio::sync::mpsc::Sender<
-        tokio::sync::oneshot::Sender<(Receiver<T, Codec, BUFFER>, DistributedReceiverHandle)>,
+        tokio::sync::oneshot::Sender<(Receiver<T, Codec, Buffer>, DistributedReceiverHandle)>,
     >,
 }
 
-impl<T, Codec, const BUFFER: usize> Distributor<T, Codec, BUFFER>
+impl<T, Codec, Buffer> Distributor<T, Codec, Buffer>
 where
     T: RemoteSend + Clone,
     Codec: codec::Codec,
+    Buffer: buffer::Size,
 {
-    pub(crate) fn new(rx: Receiver<T, Codec, BUFFER>, wait_on_empty: bool) -> Self {
+    pub(crate) fn new(rx: Receiver<T, Codec, Buffer>, wait_on_empty: bool) -> Self {
         let (sub_tx, sub_rx) = tokio::sync::mpsc::channel(1);
         tokio::spawn(Self::distribute(rx, sub_rx, wait_on_empty));
         Self { sub_tx }
     }
 
+    #[allow(clippy::type_complexity)]
     async fn distribute(
-        mut rx: Receiver<T, Codec, BUFFER>,
+        mut rx: Receiver<T, Codec, Buffer>,
         mut sub_rx: tokio::sync::mpsc::Receiver<
-            tokio::sync::oneshot::Sender<(Receiver<T, Codec, BUFFER>, DistributedReceiverHandle)>,
+            tokio::sync::oneshot::Sender<(Receiver<T, Codec, Buffer>, DistributedReceiverHandle)>,
         >,
         wait_on_empty: bool,
     ) {
-        let mut txs: Vec<DistributedReceiver<T, Codec, BUFFER>> = Vec::new();
+        let mut txs: Vec<DistributedReceiver<T, Codec, Buffer>> = Vec::new();
         let mut first = true;
 
         loop {
@@ -124,6 +128,8 @@ where
                     match sub_opt {
                         Some(sub_tx) => {
                             let (tx, rx) = channel(1);
+                            let tx = tx.set_buffer();
+                            let rx = rx.set_buffer();
                             let (remove_tx, remove_rx) = tokio::sync::mpsc::unbounded_channel();
                             let dr = DistributedReceiver {
                                 tx, remove_rx: Some(remove_rx)
@@ -140,7 +146,7 @@ where
     }
 
     /// Creates a new subscribed receiver and returns it along with its handle.
-    pub async fn subscribe(&self) -> Option<(Receiver<T, Codec, BUFFER>, DistributedReceiverHandle)> {
+    pub async fn subscribe(&self) -> Option<(Receiver<T, Codec, Buffer>, DistributedReceiverHandle)> {
         let (sub_tx, sub_rx) = tokio::sync::oneshot::channel();
         let _ = self.sub_tx.send(sub_tx).await;
         sub_rx.await.ok()
@@ -155,7 +161,7 @@ where
     }
 }
 
-impl<T, Codec, const BUFFER: usize> Drop for Distributor<T, Codec, BUFFER> {
+impl<T, Codec, Buffer> Drop for Distributor<T, Codec, Buffer> {
     fn drop(&mut self) {
         // empty
     }

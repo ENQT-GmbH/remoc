@@ -1,6 +1,6 @@
 use futures::future;
 use rand::Rng;
-use remoc::{codec::Json, rch::mpsc};
+use remoc::rch::mpsc;
 use std::time::Duration;
 use tokio::time::sleep;
 
@@ -9,10 +9,10 @@ use crate::loop_channel;
 #[tokio::test]
 async fn simple() {
     crate::init();
-    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<mpsc::Receiver<i16, Json, 16>>().await;
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<mpsc::Receiver<i16>>().await;
 
     println!("Sending remote mpsc channel receiver");
-    let (tx, rx) = mpsc::channel::<_, _, 16, 16>(16);
+    let (tx, rx) = mpsc::channel(16);
     a_tx.send(rx).await.unwrap();
     println!("Receiving remote mpsc channel receiver");
     let mut rx = b_rx.recv().await.unwrap().unwrap();
@@ -45,11 +45,10 @@ async fn simple() {
 #[tokio::test]
 async fn multiple() {
     crate::init();
-    let ((mut a_tx, _), (_, mut b_rx)) =
-        loop_channel::<mpsc::Receiver<mpsc::Sender<i16, Json, 1>, Json, 16>>().await;
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<mpsc::Receiver<mpsc::Sender<i16>>>().await;
 
     println!("Sending remote mpsc channel receiver");
-    let (tx, rx) = mpsc::channel::<_, _, 16, 16>(16);
+    let (tx, rx) = mpsc::channel(16);
     a_tx.send(rx).await.unwrap();
     println!("Receiving remote mpsc channel receiver");
     let mut rx = b_rx.recv().await.unwrap().unwrap();
@@ -59,7 +58,7 @@ async fn multiple() {
     let mut tasks = Vec::new();
     for i in 1..1024 {
         println!("Sending sender");
-        let (n_tx, mut n_rx) = mpsc::channel::<_, _, 1, 1>(1);
+        let (n_tx, mut n_rx) = mpsc::channel(1);
         tx.send(n_tx).await.unwrap();
         println!("Receiving sender");
         let n_tx = rx.recv().await.unwrap().unwrap();
@@ -86,12 +85,12 @@ async fn multiple() {
 #[tokio::test]
 async fn forward() {
     crate::init();
-    let ((mut a0_tx, _), (_, mut b0_rx)) = loop_channel::<mpsc::Sender<i16, Json, 16>>().await;
-    let ((mut a1_tx, _), (_, mut b1_rx)) = loop_channel::<mpsc::Sender<i16, Json, 16>>().await;
-    let ((mut a2_tx, _), (_, mut b2_rx)) = loop_channel::<mpsc::Receiver<i16, Json, 16>>().await;
-    let ((mut a3_tx, _), (_, mut b3_rx)) = loop_channel::<mpsc::Receiver<i16, Json, 16>>().await;
+    let ((mut a0_tx, _), (_, mut b0_rx)) = loop_channel::<mpsc::Sender<i16>>().await;
+    let ((mut a1_tx, _), (_, mut b1_rx)) = loop_channel::<mpsc::Sender<i16>>().await;
+    let ((mut a2_tx, _), (_, mut b2_rx)) = loop_channel::<mpsc::Receiver<i16>>().await;
+    let ((mut a3_tx, _), (_, mut b3_rx)) = loop_channel::<mpsc::Receiver<i16>>().await;
 
-    let (tx, rx) = mpsc::channel::<_, _, 16, 16>(16);
+    let (tx, rx) = mpsc::channel(16);
 
     println!("Sender 0");
     a0_tx.send(tx).await.unwrap();

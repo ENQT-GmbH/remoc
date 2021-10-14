@@ -16,7 +16,7 @@ use crate::{
     chmux::{AnyBox, AnyEntry},
     codec::{self},
     rch::{
-        mpsc,
+        buffer, mpsc,
         remote::{PortDeserializer, PortSerializer},
     },
 };
@@ -93,14 +93,14 @@ enum State<Codec> {
         /// Id in local handle storage.
         id: Uuid,
         /// Dropped notification.
-        dropped_tx: mpsc::Sender<(), Codec, 1>,
+        dropped_tx: mpsc::Sender<(), Codec, buffer::Custom<1>>,
     },
     /// Value is stored on a remote endpoint.
     Remote {
         /// Id in remote handle storage.
         id: Uuid,
         /// Dropped notification.
-        dropped_tx: mpsc::Sender<(), Codec, 1>,
+        dropped_tx: mpsc::Sender<(), Codec, buffer::Custom<1>>,
     },
 }
 
@@ -126,7 +126,7 @@ impl<Codec> fmt::Debug for State<Codec> {
 /// If the value is stored locally, the handle can be used to obtain the value
 /// or a (mutable) reference to it.
 #[derive(Clone)]
-pub struct Handle<T, Codec> {
+pub struct Handle<T, Codec = codec::Default> {
     state: State<Codec>,
     _data: PhantomData<T>,
 }
@@ -257,7 +257,7 @@ pub struct TransportedHandle<T, Codec> {
     /// Handle id.
     id: Uuid,
     /// Dropped notification.
-    dropped_tx: mpsc::Sender<(), Codec, 1>,
+    dropped_tx: mpsc::Sender<(), Codec, buffer::Custom<1>>,
     /// Data type.
     data: PhantomData<T>,
     /// Codec
@@ -278,7 +278,9 @@ where
                 let handle_storage = PortSerializer::storage()?;
                 let id = handle_storage.insert(entry.clone());
 
-                let (dropped_tx, mut dropped_rx) = mpsc::channel::<_, _, 1, 1>(1);
+                let (dropped_tx, dropped_rx) = mpsc::channel(1);
+                let dropped_tx = dropped_tx.set_buffer::<buffer::Custom<1>>();
+                let mut dropped_rx = dropped_rx.set_buffer::<buffer::Custom<1>>();
 
                 tokio::spawn(async move {
                     loop {

@@ -1,7 +1,7 @@
 use futures::try_join;
 use remoc::{
-    codec::Json,
-    rch::{broadcast, mpsc},
+    codec,
+    rch::{broadcast, buffer, mpsc},
 };
 
 use crate::loop_channel_with_cfg;
@@ -10,12 +10,14 @@ use crate::loop_channel_with_cfg;
 async fn simple() {
     crate::init();
     let cfg = remoc::chmux::Cfg { chunk_size: 4, receive_buffer: 4, ..Default::default() };
-    let ((mut a_tx, _), (_, mut b_rx)) =
-        loop_channel_with_cfg::<broadcast::Receiver<(i16, mpsc::Sender<(), Json, 1>), Json, 16>>(cfg).await;
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel_with_cfg::<
+        broadcast::Receiver<(i16, mpsc::Sender<()>), codec::Default, buffer::Custom<16>>,
+    >(cfg)
+    .await;
 
-    let (tx, rx1) = broadcast::channel::<_, _, 16>(16);
-    let rx2 = tx.subscribe::<16>(16);
-    let rx3 = tx.subscribe::<16>(16);
+    let (tx, rx1) = broadcast::channel::<_, _, buffer::Custom<16>>(16);
+    let rx2 = tx.subscribe::<buffer::Custom<16>>(16);
+    let rx3 = tx.subscribe::<buffer::Custom<16>>(16);
 
     let send_task = tokio::spawn(async move {
         println!("Sending remote broadcast channel receivers");
@@ -87,7 +89,7 @@ async fn simple() {
     let mut rx3_go_tx = Some(rx3_go_tx);
     for i in 0..128 {
         println!("Sending {}", i);
-        let (reply_tx, mut reply_rx) = mpsc::channel::<_, _, 1, 1>(1);
+        let (reply_tx, mut reply_rx) = mpsc::channel(1);
         let tx = tx.clone();
         tx.send((i, reply_tx)).unwrap();
 

@@ -8,7 +8,7 @@ use std::{
 
 use super::{
     super::{
-        mpsc,
+        buffer, mpsc,
         remote::{self},
     },
     BroadcastMsg,
@@ -116,24 +116,24 @@ impl Error for TryRecvError {}
 ///
 /// Can be sent over a remote channel.
 #[derive(Serialize, Deserialize)]
-#[serde(bound(serialize = "T: RemoteSend, Codec: codec::Codec"))]
-#[serde(bound(deserialize = "T: RemoteSend, Codec: codec::Codec"))]
-pub struct Receiver<T, Codec, const BUFFER: usize> {
-    rx: mpsc::Receiver<BroadcastMsg<T>, Codec, BUFFER>,
+#[serde(bound(serialize = "T: RemoteSend, Codec: codec::Codec, Buffer: buffer::Size"))]
+#[serde(bound(deserialize = "T: RemoteSend, Codec: codec::Codec, Buffer: buffer::Size"))]
+pub struct Receiver<T, Codec = codec::Default, Buffer = buffer::Default> {
+    rx: mpsc::Receiver<BroadcastMsg<T>, Codec, Buffer>,
 }
 
-impl<T, Codec, const BUFFER: usize> fmt::Debug for Receiver<T, Codec, BUFFER> {
+impl<T, Codec, Buffer> fmt::Debug for Receiver<T, Codec, Buffer> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Receiver").finish_non_exhaustive()
     }
 }
 
-impl<T, Codec, const BUFFER: usize> Receiver<T, Codec, BUFFER>
+impl<T, Codec, Buffer> Receiver<T, Codec, Buffer>
 where
     T: RemoteSend,
     Codec: codec::Codec,
 {
-    pub(crate) fn new(rx: mpsc::Receiver<BroadcastMsg<T>, Codec, BUFFER>) -> Self {
+    pub(crate) fn new(rx: mpsc::Receiver<BroadcastMsg<T>, Codec, Buffer>) -> Self {
         Self { rx }
     }
 
@@ -162,7 +162,7 @@ where
     }
 }
 
-impl<T, Codec, const BUFFER: usize> Drop for Receiver<T, Codec, BUFFER> {
+impl<T, Codec, Buffer> Drop for Receiver<T, Codec, Buffer> {
     fn drop(&mut self) {
         // empty
     }

@@ -11,16 +11,13 @@ use std::{
 
 use super::{
     super::{
+        buffer,
         remote::{self, PortDeserializer, PortSerializer},
         RemoteSendError, BACKCHANNEL_MSG_CLOSE, BACKCHANNEL_MSG_ERROR,
     },
     Distributor,
 };
-use crate::{
-    chmux,
-    codec::{self},
-    RemoteSend,
-};
+use crate::{chmux, codec, RemoteSend};
 
 /// An error occured during receiving over an mpsc channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -49,14 +46,15 @@ impl Error for RecvError {}
 /// which may be located on a remote endpoint.
 ///
 /// Instances are created by the [channel](super::channel) function.
-pub struct Receiver<T, Codec, const BUFFER: usize> {
+pub struct Receiver<T, Codec = codec::Default, Buffer = buffer::Default> {
     inner: Option<ReceiverInner<T>>,
     #[allow(clippy::type_complexity)]
     successor_tx: Mutex<Option<tokio::sync::oneshot::Sender<ReceiverInner<T>>>>,
     _codec: PhantomData<Codec>,
+    _buffer: PhantomData<Buffer>,
 }
 
-impl<T, Codec, const BUFFER: usize> fmt::Debug for Receiver<T, Codec, BUFFER> {
+impl<T, Codec, Buffer> fmt::Debug for Receiver<T, Codec, Buffer> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Receiver").finish_non_exhaustive()
     }
@@ -79,7 +77,7 @@ pub struct TransportedReceiver<T, Codec> {
     codec: PhantomData<Codec>,
 }
 
-impl<T, Codec, const BUFFER: usize> Receiver<T, Codec, BUFFER> {
+impl<T, Codec, Buffer> Receiver<T, Codec, Buffer> {
     pub(crate) fn new(
         rx: tokio::sync::mpsc::Receiver<Result<T, RecvError>>, closed_tx: tokio::sync::watch::Sender<bool>,
         remote_send_err_tx: tokio::sync::watch::Sender<Option<RemoteSendError>>,
@@ -88,6 +86,7 @@ impl<T, Codec, const BUFFER: usize> Receiver<T, Codec, BUFFER> {
             inner: Some(ReceiverInner { rx, closed_tx, remote_send_err_tx }),
             successor_tx: Mutex::new(None),
             _codec: PhantomData,
+            _buffer: PhantomData,
         }
     }
 
@@ -115,20 +114,35 @@ impl<T, Codec, const BUFFER: usize> Receiver<T, Codec, BUFFER> {
     }
 
     /// Sets the codec that will be used when sending this receiver to a remote endpoint.
-    pub fn set_codec<NewCodec>(mut self) -> Receiver<T, NewCodec, BUFFER> {
-        Receiver { inner: self.inner.take(), successor_tx: Mutex::new(None), _codec: PhantomData }
+    pub fn set_codec<NewCodec>(mut self) -> Receiver<T, NewCodec, Buffer> {
+        Receiver {
+            inner: self.inner.take(),
+            successor_tx: Mutex::new(None),
+            _codec: PhantomData,
+            _buffer: PhantomData,
+        }
     }
 
     /// Sets the buffer size that will be used when sending this receiver to a remote endpoint.
-    pub fn set_buffer<const NEW_BUFFER: usize>(mut self) -> Receiver<T, Codec, NEW_BUFFER> {
-        Receiver { inner: self.inner.take(), successor_tx: Mutex::new(None), _codec: PhantomData }
+    pub fn set_buffer<NewBuffer>(mut self) -> Receiver<T, Codec, NewBuffer>
+    where
+        NewBuffer: buffer::Size,
+    {
+        assert!(NewBuffer::size() > 0, "buffer size must not be zero");
+        Receiver {
+            inner: self.inner.take(),
+            successor_tx: Mutex::new(None),
+            _codec: PhantomData,
+            _buffer: PhantomData,
+        }
     }
 }
 
-impl<T, Codec, const BUFFER: usize> Receiver<T, Codec, BUFFER>
+impl<T, Codec, Buffer> Receiver<T, Codec, Buffer>
 where
     T: RemoteSend + Clone,
     Codec: codec::Codec,
+    Buffer: buffer::Size,
 {
     /// Distribute received items over multiple receivers.
     ///
@@ -136,12 +150,12 @@ where
     ///
     /// If `wait_on_empty` is true, the distributor waits if all subscribers are closed.
     /// Otherwise it terminates.
-    pub fn distribute(self, wait_on_empty: bool) -> Distributor<T, Codec, BUFFER> {
+    pub fn distribute(self, wait_on_empty: bool) -> Distributor<T, Codec, Buffer> {
         Distributor::new(self, wait_on_empty)
     }
 }
 
-impl<T, Codec, const BUFFER: usize> Drop for Receiver<T, Codec, BUFFER> {
+impl<T, Codec, Buffer> Drop for Receiver<T, Codec, Buffer> {
     fn drop(&mut self) {
         let mut successor_tx = self.successor_tx.lock().unwrap();
         if let Some(successor_tx) = successor_tx.take() {
@@ -150,10 +164,11 @@ impl<T, Codec, const BUFFER: usize> Drop for Receiver<T, Codec, BUFFER> {
     }
 }
 
-impl<T, Codec, const BUFFER: usize> Serialize for Receiver<T, Codec, BUFFER>
+impl<T, Codec, Buffer> Serialize for Receiver<T, Codec, Buffer>
 where
     T: RemoteSend,
     Codec: codec::Codec,
+    Buffer: buffer::Size,
 {
     /// Serializes this receiver for sending over a chmux channel.
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -231,23 +246,24 @@ where
     }
 }
 
-impl<'de, T, Codec, const BUFFER: usize> Deserialize<'de> for Receiver<T, Codec, BUFFER>
+impl<'de, T, Codec, Buffer> Deserialize<'de> for Receiver<T, Codec, Buffer>
 where
     T: RemoteSend,
     Codec: codec::Codec,
+    Buffer: buffer::Size,
 {
     /// Deserializes the receiver after it has been received over a chmux channel.
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        assert!(BUFFER > 0, "BUFFER must not be zero");
+        assert!(Buffer::size() > 0, "BUFFER must not be zero");
 
         // Get chmux port number from deserialized transport type.
         let TransportedReceiver { port, .. } = TransportedReceiver::<T, Codec>::deserialize(deserializer)?;
 
         // Create channels.
-        let (tx, rx) = tokio::sync::mpsc::channel(BUFFER);
+        let (tx, rx) = tokio::sync::mpsc::channel(Buffer::size());
         let (closed_tx, mut closed_rx) = tokio::sync::watch::channel(false);
         let (remote_send_err_tx, mut remote_send_err_rx) = tokio::sync::watch::channel(None);
 

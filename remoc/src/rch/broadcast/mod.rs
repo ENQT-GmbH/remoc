@@ -1,11 +1,14 @@
-//! A multi-producer, multi-consumer broadcast queue. Each sent value is seen by all consumers.
+//! A multi-producer, multi-consumer broadcast queue.
+//!
+//! Each sent value is seen by all consumers.
+//! The senders must be local, while the receivers can be sent to
+//! remote endpoints.
+//! Forwarding is supported.
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    codec::{self},
-    RemoteSend,
-};
+use super::buffer;
+use crate::{codec, RemoteSend};
 
 mod receiver;
 mod sender;
@@ -23,12 +26,13 @@ pub enum BroadcastMsg<T> {
 }
 
 /// Create a bounded, multi-producer, multi-consumer channel where each sent value is broadcasted to all active receivers.
-pub fn channel<T, Codec, const RECV_BUFFER: usize>(
+pub fn channel<T, Codec, ReceiveBuffer>(
     send_buffer: usize,
-) -> (Sender<T, Codec>, Receiver<T, Codec, RECV_BUFFER>)
+) -> (Sender<T, Codec>, Receiver<T, Codec, ReceiveBuffer>)
 where
     T: RemoteSend + Clone,
     Codec: codec::Codec,
+    ReceiveBuffer: buffer::Size,
 {
     let sender = Sender::new();
     let receiver = sender.subscribe(send_buffer);

@@ -7,14 +7,14 @@ use super::{
 };
 use crate::{
     codec::{self},
-    rch::{mpsc, watch},
+    rch::{buffer, mpsc, watch},
     RemoteSend,
 };
 
 /// The owner of [RwLock]s holding a shared value.
 ///
 /// All acquired locks become invalid when this is dropped.
-pub struct Owner<T, Codec> {
+pub struct Owner<T, Codec = codec::Default> {
     task: Option<JoinHandle<T>>,
     rw_lock: RwLock<T, Codec>,
     term_tx: Option<tokio::sync::oneshot::Sender<()>>,
@@ -34,7 +34,11 @@ where
     /// Creates a new [RwLock] owner with the specified shared value.
     pub fn new(mut value: T) -> Self {
         let (read_req_tx, read_req_rx) = mpsc::channel(1);
+        let read_req_tx = read_req_tx.set_buffer();
+        let read_req_rx = read_req_rx.set_buffer();
         let (write_req_tx, write_req_rx) = mpsc::channel(1);
+        let write_req_tx = write_req_tx.set_buffer();
+        let write_req_rx = write_req_rx.set_buffer();
         let (term_tx, term_rx) = tokio::sync::oneshot::channel();
 
         let task = tokio::spawn(async move {
@@ -53,10 +57,12 @@ where
 
     /// Message handler for lock owner.
     async fn owner_task(
-        value: &mut T, mut read_req_rx: mpsc::Receiver<ReadRequest<T, Codec>, Codec, 1>,
-        mut write_req_rx: mpsc::Receiver<WriteRequest<T, Codec>, Codec, 1>,
+        value: &mut T, mut read_req_rx: mpsc::Receiver<ReadRequest<T, Codec>, Codec, buffer::Custom<1>>,
+        mut write_req_rx: mpsc::Receiver<WriteRequest<T, Codec>, Codec, buffer::Custom<1>>,
     ) -> T {
-        let (mut dropped_tx, mut dropped_rx): (_, mpsc::Receiver<_, _, 1>) = mpsc::channel(1);
+        let (dropped_tx, dropped_rx) = mpsc::channel(1);
+        let mut dropped_tx = dropped_tx.set_buffer();
+        let mut dropped_rx = dropped_rx.set_buffer::<buffer::Custom<1>>();
         let (mut invalid_tx, mut invalid_rx) = watch::channel(false);
 
         loop {
@@ -99,6 +105,8 @@ where
 
                     // Create new dropped notification channel.
                     let (new_dropped_tx, new_dropped_rx) = mpsc::channel(1);
+                    let new_dropped_tx = new_dropped_tx.set_buffer();
+                    let new_dropped_rx = new_dropped_rx.set_buffer();
                     dropped_tx = new_dropped_tx;
                     dropped_rx = new_dropped_rx;
 
