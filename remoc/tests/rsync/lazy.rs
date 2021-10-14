@@ -1,5 +1,5 @@
 use crate::loop_channel;
-use remoc::{codec::JsonCodec, rsync::lazy::Lazy};
+use remoc::{codec::JsonCodec, robj::lazy::Lazy};
 
 #[tokio::test]
 async fn simple() {

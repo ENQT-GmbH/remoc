@@ -16,7 +16,7 @@ use super::{
     },
     Distributor,
 };
-use crate::{chmux, codec::CodecT, rsync::RemoteSend};
+use crate::{chmux, codec::CodecT, rch::RemoteSend};
 
 /// An error occured during receiving over an mpsc channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]

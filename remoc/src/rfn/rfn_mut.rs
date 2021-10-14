@@ -5,7 +5,7 @@ use std::fmt;
 use super::{msg::RFnRequest, CallError};
 use crate::{
     codec::CodecT,
-    rsync::{mpsc, oneshot, RemoteSend},
+    rch::{mpsc, oneshot, RemoteSend},
 };
 
 /// Provides a remotely callable async FnMut function.

@@ -27,8 +27,6 @@ use tokio::{
     try_join,
 };
 
-use crate::rsync::handle::HandleStorage;
-
 use super::{
     client::{Client, ConnectRequest, ConnectResponse},
     credit::{credit_monitor_pair, credit_send_pair, ChannelCreditMonitor, CreditProvider},
@@ -37,7 +35,7 @@ use super::{
     port_allocator::{PortAllocator, PortNumber},
     receiver::{PortReceiveMsg, ReceivedData, ReceivedPortRequests, Receiver},
     sender::Sender,
-    Cfg, ChMuxError, PROTOCOL_VERSION,
+    AnyStorage, Cfg, ChMuxError, PROTOCOL_VERSION,
 };
 
 /// Multiplexer protocol error.
@@ -237,8 +235,8 @@ pub struct ChMux<TransportSink, TransportStream> {
     transport_sink: Option<TransportSink>,
     /// Transport receiver.
     transport_stream: Option<TransportStream>,
-    /// Handle storage.
-    handle_storage: HandleStorage,
+    /// Storage.
+    storage: AnyStorage,
 }
 
 impl<TransportSink, TransportStream> fmt::Debug for ChMux<TransportSink, TransportStream> {
@@ -316,7 +314,7 @@ where
             goodbye_received: false,
             transport_sink: Some(transport_sink),
             transport_stream: Some(transport_stream),
-            handle_storage: HandleStorage::new(),
+            storage: AnyStorage::new(),
         };
 
         let client = Client::new(
@@ -492,7 +490,7 @@ where
             Arc::downgrade(&hangup_recved),
             Arc::downgrade(&hangup_notify),
             self.port_allocator.clone(),
-            self.handle_storage.clone(),
+            self.storage.clone(),
         );
 
         let receiver = Receiver::new(
@@ -504,7 +502,7 @@ where
             receiver_rx_data,
             receiver_credit_returner,
             self.port_allocator.clone(),
-            self.handle_storage.clone(),
+            self.storage.clone(),
         );
 
         (sender, receiver)

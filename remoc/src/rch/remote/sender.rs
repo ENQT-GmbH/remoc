@@ -17,9 +17,8 @@ use super::{
     BIG_DATA_CHUNK_QUEUE, BIG_DATA_LIMIT,
 };
 use crate::{
-    chmux,
+    chmux::{self, AnyStorage},
     codec::{CodecT, SerializationError},
-    rsync::handle::HandleStorage,
 };
 
 pub use crate::chmux::Closed;
@@ -79,7 +78,7 @@ pub struct PortSerializer {
     #[allow(clippy::type_complexity)]
     requests:
         Vec<(chmux::PortNumber, Box<dyn FnOnce(chmux::Connect) -> BoxFuture<'static, ()> + Send + 'static>)>,
-    handle_storage: HandleStorage,
+    storage: AnyStorage,
 }
 
 impl PortSerializer {
@@ -88,8 +87,8 @@ impl PortSerializer {
     }
 
     /// Create a new port serializer and register it as active.
-    fn start(allocator: chmux::PortAllocator, handle_storage: HandleStorage) -> Rc<RefCell<Self>> {
-        let this = Rc::new(RefCell::new(Self { allocator, requests: Vec::new(), handle_storage }));
+    fn start(allocator: chmux::PortAllocator, storage: AnyStorage) -> Rc<RefCell<Self>> {
+        let this = Rc::new(RefCell::new(Self { allocator, requests: Vec::new(), storage }));
         let weak = Rc::downgrade(&this);
         Self::INSTANCE.with(move |i| i.replace(weak));
         this
@@ -126,8 +125,8 @@ impl PortSerializer {
         Ok(local_port_num)
     }
 
-    /// Returns the handle storage of the channel multiplexer.
-    pub(crate) fn handle_storage<E>() -> Result<HandleStorage, E>
+    /// Returns the data storage of the channel multiplexer.
+    pub(crate) fn storage<E>() -> Result<AnyStorage, E>
     where
         E: serde::ser::Error,
     {
@@ -137,7 +136,7 @@ impl PortSerializer {
         };
         let this = this.try_borrow().expect("PortSerializer is referenced multiple times during serialization");
 
-        Ok(this.handle_storage.clone())
+        Ok(this.storage.clone())
     }
 }
 
@@ -162,10 +161,10 @@ where
     }
 
     fn serialize_buffered(
-        allocator: chmux::PortAllocator, handle_storage: HandleStorage, item: &T, limit: usize,
+        allocator: chmux::PortAllocator, storage: AnyStorage, item: &T, limit: usize,
     ) -> Result<Option<(BytesMut, PortSerializer)>, SerializationError> {
         let mut lw = LimitedBytesWriter::new(limit);
-        let ps_ref = PortSerializer::start(allocator, handle_storage);
+        let ps_ref = PortSerializer::start(allocator, storage);
 
         match <Codec as CodecT>::serialize(&mut lw, &item) {
             _ if lw.overflow() => return Ok(None),
@@ -178,8 +177,8 @@ where
     }
 
     async fn serialize_streaming(
-        allocator: chmux::PortAllocator, handle_storage: HandleStorage, item: T,
-        tx: tokio::sync::mpsc::Sender<BytesMut>, chunk_size: usize,
+        allocator: chmux::PortAllocator, storage: AnyStorage, item: T, tx: tokio::sync::mpsc::Sender<BytesMut>,
+        chunk_size: usize,
     ) -> Result<(T, PortSerializer, usize), (SerializationError, T)> {
         let cbw = ChannelBytesWriter::new(tx);
         let mut cbw = BufWriter::with_capacity(chunk_size, cbw);
@@ -188,7 +187,7 @@ where
         let item_arc_task = item_arc.clone();
 
         let result = task::spawn_blocking(move || {
-            let ps_ref = PortSerializer::start(allocator, handle_storage);
+            let ps_ref = PortSerializer::start(allocator, storage);
 
             let item = item_arc_task.lock().unwrap();
             <Codec as CodecT>::serialize(&mut cbw, &*item)?;
@@ -226,7 +225,7 @@ where
             // Try buffered serialization.
             match Self::serialize_buffered(
                 self.sender.port_allocator(),
-                self.sender.handle_storage(),
+                self.sender.storage(),
                 &item,
                 self.sender.max_data_size(),
             ) {
@@ -259,7 +258,7 @@ where
                 let (tx, mut rx) = tokio::sync::mpsc::channel(BIG_DATA_CHUNK_QUEUE);
                 let ser_task = Self::serialize_streaming(
                     self.sender.port_allocator(),
-                    self.sender.handle_storage(),
+                    self.sender.storage(),
                     item,
                     tx,
                     self.sender.chunk_size(),

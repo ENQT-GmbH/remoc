@@ -10,8 +10,12 @@ use serde::{Deserialize, Serialize};
 use std::{convert::TryFrom, fmt, pin::Pin, sync::Arc};
 use tokio::sync::Mutex;
 
-use super::mpsc;
-use crate::{chmux, chmux::DataBuf, codec::CodecT};
+use crate::{
+    chmux,
+    chmux::DataBuf,
+    codec::CodecT,
+    rch::{mpsc, ConnectError},
+};
 
 mod fw_bin;
 
@@ -37,7 +41,7 @@ pub enum FetchError {
     /// Receiving the binary data from the remote endpoint failed.
     RemoteReceive(chmux::RecvError),
     /// Connecting a sent channel failed.
-    RemoteConnect(super::ConnectError),
+    RemoteConnect(ConnectError),
 }
 
 impl From<UsizeExceeded> for FetchError {

@@ -8,8 +8,11 @@ use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt, marker::PhantomData, ops::Deref, pin::Pin, sync::Arc};
 use tokio::sync::Mutex;
 
-use super::{mpsc, oneshot, remote, RemoteSend};
-use crate::{chmux, codec::CodecT};
+use crate::{
+    chmux,
+    codec::CodecT,
+    rch::{mpsc, oneshot, remote, RemoteSend},
+};
 
 /// An error occured during fetching a lazily transmitted value.
 #[derive(Clone, Debug, Serialize, Deserialize)]

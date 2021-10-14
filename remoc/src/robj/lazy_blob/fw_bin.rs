@@ -3,8 +3,7 @@
 use serde::{ser, Deserialize, Serialize};
 use std::sync::Mutex;
 
-use super::super::bin;
-use crate::chmux::Received;
+use crate::{chmux::Received, rch::bin};
 
 /// A chmux sender that can be remotely sent and forwarded.
 pub(crate) struct Sender {

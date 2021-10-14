@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use remoc::{codec::JsonCodec, rsync::watch};
+use remoc::{codec::JsonCodec, rch::watch};
 use tokio::time::sleep;
 
 use crate::loop_channel;
