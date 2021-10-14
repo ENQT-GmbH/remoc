@@ -46,7 +46,7 @@ impl Drop for RFnOnceProvider {
 #[derive(Serialize, Deserialize)]
 #[serde(bound(serialize = "A: RemoteSend, R: RemoteSend, Codec: codec::Codec"))]
 #[serde(bound(deserialize = "A: RemoteSend, R: RemoteSend, Codec: codec::Codec"))]
-pub struct RFnOnce<A, R, Codec> {
+pub struct RFnOnce<A, R, Codec = codec::Default> {
     request_tx: oneshot::Sender<RFnRequest<A, R, Codec>, Codec>,
 }
 

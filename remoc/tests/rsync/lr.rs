@@ -1,11 +1,11 @@
-use remoc::{codec::Json, rch::lr};
+use remoc::rch::lr;
 
 use crate::loop_channel;
 
 #[tokio::test]
 async fn send_sender() {
     crate::init();
-    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<lr::Sender<i16, Json>>().await;
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<lr::Sender<i16>>().await;
 
     println!("Sending remote lr channel sender");
     let (tx, mut rx) = lr::channel();
@@ -40,7 +40,7 @@ async fn send_sender() {
 #[tokio::test]
 async fn send_receiver() {
     crate::init();
-    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<lr::Receiver<i16, Json>>().await;
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<lr::Receiver<i16>>().await;
 
     println!("Sending remote lr channel receiver");
     let (mut tx, rx) = lr::channel();

@@ -1,11 +1,11 @@
 use crate::loop_channel;
 use rand::{thread_rng, Rng, RngCore};
-use remoc::{codec::Json, robj::lazy_blob::LazyBlob};
+use remoc::robj::lazy_blob::LazyBlob;
 
 #[tokio::test]
 async fn simple() {
     crate::init();
-    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<LazyBlob<Json>>().await;
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<LazyBlob>().await;
 
     let mut rng = thread_rng();
     let size = rng.gen_range(10_000_000..15_000_000);
@@ -13,7 +13,7 @@ async fn simple() {
     rng.fill_bytes(&mut data);
 
     println!("Creating lazy blob of size {} bytes", data.len());
-    let lazy: LazyBlob<Json> = LazyBlob::new(data.clone().into());
+    let lazy: LazyBlob = LazyBlob::new(data.clone().into());
 
     println!("Sending lazy blob");
     a_tx.send(lazy).await.unwrap();

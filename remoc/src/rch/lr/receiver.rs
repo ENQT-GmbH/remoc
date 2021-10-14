@@ -1,12 +1,11 @@
+use futures::FutureExt;
+use serde::{de::DeserializeOwned, ser, Deserialize, Serialize};
 use std::{
     error::Error,
     fmt,
     marker::PhantomData,
     sync::{Arc, Mutex},
 };
-
-use futures::FutureExt;
-use serde::{de::DeserializeOwned, ser, Deserialize, Serialize};
 
 use super::{
     super::{
@@ -67,7 +66,7 @@ impl fmt::Display for RecvError {
 impl Error for RecvError {}
 
 /// The receiver part of a local/remote channel.
-pub struct Receiver<T, Codec> {
+pub struct Receiver<T, Codec = codec::Default> {
     pub(super) receiver: Option<Result<remote::Receiver<T, Codec>, ConnectError>>,
     pub(super) sender_tx:
         Option<tokio::sync::mpsc::UnboundedSender<Result<remote::Sender<T, Codec>, ConnectError>>>,

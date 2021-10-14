@@ -7,9 +7,11 @@ use std::{error::Error, fmt};
 
 use crate::chmux;
 
+mod interlock;
+
 pub mod bin;
 pub mod broadcast;
-mod interlock;
+pub mod buffer;
 pub mod lr;
 pub mod mpsc;
 pub mod oneshot;

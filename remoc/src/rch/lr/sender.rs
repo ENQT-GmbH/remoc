@@ -89,7 +89,7 @@ impl<T> From<remote::SendError<T>> for SendError<T> {
 impl<T> Error for SendError<T> where T: fmt::Debug {}
 
 /// The sender part of a local/remote channel.
-pub struct Sender<T, Codec> {
+pub struct Sender<T, Codec = codec::Default> {
     pub(super) sender: Option<Result<remote::Sender<T, Codec>, ConnectError>>,
     pub(super) sender_rx: tokio::sync::mpsc::UnboundedReceiver<Result<remote::Sender<T, Codec>, ConnectError>>,
     pub(super) receiver_tx:

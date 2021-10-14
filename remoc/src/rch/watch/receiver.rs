@@ -68,7 +68,7 @@ impl Error for ChangedError {}
 ///
 /// Instances are created by the [channel](super::channel) function.
 #[derive(Clone)]
-pub struct Receiver<T, Codec> {
+pub struct Receiver<T, Codec = codec::Default> {
     rx: tokio::sync::watch::Receiver<Result<T, RecvError>>,
     remote_send_err_tx: tokio::sync::mpsc::Sender<RemoteSendError>,
     _codec: PhantomData<Codec>,

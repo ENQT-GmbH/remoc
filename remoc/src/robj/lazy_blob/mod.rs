@@ -14,7 +14,7 @@ use crate::{
     chmux,
     chmux::DataBuf,
     codec::{self},
-    rch::{mpsc, ConnectError},
+    rch::{buffer, mpsc, ConnectError},
 };
 
 mod fw_bin;
@@ -101,8 +101,8 @@ impl Drop for Provider {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound(serialize = "Codec: codec::Codec"))]
 #[serde(bound(deserialize = "Codec: codec::Codec"))]
-pub struct LazyBlob<Codec> {
-    req_tx: mpsc::Sender<fw_bin::Sender, Codec, 1>,
+pub struct LazyBlob<Codec = codec::Default> {
+    req_tx: mpsc::Sender<fw_bin::Sender, Codec, buffer::Custom<1>>,
     len: u64,
     #[serde(skip)]
     #[serde(default)]
@@ -134,7 +134,9 @@ where
     /// its provider.
     pub fn provided(data: Bytes) -> (Self, Provider) {
         let (keep_tx, keep_rx) = tokio::sync::oneshot::channel();
-        let (req_tx, mut req_rx): (_, mpsc::Receiver<_, _, 1>) = mpsc::channel(1);
+        let (req_tx, req_rx) = mpsc::channel(1);
+        let req_tx = req_tx.set_buffer();
+        let mut req_rx = req_rx.set_buffer::<buffer::Custom<1>>();
         let len = data.len() as _;
 
         tokio::spawn(async move {

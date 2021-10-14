@@ -1,6 +1,11 @@
-//! Chmux binary channels.
+//! Binary channel.
 //!
 //! Allow low-overhead exchange of binary data.
+//! One end of the channel must be local while the other end must be remote.
+//! Forwarding is not supported.
+//!
+//! This is a wrapper around a [chmux](crate::chmux) channel that allows to
+//! establish a connection by sending the sender or receiver to a remote endpoint.
 
 use std::sync::{Arc, Mutex};
 
@@ -12,7 +17,7 @@ pub use sender::{Sender, TransportedSender};
 
 use super::interlock::{Interlock, Location};
 
-/// Creates a new chmux channel that is established by sending either the sender or receiver
+/// Creates a new binary channel that is established by sending either the sender or receiver
 /// over a remote channel.
 pub fn channel() -> (Sender, Receiver) {
     let (sender_tx, sender_rx) = tokio::sync::mpsc::unbounded_channel();

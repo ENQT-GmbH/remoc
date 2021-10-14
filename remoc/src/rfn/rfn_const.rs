@@ -5,7 +5,7 @@ use std::{fmt, sync::Arc};
 use super::{msg::RFnRequest, CallError};
 use crate::{
     codec::{self},
-    rch::{mpsc, oneshot},
+    rch::{buffer, mpsc, oneshot},
     RemoteSend,
 };
 
@@ -49,8 +49,8 @@ impl Drop for RFnProvider {
 #[derive(Serialize, Deserialize)]
 #[serde(bound(serialize = "A: RemoteSend, R: RemoteSend, Codec: codec::Codec"))]
 #[serde(bound(deserialize = "A: RemoteSend, R: RemoteSend, Codec: codec::Codec"))]
-pub struct RFn<A, R, Codec> {
-    request_tx: mpsc::Sender<RFnRequest<A, R, Codec>, Codec, 1>,
+pub struct RFn<A, R, Codec = codec::Default> {
+    request_tx: mpsc::Sender<RFnRequest<A, R, Codec>, Codec, buffer::Custom<1>>,
 }
 
 impl<A, R, Codec> Clone for RFn<A, R, Codec> {
@@ -88,7 +88,9 @@ where
         F: Fn(A) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = R> + Send,
     {
-        let (request_tx, mut request_rx): (_, mpsc::Receiver<_, _, 1>) = mpsc::channel(1);
+        let (request_tx, request_rx) = mpsc::channel(1);
+        let request_tx = request_tx.set_buffer();
+        let mut request_rx = request_rx.set_buffer::<buffer::Custom<1>>();
         let (keep_tx, keep_rx) = tokio::sync::oneshot::channel();
         let fun = Arc::new(fun);
 

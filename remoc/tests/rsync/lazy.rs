@@ -1,14 +1,14 @@
 use crate::loop_channel;
-use remoc::{codec::Json, robj::lazy::Lazy};
+use remoc::robj::lazy::Lazy;
 
 #[tokio::test]
 async fn simple() {
     crate::init();
-    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<Lazy<String, Json>>().await;
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<Lazy<String>>().await;
 
     let value = "test string data".to_string();
 
-    let lazy: Lazy<_, Json> = Lazy::new(value.clone());
+    let lazy = Lazy::new(value.clone());
 
     println!("Sending lazy");
     a_tx.send(lazy).await.unwrap();

@@ -10,11 +10,7 @@ mod sender;
 pub use receiver::{PortDeserializer, Receiver, RecvError};
 pub use sender::{Closed, PortSerializer, SendError, SendErrorKind, Sender};
 
-use crate::{
-    chmux,
-    codec::{self},
-    RemoteSend,
-};
+use crate::{chmux, codec, RemoteSend};
 
 /// Chunk queue length for big data (de-)serialization.
 const BIG_DATA_CHUNK_QUEUE: usize = 32;

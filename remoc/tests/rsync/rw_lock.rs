@@ -1,20 +1,17 @@
-use remoc::{
-    codec::Json,
-    robj::rw_lock::{Owner, RwLock},
-};
+use remoc::robj::rw_lock::{Owner, RwLock};
 
 use crate::loop_channel;
 
 #[tokio::test]
 async fn simple() {
     crate::init();
-    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<RwLock<String, Json>>().await;
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<RwLock<String>>().await;
 
     let value = "test string".to_string();
     let new_value = "new value".to_string();
 
     println!("Creating owner");
-    let owner: Owner<_, Json> = Owner::new(value.clone());
+    let owner = Owner::new(value.clone());
 
     println!("Sending RwLocks");
     a_tx.send(owner.rw_lock()).await.unwrap();

@@ -73,7 +73,7 @@ impl From<RemoteSendError> for SendError {
 /// Send values to the associated [Receiver](super::Receiver), which may be located on a remote endpoint.
 ///
 /// Instances are created by the [channel](super::channel) function.
-pub struct Sender<T, Codec> {
+pub struct Sender<T, Codec = codec::Default> {
     inner: Option<SenderInner<T, Codec>>,
     successor_tx: Mutex<Option<tokio::sync::oneshot::Sender<SenderInner<T, Codec>>>>,
 }

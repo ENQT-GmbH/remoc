@@ -8,9 +8,8 @@ use std::{
 
 use super::msg::{ReadRequest, Value, WriteRequest};
 use crate::{
-    chmux,
-    codec::{self},
-    rch::{mpsc, oneshot, remote},
+    chmux, codec,
+    rch::{buffer, mpsc, oneshot, remote},
     RemoteSend,
 };
 
@@ -92,8 +91,8 @@ impl Error for CommitError {}
 #[derive(Serialize, Deserialize)]
 #[serde(bound(serialize = "T: RemoteSend, Codec: codec::Codec"))]
 #[serde(bound(deserialize = "T: RemoteSend, Codec: codec::Codec"))]
-pub struct ReadLock<T, Codec> {
-    req_tx: mpsc::Sender<ReadRequest<T, Codec>, Codec, 1>,
+pub struct ReadLock<T, Codec = codec::Default> {
+    req_tx: mpsc::Sender<ReadRequest<T, Codec>, Codec, buffer::Custom<1>>,
     #[serde(skip)]
     #[serde(default = "empty_cache")]
     cache: Arc<tokio::sync::RwLock<Option<Value<T, Codec>>>>,
@@ -120,7 +119,7 @@ where
     T: RemoteSend + Sync,
     Codec: codec::Codec,
 {
-    pub(crate) fn new(read_req_tx: mpsc::Sender<ReadRequest<T, Codec>, Codec, 1>) -> Self {
+    pub(crate) fn new(read_req_tx: mpsc::Sender<ReadRequest<T, Codec>, Codec, buffer::Custom<1>>) -> Self {
         Self { req_tx: read_req_tx, cache: empty_cache() }
     }
 
@@ -194,7 +193,7 @@ where
 }
 
 /// RAII structure used to release the shared read access of a lock when dropped.
-pub struct ReadGuard<'a, T, Codec>(tokio::sync::RwLockReadGuard<'a, Value<T, Codec>>);
+pub struct ReadGuard<'a, T, Codec = codec::Default>(tokio::sync::RwLockReadGuard<'a, Value<T, Codec>>);
 
 impl<'a, T, Codec> ReadGuard<'a, T, Codec>
 where
@@ -251,9 +250,9 @@ impl<'a, T, Codec> Drop for ReadGuard<'a, T, Codec> {
 #[derive(Serialize, Deserialize)]
 #[serde(bound(serialize = "T: RemoteSend, Codec: codec::Codec"))]
 #[serde(bound(deserialize = "T: RemoteSend, Codec: codec::Codec"))]
-pub struct RwLock<T, Codec> {
+pub struct RwLock<T, Codec = codec::Default> {
     read: ReadLock<T, Codec>,
-    req_tx: mpsc::Sender<WriteRequest<T, Codec>, Codec, 1>,
+    req_tx: mpsc::Sender<WriteRequest<T, Codec>, Codec, buffer::Custom<1>>,
 }
 
 impl<T, Codec> Clone for RwLock<T, Codec> {
@@ -274,7 +273,8 @@ where
     Codec: codec::Codec,
 {
     pub(crate) fn new(
-        read_lock: ReadLock<T, Codec>, write_req_tx: mpsc::Sender<WriteRequest<T, Codec>, Codec, 1>,
+        read_lock: ReadLock<T, Codec>,
+        write_req_tx: mpsc::Sender<WriteRequest<T, Codec>, Codec, buffer::Custom<1>>,
     ) -> Self {
         Self { read: read_lock, req_tx: write_req_tx }
     }
@@ -321,7 +321,7 @@ where
 ///
 /// To commit changes [commit](Self::commit) must be called.
 /// Dropping the guard will result in the changes to be not applied to the shared value.
-pub struct WriteGuard<T, Codec> {
+pub struct WriteGuard<T, Codec = codec::Default> {
     value: Option<T>,
     new_value_tx: Option<oneshot::Sender<T, Codec>>,
     confirm_rx: Option<oneshot::Receiver<(), Codec>>,

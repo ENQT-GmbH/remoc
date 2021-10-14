@@ -134,7 +134,7 @@ mod bincode;
 pub use self::bincode::Bincode;
 #[cfg(feature = "default-codec-bincode")]
 /// Default codec is Bincode.
-pub type Defaut = Bincode;
+pub use self::bincode::Bincode as Default;
 
 #[cfg(feature = "codec-cbor")]
 mod cbor;
@@ -142,7 +142,7 @@ mod cbor;
 pub use cbor::Cbor;
 #[cfg(feature = "default-codec-cbor")]
 /// Default codec is CBOR.
-pub type Defaut = Cbor;
+pub use cbor::Cbor as Default;
 
 #[cfg(feature = "codec-json")]
 mod json;
@@ -150,7 +150,7 @@ mod json;
 pub use json::Json;
 #[cfg(feature = "default-codec-json")]
 /// Default codec is JSON.
-pub type Defaut = Json;
+pub use json::Json as Default;
 
 #[cfg(feature = "codec-messagepack")]
 mod messagepack;
@@ -158,4 +158,4 @@ mod messagepack;
 pub use messagepack::Messagepack;
 #[cfg(feature = "default-codec-messagepack")]
 /// Default codec is MessagePack.
-pub type Defaut = Messagepack;
+pub use messagepack::Messagepack as Default;

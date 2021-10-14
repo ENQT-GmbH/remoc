@@ -1,4 +1,7 @@
-//! MPSC channels.
+//! Multi producer single customer channel.
+//!
+//! The sender and receiver can both be sent to remote endpoints.
+//! Forwarding is supported.
 
 use crate::RemoteSend;
 
@@ -13,14 +16,10 @@ pub use sender::{Permit, SendError, Sender, TransportedSender, TrySendError};
 /// Creates a bounded channel for communicating between asynchronous tasks with backpressure.
 ///
 /// The sender and receiver may be sent to remote endpoints via channels.
-pub fn channel<T, Codec, const SEND_BUFFER: usize, const RECEIVE_BUFFER: usize>(
-    local_buffer: usize,
-) -> (Sender<T, Codec, SEND_BUFFER>, Receiver<T, Codec, RECEIVE_BUFFER>)
+pub fn channel<T, Codec>(local_buffer: usize) -> (Sender<T, Codec>, Receiver<T, Codec>)
 where
     T: RemoteSend,
 {
-    assert!(SEND_BUFFER > 0, "SEND_BUFFER must not be zero");
-    assert!(RECEIVE_BUFFER > 0, "RECEIVE_BUFFER must not be zero");
     assert!(local_buffer > 0, "local_buffer must not be zero");
 
     let (tx, rx) = tokio::sync::mpsc::channel(local_buffer);
