@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use remoc::{
     codec::CodecT,
-    robj::{async_trait, CallError, Server},
+    rtc::{async_trait, CallError, Server},
     rsync::mpsc,
 };
 
