@@ -11,7 +11,7 @@ categories = ["asynchronous", "network-programming"]
 license = "Apache-2.0"
 
 [features]
-default = ["serde", "obj", "default-codec-json", "codec-bincode", "codec-cbor", "codec-json", "codec-messagepack"]
+default = ["serde", "obj", "default-codec-json", "codec-bincode", "codec-cbor", "codec-json", "codec-message-pack"]
 obj = ["remoc_macro"]
 
 # Codecs
@@ -21,8 +21,8 @@ codec-cbor = ["serde_cbor"]
 default-codec-cbor = ["codec-cbor"]
 codec-json = ["serde_json"]
 default-codec-json = ["codec-json"]
-codec-messagepack = ["rmp-serde"]
-default-codec-messagepack = ["codec-messagepack"]
+codec-message-pack = ["rmp-serde"]
+default-codec-message-pack = ["codec-message-pack"]
 
 [dependencies]
 remoc_macro = { version = "=0.8.0-pre1", path = "../remoc_macro", optional = true }

@@ -152,10 +152,10 @@ pub use json::Json;
 /// Default codec is JSON.
 pub use json::Json as Default;
 
-#[cfg(feature = "codec-messagepack")]
-mod messagepack;
-#[cfg(feature = "codec-messagepack")]
-pub use messagepack::Messagepack;
-#[cfg(feature = "default-codec-messagepack")]
+#[cfg(feature = "codec-message-pack")]
+mod message_pack;
+#[cfg(feature = "codec-message-pack")]
+pub use message_pack::MessagePack;
+#[cfg(feature = "default-codec-message-pack")]
 /// Default codec is MessagePack.
-pub use messagepack::Messagepack as Default;
+pub use message_pack::MessagePack as Default;
