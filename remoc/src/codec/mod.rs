@@ -108,7 +108,7 @@ impl<'de> Deserialize<'de> for DeserializationError {
 }
 
 /// Serializes and deserializes items from and to byte data.
-pub trait CodecT: Send + Sync + Serialize + for<'de> Deserialize<'de> + Clone + Unpin + 'static {
+pub trait Codec: Send + Sync + Serialize + for<'de> Deserialize<'de> + Clone + Unpin + 'static {
     /// Serializes the specified item into the data format.
     fn serialize<Writer, Item>(writer: Writer, item: &Item) -> Result<(), SerializationError>
     where

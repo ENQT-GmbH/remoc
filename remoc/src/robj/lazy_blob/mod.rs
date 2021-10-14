@@ -13,7 +13,7 @@ use tokio::sync::Mutex;
 use crate::{
     chmux,
     chmux::DataBuf,
-    codec::CodecT,
+    codec::{self},
     rch::{mpsc, ConnectError},
 };
 
@@ -99,8 +99,8 @@ impl Drop for Provider {
 
 /// Lazily transferred binary data.
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(bound(serialize = "Codec: CodecT"))]
-#[serde(bound(deserialize = "Codec: CodecT"))]
+#[serde(bound(serialize = "Codec: codec::Codec"))]
+#[serde(bound(deserialize = "Codec: codec::Codec"))]
 pub struct LazyBlob<Codec> {
     req_tx: mpsc::Sender<fw_bin::Sender, Codec, 1>,
     len: u64,
@@ -118,7 +118,7 @@ impl<Codec> fmt::Debug for LazyBlob<Codec> {
 
 impl<Codec> LazyBlob<Codec>
 where
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     /// Create a new LazyBlob with the specified data.
     ///

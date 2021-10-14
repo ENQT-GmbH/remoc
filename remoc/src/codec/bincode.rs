@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::{CodecT, DeserializationError, SerializationError};
+use super::{Codec, DeserializationError, SerializationError};
 
 /// Bincode codec.
 ///
@@ -9,7 +9,7 @@ use super::{CodecT, DeserializationError, SerializationError};
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Bincode;
 
-impl CodecT for Bincode {
+impl Codec for Bincode {
     fn serialize<Writer, Item>(writer: Writer, item: &Item) -> Result<(), super::SerializationError>
     where
         Writer: std::io::Write,

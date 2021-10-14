@@ -2,12 +2,12 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{codec::CodecT, rch::oneshot, RemoteSend};
+use crate::{codec, rch::oneshot, RemoteSend};
 
 /// Remote function call request.
 #[derive(Serialize, Deserialize)]
-#[serde(bound(serialize = "A: RemoteSend, R: RemoteSend, Codec: CodecT"))]
-#[serde(bound(deserialize = "A: RemoteSend, R: RemoteSend, Codec: CodecT"))]
+#[serde(bound(serialize = "A: RemoteSend, R: RemoteSend, Codec: codec::Codec"))]
+#[serde(bound(deserialize = "A: RemoteSend, R: RemoteSend, Codec: codec::Codec"))]
 pub struct RFnRequest<A, R, Codec> {
     /// Function argument.
     pub argument: A,

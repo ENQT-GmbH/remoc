@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::{CodecT, DeserializationError, SerializationError};
+use super::{Codec, DeserializationError, SerializationError};
 
 /// JSON codec.
 ///
@@ -8,7 +8,7 @@ use super::{CodecT, DeserializationError, SerializationError};
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Json;
 
-impl CodecT for Json {
+impl Codec for Json {
     fn serialize<Writer, Item>(writer: Writer, item: &Item) -> Result<(), super::SerializationError>
     where
         Writer: std::io::Write,

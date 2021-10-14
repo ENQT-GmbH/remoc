@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::{CodecT, DeserializationError, SerializationError};
+use super::{Codec, DeserializationError, SerializationError};
 
 /// MessagePack codec.
 ///
@@ -9,7 +9,7 @@ use super::{CodecT, DeserializationError, SerializationError};
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Messagepack;
 
-impl CodecT for Messagepack {
+impl Codec for Messagepack {
     fn serialize<Writer, Item>(mut writer: Writer, item: &Item) -> Result<(), super::SerializationError>
     where
         Writer: std::io::Write,

@@ -10,7 +10,11 @@ mod sender;
 pub use receiver::{PortDeserializer, Receiver, RecvError};
 pub use sender::{Closed, PortSerializer, SendError, SendErrorKind, Sender};
 
-use crate::{chmux, codec::CodecT, RemoteSend};
+use crate::{
+    chmux,
+    codec::{self},
+    RemoteSend,
+};
 
 /// Chunk queue length for big data (de-)serialization.
 const BIG_DATA_CHUNK_QUEUE: usize = 32;
@@ -59,7 +63,7 @@ pub async fn connect<T, Codec>(
 ) -> Result<(Sender<T, Codec>, Receiver<T, Codec>), ConnectError>
 where
     T: RemoteSend,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     let (client_sr, listener_sr) = tokio::join!(client.connect(), listener.accept());
     let (raw_sender, _) = client_sr?;

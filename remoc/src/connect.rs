@@ -8,7 +8,7 @@ use tokio_util::codec::LengthDelimitedCodec;
 
 use crate::{
     chmux::{self, ChMux, ChMuxError},
-    codec::CodecT,
+    codec::{self},
     rch::remote,
     RemoteSend,
 };
@@ -79,7 +79,7 @@ where
     TransportStream: Stream<Item = Result<Bytes, TransportStreamError>> + Send + Sync + Unpin + 'static,
     TransportStreamError: Error + Send + Sync + 'static,
     T: RemoteSend,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     let (mux, client, mut listener) = ChMux::new(chmux_cfg, transport_sink, transport_stream).await?;
     tokio::spawn(mux.run());
@@ -102,7 +102,7 @@ where
     Read: AsyncRead + Send + Sync + Unpin + 'static,
     Write: AsyncWrite + Send + Sync + Unpin + 'static,
     T: RemoteSend,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     let max_recv_frame_length: usize = chmux_cfg.max_frame_length().try_into().unwrap();
     let transport_sink = LengthDelimitedCodec::builder()

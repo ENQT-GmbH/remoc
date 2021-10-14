@@ -16,7 +16,7 @@ use super::{
 };
 use crate::{
     chmux,
-    codec::{CodecT, SerializationError},
+    codec::{self, SerializationError},
 };
 
 pub use super::super::remote::Closed;
@@ -117,7 +117,7 @@ pub struct TransportedSender<T, Codec> {
 impl<T, Codec> Sender<T, Codec>
 where
     T: Serialize + Send + 'static,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     /// Establishes the connection and returns a reference to the remote sender.
     async fn get(&mut self) -> Result<&mut remote::Sender<T, Codec>, ConnectError> {
@@ -150,7 +150,7 @@ where
 impl<T, Codec> Serialize for Sender<T, Codec>
 where
     T: DeserializeOwned + Send + 'static,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     /// Serializes this sender for sending over a chmux channel.
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -192,7 +192,7 @@ where
 impl<'de, T, Codec> Deserialize<'de> for Sender<T, Codec>
 where
     T: Serialize + Send + 'static,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     /// Deserializes this sender after it has been received over a chmux channel.
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>

@@ -6,7 +6,7 @@ use super::{
     ReadLock, RwLock,
 };
 use crate::{
-    codec::CodecT,
+    codec::{self},
     rch::{mpsc, watch},
     RemoteSend,
 };
@@ -29,7 +29,7 @@ impl<T, Codec> fmt::Debug for Owner<T, Codec> {
 impl<T, Codec> Owner<T, Codec>
 where
     T: RemoteSend + Clone + Sync,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     /// Creates a new [RwLock] owner with the specified shared value.
     pub fn new(mut value: T) -> Self {

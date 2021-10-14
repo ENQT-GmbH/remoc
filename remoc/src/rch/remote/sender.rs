@@ -18,7 +18,7 @@ use super::{
 };
 use crate::{
     chmux::{self, AnyStorage},
-    codec::{CodecT, SerializationError},
+    codec::{self, SerializationError},
 };
 
 pub use crate::chmux::Closed;
@@ -153,7 +153,7 @@ pub struct Sender<T, Codec> {
 impl<T, Codec> Sender<T, Codec>
 where
     T: Serialize + Send + 'static,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     /// Create a remote sender from a ChMux sender.
     pub fn new(sender: chmux::Sender) -> Self {
@@ -166,7 +166,7 @@ where
         let mut lw = LimitedBytesWriter::new(limit);
         let ps_ref = PortSerializer::start(allocator, storage);
 
-        match <Codec as CodecT>::serialize(&mut lw, &item) {
+        match <Codec as codec::Codec>::serialize(&mut lw, &item) {
             _ if lw.overflow() => return Ok(None),
             Ok(()) => (),
             Err(err) => return Err(err),
@@ -190,7 +190,7 @@ where
             let ps_ref = PortSerializer::start(allocator, storage);
 
             let item = item_arc_task.lock().unwrap();
-            <Codec as CodecT>::serialize(&mut cbw, &*item)?;
+            <Codec as codec::Codec>::serialize(&mut cbw, &*item)?;
 
             let cbw = cbw.into_inner().map_err(|_| {
                 SerializationError::new(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "flush failed"))

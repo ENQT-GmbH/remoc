@@ -10,7 +10,11 @@ use super::{
     },
     Ref, ERROR_QUEUE,
 };
-use crate::{chmux, codec::CodecT, RemoteSend};
+use crate::{
+    chmux,
+    codec::{self},
+    RemoteSend,
+};
 
 /// An error occured during receiving over a watch channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -128,7 +132,7 @@ impl<T, Codec> Drop for Receiver<T, Codec> {
 impl<T, Codec> Serialize for Receiver<T, Codec>
 where
     T: RemoteSend + Sync + Clone,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     /// Serializes this receiver for sending over a chmux channel.
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -199,7 +203,7 @@ where
 impl<'de, T, Codec> Deserialize<'de> for Receiver<T, Codec>
 where
     T: RemoteSend + Sync,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     /// Deserializes the receiver after it has been received over a chmux channel.
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>

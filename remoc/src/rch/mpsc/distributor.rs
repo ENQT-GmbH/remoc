@@ -1,7 +1,7 @@
 use futures::future;
 
 use super::{channel, Permit, Receiver, Sender};
-use crate::{codec::CodecT, RemoteSend};
+use crate::{codec, RemoteSend};
 
 struct DistributedReceiver<T, Codec, const BUFFER: usize> {
     tx: Sender<T, Codec, BUFFER>,
@@ -11,7 +11,7 @@ struct DistributedReceiver<T, Codec, const BUFFER: usize> {
 impl<T, Codec, const BUFFER: usize> DistributedReceiver<T, Codec, BUFFER>
 where
     T: RemoteSend + Clone,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     async fn reserve(&mut self) -> Option<Permit<T>> {
         let tx = self.tx.clone();
@@ -65,7 +65,7 @@ pub struct Distributor<T, Codec, const BUFFER: usize> {
 impl<T, Codec, const BUFFER: usize> Distributor<T, Codec, BUFFER>
 where
     T: RemoteSend + Clone,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     pub(crate) fn new(rx: Receiver<T, Codec, BUFFER>, wait_on_empty: bool) -> Self {
         let (sub_tx, sub_rx) = tokio::sync::mpsc::channel(1);

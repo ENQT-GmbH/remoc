@@ -3,7 +3,11 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 use super::{msg::RFnRequest, CallError};
-use crate::{codec::CodecT, rch::oneshot, RemoteSend};
+use crate::{
+    codec::{self},
+    rch::oneshot,
+    RemoteSend,
+};
 
 /// Provides a remotely callable async FnOnce function.
 ///
@@ -40,8 +44,8 @@ impl Drop for RFnOnceProvider {
 
 /// Calls an async FnOnce function possibly located on a remote endpoint.
 #[derive(Serialize, Deserialize)]
-#[serde(bound(serialize = "A: RemoteSend, R: RemoteSend, Codec: CodecT"))]
-#[serde(bound(deserialize = "A: RemoteSend, R: RemoteSend, Codec: CodecT"))]
+#[serde(bound(serialize = "A: RemoteSend, R: RemoteSend, Codec: codec::Codec"))]
+#[serde(bound(deserialize = "A: RemoteSend, R: RemoteSend, Codec: codec::Codec"))]
 pub struct RFnOnce<A, R, Codec> {
     request_tx: oneshot::Sender<RFnRequest<A, R, Codec>, Codec>,
 }
@@ -56,7 +60,7 @@ impl<A, R, Codec> RFnOnce<A, R, Codec>
 where
     A: RemoteSend,
     R: RemoteSend,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     /// Create a new remote function.
     pub fn new<F, Fut>(fun: F) -> Self
@@ -109,7 +113,7 @@ where
     A: RemoteSend,
     RT: RemoteSend,
     RE: RemoteSend + From<CallError>,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     /// Call the remote function.
     ///

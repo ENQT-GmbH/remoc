@@ -17,7 +17,7 @@ use super::{
 };
 use crate::{
     chmux,
-    codec::{CodecT, DeserializationError},
+    codec::{self, DeserializationError},
 };
 
 /// An error that occured during receiving from a remote endpoint.
@@ -96,7 +96,7 @@ pub struct TransportedReceiver<T, Codec> {
 impl<T, Codec> Receiver<T, Codec>
 where
     T: DeserializeOwned + Send + 'static,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     async fn connect(&mut self) {
         if self.receiver.is_none() {
@@ -131,7 +131,7 @@ where
 impl<T, Codec> Serialize for Receiver<T, Codec>
 where
     T: Serialize + Send + 'static,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     /// Serializes this receiver for sending over a chmux channel.
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -173,7 +173,7 @@ where
 impl<'de, T, Codec> Deserialize<'de> for Receiver<T, Codec>
 where
     T: DeserializeOwned + Send + 'static,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     /// Deserializes this receiver after it has been received over a chmux channel.
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>

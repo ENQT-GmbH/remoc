@@ -1,4 +1,4 @@
-use remoc::codec::{CodecT, Json};
+use remoc::codec::{Codec, Json};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 
@@ -22,9 +22,9 @@ fn roundtrip() {
     println!("data:\n{:?}", &data);
 
     let mut buffer = Vec::new();
-    <Json as CodecT>::serialize(&mut buffer, &data).unwrap();
+    <Json as Codec>::serialize(&mut buffer, &data).unwrap();
     println!("serialized:\n{}", String::from_utf8_lossy(&buffer));
 
-    let deser: TestStruct = <Json as CodecT>::deserialize(buffer.as_slice()).unwrap();
+    let deser: TestStruct = <Json as Codec>::deserialize(buffer.as_slice()).unwrap();
     assert_eq!(deser, data);
 }

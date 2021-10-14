@@ -2,7 +2,10 @@ use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt};
 
 use super::super::mpsc;
-use crate::{codec::CodecT, RemoteSend};
+use crate::{
+    codec::{self},
+    RemoteSend,
+};
 
 /// An error occured during sending over an mpsc channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -42,8 +45,8 @@ impl<T> Error for SendError<T> where T: fmt::Debug {}
 
 /// Sends a value to the associated receiver.
 #[derive(Serialize, Deserialize)]
-#[serde(bound(serialize = "T: RemoteSend, Codec: CodecT"))]
-#[serde(bound(deserialize = "T: RemoteSend, Codec: CodecT"))]
+#[serde(bound(serialize = "T: RemoteSend, Codec: codec::Codec"))]
+#[serde(bound(deserialize = "T: RemoteSend, Codec: codec::Codec"))]
 pub struct Sender<T, Codec>(pub(crate) mpsc::Sender<T, Codec, 1>);
 
 impl<T, Codec> fmt::Debug for Sender<T, Codec> {
@@ -55,7 +58,7 @@ impl<T, Codec> fmt::Debug for Sender<T, Codec> {
 impl<T, Codec> Sender<T, Codec>
 where
     T: RemoteSend,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     /// Sends a value over this channel.
     pub fn send(self, value: T) -> Result<(), SendError<T>> {
