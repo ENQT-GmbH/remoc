@@ -122,7 +122,11 @@ pub trait CodecT: Send + Sync + Serialize + for<'de> Deserialize<'de> + Clone + 
         Item: DeserializeOwned;
 }
 
+//mod bincode;
+//pub use bincode::BincodeCodec;
+
 mod json;
+pub use json::JsonCodec;
+
 pub mod serde_map;
 
-pub use json::JsonCodec;
