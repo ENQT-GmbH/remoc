@@ -122,10 +122,40 @@ pub trait CodecT: Send + Sync + Serialize + for<'de> Deserialize<'de> + Clone + 
         Item: DeserializeOwned;
 }
 
-//mod bincode;
-//pub use bincode::BincodeCodec;
-
-mod json;
-pub use json::JsonCodec;
-
 pub mod serde_map;
+
+// ============================================================================
+// Codecs
+// ============================================================================
+
+#[cfg(feature = "codec-bincode")]
+mod bincode;
+#[cfg(feature = "codec-bincode")]
+pub use self::bincode::BincodeCodec;
+#[cfg(feature = "default-codec-bincode")]
+/// Default codec is Bincode.
+pub type DefaultCodec = BincodeCodec;
+
+#[cfg(feature = "codec-cbor")]
+mod cbor;
+#[cfg(feature = "codec-cbor")]
+pub use cbor::CborCodec;
+#[cfg(feature = "default-codec-cbor")]
+/// Default codec is CBOR.
+pub type DefaultCodec = CborCodec;
+
+#[cfg(feature = "codec-json")]
+mod json;
+#[cfg(feature = "codec-json")]
+pub use json::JsonCodec;
+#[cfg(feature = "default-codec-json")]
+/// Default codec is JSON.
+pub type DefaultCodec = JsonCodec;
+
+#[cfg(feature = "codec-messagepack")]
+mod messagepack;
+#[cfg(feature = "codec-messagepack")]
+pub use messagepack::MessagepackCodec;
+#[cfg(feature = "default-codec-messagepack")]
+/// Default codec is MessagePack.
+pub type DefaultCodec = MessagepackCodec;
