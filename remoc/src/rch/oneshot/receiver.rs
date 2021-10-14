@@ -7,8 +7,8 @@ use std::{
     task::{Context, Poll},
 };
 
-use super::super::{mpsc, remote, RemoteSend};
-use crate::{chmux, codec::CodecT};
+use super::super::{mpsc, remote};
+use crate::{chmux, codec::CodecT, RemoteSend};
 
 /// An error occured during receiving over an oneshot channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]

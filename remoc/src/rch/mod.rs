@@ -2,9 +2,10 @@
 //!
 //! This module is modelled after [tokio::sync] and follows its principles.
 
-use crate::chmux;
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt};
+
+use crate::chmux;
 
 pub mod bin;
 pub mod broadcast;
@@ -37,11 +38,6 @@ impl fmt::Display for ConnectError {
 }
 
 impl Error for ConnectError {}
-
-/// Object that is remote sendable.
-pub trait RemoteSend: Send + Serialize + DeserializeOwned + 'static {}
-
-impl<T> RemoteSend for T where T: Send + Serialize + DeserializeOwned + 'static {}
 
 pub(crate) const BACKCHANNEL_MSG_CLOSE: u8 = 0x01;
 pub(crate) const BACKCHANNEL_MSG_ERROR: u8 = 0x02;

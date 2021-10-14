@@ -3,10 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 use super::{msg::RFnRequest, CallError};
-use crate::{
-    codec::CodecT,
-    rch::{oneshot, RemoteSend},
-};
+use crate::{codec::CodecT, rch::oneshot, RemoteSend};
 
 /// Provides a remotely callable async FnOnce function.
 ///

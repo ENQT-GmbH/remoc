@@ -12,7 +12,7 @@ use super::{
     super::{mpsc, remote},
     BroadcastMsg, Receiver,
 };
-use crate::{chmux, codec::CodecT, rch::RemoteSend};
+use crate::{chmux, codec::CodecT, RemoteSend};
 
 /// An error occured during sending over a broadcast channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]

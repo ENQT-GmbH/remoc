@@ -2,7 +2,7 @@
 
 use std::{fmt, ops::Deref};
 
-use super::RemoteSend;
+use crate::RemoteSend;
 
 mod receiver;
 mod sender;

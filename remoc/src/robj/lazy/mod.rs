@@ -11,7 +11,8 @@ use tokio::sync::Mutex;
 use crate::{
     chmux,
     codec::CodecT,
-    rch::{mpsc, oneshot, remote, RemoteSend},
+    rch::{mpsc, oneshot, remote},
+    RemoteSend,
 };
 
 /// An error occured during fetching a lazily transmitted value.

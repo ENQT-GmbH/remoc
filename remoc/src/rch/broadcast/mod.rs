@@ -2,8 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::RemoteSend;
-use crate::codec::CodecT;
+use crate::{codec::CodecT, RemoteSend};
 
 mod receiver;
 mod sender;

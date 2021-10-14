@@ -1,6 +1,6 @@
 //! MPSC channels.
 
-use super::RemoteSend;
+use crate::RemoteSend;
 
 mod distributor;
 mod receiver;

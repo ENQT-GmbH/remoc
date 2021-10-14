@@ -12,11 +12,11 @@ use std::{
 use super::{
     super::{
         remote::{self, PortDeserializer, PortSerializer},
-        RemoteSend, RemoteSendError, BACKCHANNEL_MSG_CLOSE, BACKCHANNEL_MSG_ERROR,
+        RemoteSendError, BACKCHANNEL_MSG_CLOSE, BACKCHANNEL_MSG_ERROR,
     },
     receiver::RecvError,
 };
-use crate::{chmux, codec::CodecT};
+use crate::{chmux, codec::CodecT, RemoteSend};
 
 /// An error occured during sending over an mpsc channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
