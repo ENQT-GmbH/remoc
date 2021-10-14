@@ -1,11 +1,7 @@
 mod bin;
 mod broadcast;
-mod handle;
-mod lazy;
-mod lazy_blob;
 mod lr;
 mod mpsc;
 mod oneshot;
 mod remote;
-mod rw_lock;
 mod watch;
