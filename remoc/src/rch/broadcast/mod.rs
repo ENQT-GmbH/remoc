@@ -2,7 +2,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{codec::CodecT, RemoteSend};
+use crate::{
+    codec::{self},
+    RemoteSend,
+};
 
 mod receiver;
 mod sender;
@@ -25,7 +28,7 @@ pub fn channel<T, Codec, const RECV_BUFFER: usize>(
 ) -> (Sender<T, Codec>, Receiver<T, Codec, RECV_BUFFER>)
 where
     T: RemoteSend + Clone,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     let sender = Sender::new();
     let receiver = sender.subscribe(send_buffer);

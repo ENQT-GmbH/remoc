@@ -1,14 +1,17 @@
 use serde::{Deserialize, Serialize};
 
-use super::{CodecT, DeserializationError, SerializationError};
+use super::{Codec, DeserializationError, SerializationError};
 
 /// JSON codec.
 ///
 /// See [serde_json] for details.
+///
+/// When using this with data the contains maps with non-string keys you will
+/// need to apply attributes from [serde_map](super::serde_map) to work correctly.
 #[derive(Clone, Serialize, Deserialize)]
-pub struct JsonCodec;
+pub struct Json;
 
-impl CodecT for JsonCodec {
+impl Codec for Json {
     fn serialize<Writer, Item>(writer: Writer, item: &Item) -> Result<(), super::SerializationError>
     where
         Writer: std::io::Write,

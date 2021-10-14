@@ -9,7 +9,7 @@ use std::{
 use super::msg::{ReadRequest, Value, WriteRequest};
 use crate::{
     chmux,
-    codec::CodecT,
+    codec::{self},
     rch::{mpsc, oneshot, remote},
     RemoteSend,
 };
@@ -90,8 +90,8 @@ impl Error for CommitError {}
 ///
 /// This can be cloned and sent to remote endpoints.
 #[derive(Serialize, Deserialize)]
-#[serde(bound(serialize = "T: RemoteSend, Codec: CodecT"))]
-#[serde(bound(deserialize = "T: RemoteSend, Codec: CodecT"))]
+#[serde(bound(serialize = "T: RemoteSend, Codec: codec::Codec"))]
+#[serde(bound(deserialize = "T: RemoteSend, Codec: codec::Codec"))]
 pub struct ReadLock<T, Codec> {
     req_tx: mpsc::Sender<ReadRequest<T, Codec>, Codec, 1>,
     #[serde(skip)]
@@ -118,7 +118,7 @@ impl<T, Codec> fmt::Debug for ReadLock<T, Codec> {
 impl<T, Codec> ReadLock<T, Codec>
 where
     T: RemoteSend + Sync,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     pub(crate) fn new(read_req_tx: mpsc::Sender<ReadRequest<T, Codec>, Codec, 1>) -> Self {
         Self { req_tx: read_req_tx, cache: empty_cache() }
@@ -198,7 +198,7 @@ pub struct ReadGuard<'a, T, Codec>(tokio::sync::RwLockReadGuard<'a, Value<T, Cod
 
 impl<'a, T, Codec> ReadGuard<'a, T, Codec>
 where
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     /// Waits until the shared value is invalidated because a write request is made.
     ///
@@ -249,8 +249,8 @@ impl<'a, T, Codec> Drop for ReadGuard<'a, T, Codec> {
 ///
 /// This can be cloned and sent to remote endpoints.
 #[derive(Serialize, Deserialize)]
-#[serde(bound(serialize = "T: RemoteSend, Codec: CodecT"))]
-#[serde(bound(deserialize = "T: RemoteSend, Codec: CodecT"))]
+#[serde(bound(serialize = "T: RemoteSend, Codec: codec::Codec"))]
+#[serde(bound(deserialize = "T: RemoteSend, Codec: codec::Codec"))]
 pub struct RwLock<T, Codec> {
     read: ReadLock<T, Codec>,
     req_tx: mpsc::Sender<WriteRequest<T, Codec>, Codec, 1>,
@@ -271,7 +271,7 @@ impl<T, Codec> fmt::Debug for RwLock<T, Codec> {
 impl<T, Codec> RwLock<T, Codec>
 where
     T: RemoteSend + Sync,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     pub(crate) fn new(
         read_lock: ReadLock<T, Codec>, write_req_tx: mpsc::Sender<WriteRequest<T, Codec>, Codec, 1>,
@@ -330,7 +330,7 @@ pub struct WriteGuard<T, Codec> {
 impl<T, Codec> WriteGuard<T, Codec>
 where
     T: RemoteSend,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     /// Consumes the guard and commits the changes to the shared value.
     pub async fn commit(mut self) -> Result<(), CommitError> {

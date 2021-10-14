@@ -13,7 +13,7 @@ use super::{
     },
     BroadcastMsg,
 };
-use crate::{chmux, codec::CodecT, RemoteSend};
+use crate::{chmux, codec, RemoteSend};
 
 /// An error occured during receiving over a broadcast channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -116,8 +116,8 @@ impl Error for TryRecvError {}
 ///
 /// Can be sent over a remote channel.
 #[derive(Serialize, Deserialize)]
-#[serde(bound(serialize = "T: RemoteSend, Codec: CodecT"))]
-#[serde(bound(deserialize = "T: RemoteSend, Codec: CodecT"))]
+#[serde(bound(serialize = "T: RemoteSend, Codec: codec::Codec"))]
+#[serde(bound(deserialize = "T: RemoteSend, Codec: codec::Codec"))]
 pub struct Receiver<T, Codec, const BUFFER: usize> {
     rx: mpsc::Receiver<BroadcastMsg<T>, Codec, BUFFER>,
 }
@@ -131,7 +131,7 @@ impl<T, Codec, const BUFFER: usize> fmt::Debug for Receiver<T, Codec, BUFFER> {
 impl<T, Codec, const BUFFER: usize> Receiver<T, Codec, BUFFER>
 where
     T: RemoteSend,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     pub(crate) fn new(rx: mpsc::Receiver<BroadcastMsg<T>, Codec, BUFFER>) -> Self {
         Self { rx }

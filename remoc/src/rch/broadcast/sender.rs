@@ -12,7 +12,11 @@ use super::{
     super::{mpsc, remote},
     BroadcastMsg, Receiver,
 };
-use crate::{chmux, codec::CodecT, RemoteSend};
+use crate::{
+    chmux,
+    codec::{self},
+    RemoteSend,
+};
 
 /// An error occured during sending over a broadcast channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -83,7 +87,7 @@ impl<T, Codec> fmt::Debug for Sender<T, Codec> {
 impl<T, Codec> Sender<T, Codec>
 where
     T: RemoteSend + Clone,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     /// Creates a new sender.
     pub(crate) fn new() -> Self {

@@ -3,15 +3,15 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    codec::CodecT,
+    codec::{self},
     rch::{mpsc, oneshot, watch},
     RemoteSend,
 };
 
 /// A read request from a lock to the owner.
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(bound(serialize = "T: RemoteSend, Codec: CodecT"))]
-#[serde(bound(deserialize = "T: RemoteSend, Codec: CodecT"))]
+#[serde(bound(serialize = "T: RemoteSend, Codec: codec::Codec"))]
+#[serde(bound(deserialize = "T: RemoteSend, Codec: codec::Codec"))]
 pub struct ReadRequest<T, Codec> {
     /// Channel for sending the value.
     pub(crate) value_tx: oneshot::Sender<Value<T, Codec>, Codec>,
@@ -19,8 +19,8 @@ pub struct ReadRequest<T, Codec> {
 
 /// A write request from a lock to the owner.
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(bound(serialize = "T: RemoteSend, Codec: CodecT"))]
-#[serde(bound(deserialize = "T: RemoteSend, Codec: CodecT"))]
+#[serde(bound(serialize = "T: RemoteSend, Codec: codec::Codec"))]
+#[serde(bound(deserialize = "T: RemoteSend, Codec: codec::Codec"))]
 pub struct WriteRequest<T, Codec> {
     /// Channel for sending current value.
     pub(crate) value_tx: oneshot::Sender<T, Codec>,
@@ -32,8 +32,8 @@ pub struct WriteRequest<T, Codec> {
 
 /// A value together with invalidation channels.
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(bound(serialize = "T: RemoteSend, Codec: CodecT"))]
-#[serde(bound(deserialize = "T: RemoteSend, Codec: CodecT"))]
+#[serde(bound(serialize = "T: RemoteSend, Codec: codec::Codec"))]
+#[serde(bound(deserialize = "T: RemoteSend, Codec: codec::Codec"))]
 pub struct Value<T, Codec> {
     /// The shared value.
     pub(crate) value: T,
@@ -46,7 +46,7 @@ pub struct Value<T, Codec> {
 impl<T, Codec> Value<T, Codec>
 where
     T: RemoteSend,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     /// True, if value is valid.
     pub(crate) fn is_valid(&self) -> bool {

@@ -1,20 +1,20 @@
 use crate::loop_channel;
 use remoc::{
-    codec::JsonCodec,
+    codec::Json,
     robj::handle::{Handle, HandleError},
 };
 
 #[tokio::test]
 async fn simple() {
     crate::init();
-    let ((mut a_tx, mut a_rx), (mut b_tx, mut b_rx)) = loop_channel::<Handle<String, JsonCodec>>().await;
+    let ((mut a_tx, mut a_rx), (mut b_tx, mut b_rx)) = loop_channel::<Handle<String, Json>>().await;
 
     let value = "test string".to_string();
 
     let local_handle = Handle::new(value.clone());
     println!("Created handle: {:?}", &local_handle);
 
-    let _other_handle: Handle<_, JsonCodec> = Handle::new(123);
+    let _other_handle: Handle<_, Json> = Handle::new(123);
 
     println!("Sending handle to remote");
     a_tx.send(local_handle).await.unwrap();

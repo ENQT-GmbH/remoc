@@ -8,7 +8,11 @@ use std::{
 };
 
 use super::super::{mpsc, remote};
-use crate::{chmux, codec::CodecT, RemoteSend};
+use crate::{
+    chmux,
+    codec::{self},
+    RemoteSend,
+};
 
 /// An error occured during receiving over an oneshot channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -87,8 +91,8 @@ impl Error for TryRecvError {}
 
 /// Receive a value from the associated sender.
 #[derive(Serialize, Deserialize)]
-#[serde(bound(serialize = "T: RemoteSend, Codec: CodecT"))]
-#[serde(bound(deserialize = "T: RemoteSend, Codec: CodecT"))]
+#[serde(bound(serialize = "T: RemoteSend, Codec: codec::Codec"))]
+#[serde(bound(deserialize = "T: RemoteSend, Codec: codec::Codec"))]
 pub struct Receiver<T, Codec>(pub(crate) mpsc::Receiver<T, Codec, 1>);
 
 impl<T, Codec> fmt::Debug for Receiver<T, Codec> {
@@ -100,7 +104,7 @@ impl<T, Codec> fmt::Debug for Receiver<T, Codec> {
 impl<T, Codec> Receiver<T, Codec>
 where
     T: DeserializeOwned + Send + 'static,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     /// Prevents the associated sender from sending a value.
     pub fn close(&mut self) {
@@ -124,7 +128,7 @@ where
 impl<T, Codec> Future for Receiver<T, Codec>
 where
     T: DeserializeOwned + Send + 'static,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     type Output = Result<T, RecvError>;
 

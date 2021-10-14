@@ -1,15 +1,15 @@
 use serde::{Deserialize, Serialize};
 
-use super::{CodecT, DeserializationError, SerializationError};
+use super::{Codec, DeserializationError, SerializationError};
 
 /// Bincode codec.
 ///
 /// See [bincode] for details.
 /// This uses the default function configuration.
 #[derive(Clone, Serialize, Deserialize)]
-pub struct BincodeCodec;
+pub struct Bincode;
 
-impl CodecT for BincodeCodec {
+impl Codec for Bincode {
     fn serialize<Writer, Item>(writer: Writer, item: &Item) -> Result<(), super::SerializationError>
     where
         Writer: std::io::Write,

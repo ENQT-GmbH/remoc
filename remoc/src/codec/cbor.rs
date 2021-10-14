@@ -1,14 +1,14 @@
 use serde::{Deserialize, Serialize};
 
-use super::{CodecT, DeserializationError, SerializationError};
+use super::{Codec, DeserializationError, SerializationError};
 
 /// CBOR codec.
 ///
 /// See [serde_cbor] for details.
 #[derive(Clone, Serialize, Deserialize)]
-pub struct CborCodec;
+pub struct Cbor;
 
-impl CodecT for CborCodec {
+impl Codec for Cbor {
     fn serialize<Writer, Item>(writer: Writer, item: &Item) -> Result<(), super::SerializationError>
     where
         Writer: std::io::Write,

@@ -14,7 +14,7 @@ use tokio::task::{self, JoinHandle};
 use super::{io::ChannelBytesReader, BIG_DATA_CHUNK_QUEUE};
 use crate::{
     chmux::{self, AnyStorage, Received, RecvChunkError},
-    codec::{CodecT, DeserializationError},
+    codec::{self, DeserializationError},
 };
 
 /// An error that occured during receiving from a remote endpoint.
@@ -158,7 +158,7 @@ enum DataSource<T> {
 impl<T, Codec> Receiver<T, Codec>
 where
     T: DeserializeOwned + Send + 'static,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     /// Create a remote receiver from a ChMux receiver.
     pub fn new(receiver: chmux::Receiver) -> Self {
@@ -198,7 +198,7 @@ where
                                 let cbr = ChannelBytesReader::new(rx);
 
                                 let pds_ref = PortDeserializer::start(allocator, handle_storage);
-                                let item = <Codec as CodecT>::deserialize(cbr)?;
+                                let item = <Codec as codec::Codec>::deserialize(cbr)?;
                                 let pds = PortDeserializer::finish(pds_ref);
 
                                 Ok((item, pds))
@@ -225,7 +225,7 @@ where
 
                         let pdf_ref =
                             PortDeserializer::start(self.receiver.port_allocator(), self.receiver.storage());
-                        self.item = Some(<Codec as CodecT>::deserialize(data.reader())?);
+                        self.item = Some(<Codec as codec::Codec>::deserialize(data.reader())?);
                         self.port_deser = Some(PortDeserializer::finish(pdf_ref));
 
                         self.data = DataSource::None;

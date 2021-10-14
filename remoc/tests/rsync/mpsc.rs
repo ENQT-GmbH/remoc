@@ -1,6 +1,6 @@
 use futures::future;
 use rand::Rng;
-use remoc::{codec::JsonCodec, rch::mpsc};
+use remoc::{codec::Json, rch::mpsc};
 use std::time::Duration;
 use tokio::time::sleep;
 
@@ -9,7 +9,7 @@ use crate::loop_channel;
 #[tokio::test]
 async fn simple() {
     crate::init();
-    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<mpsc::Receiver<i16, JsonCodec, 16>>().await;
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<mpsc::Receiver<i16, Json, 16>>().await;
 
     println!("Sending remote mpsc channel receiver");
     let (tx, rx) = mpsc::channel::<_, _, 16, 16>(16);
@@ -46,7 +46,7 @@ async fn simple() {
 async fn multiple() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx)) =
-        loop_channel::<mpsc::Receiver<mpsc::Sender<i16, JsonCodec, 1>, JsonCodec, 16>>().await;
+        loop_channel::<mpsc::Receiver<mpsc::Sender<i16, Json, 1>, Json, 16>>().await;
 
     println!("Sending remote mpsc channel receiver");
     let (tx, rx) = mpsc::channel::<_, _, 16, 16>(16);
@@ -86,10 +86,10 @@ async fn multiple() {
 #[tokio::test]
 async fn forward() {
     crate::init();
-    let ((mut a0_tx, _), (_, mut b0_rx)) = loop_channel::<mpsc::Sender<i16, JsonCodec, 16>>().await;
-    let ((mut a1_tx, _), (_, mut b1_rx)) = loop_channel::<mpsc::Sender<i16, JsonCodec, 16>>().await;
-    let ((mut a2_tx, _), (_, mut b2_rx)) = loop_channel::<mpsc::Receiver<i16, JsonCodec, 16>>().await;
-    let ((mut a3_tx, _), (_, mut b3_rx)) = loop_channel::<mpsc::Receiver<i16, JsonCodec, 16>>().await;
+    let ((mut a0_tx, _), (_, mut b0_rx)) = loop_channel::<mpsc::Sender<i16, Json, 16>>().await;
+    let ((mut a1_tx, _), (_, mut b1_rx)) = loop_channel::<mpsc::Sender<i16, Json, 16>>().await;
+    let ((mut a2_tx, _), (_, mut b2_rx)) = loop_channel::<mpsc::Receiver<i16, Json, 16>>().await;
+    let ((mut a3_tx, _), (_, mut b3_rx)) = loop_channel::<mpsc::Receiver<i16, Json, 16>>().await;
 
     let (tx, rx) = mpsc::channel::<_, _, 16, 16>(16);
 

@@ -4,7 +4,7 @@ use std::{fmt, sync::Arc};
 
 use super::{msg::RFnRequest, CallError};
 use crate::{
-    codec::CodecT,
+    codec::{self},
     rch::{mpsc, oneshot},
     RemoteSend,
 };
@@ -47,8 +47,8 @@ impl Drop for RFnProvider {
 /// The remote function can be cloned and executed simultaneously from multiple callers.
 /// For each invocation a new async task is spawned.
 #[derive(Serialize, Deserialize)]
-#[serde(bound(serialize = "A: RemoteSend, R: RemoteSend, Codec: CodecT"))]
-#[serde(bound(deserialize = "A: RemoteSend, R: RemoteSend, Codec: CodecT"))]
+#[serde(bound(serialize = "A: RemoteSend, R: RemoteSend, Codec: codec::Codec"))]
+#[serde(bound(deserialize = "A: RemoteSend, R: RemoteSend, Codec: codec::Codec"))]
 pub struct RFn<A, R, Codec> {
     request_tx: mpsc::Sender<RFnRequest<A, R, Codec>, Codec, 1>,
 }
@@ -69,7 +69,7 @@ impl<A, R, Codec> RFn<A, R, Codec>
 where
     A: RemoteSend,
     R: RemoteSend,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     /// Create a new remote function.
     pub fn new<F, Fut>(fun: F) -> Self
@@ -141,7 +141,7 @@ where
     A: RemoteSend,
     RT: RemoteSend,
     RE: RemoteSend + From<CallError>,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     /// Call the remote function.
     ///

@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 use crate::{
     chmux::{AnyBox, AnyEntry},
-    codec::CodecT,
+    codec::{self},
     rch::{
         mpsc,
         remote::{PortDeserializer, PortSerializer},
@@ -140,7 +140,7 @@ impl<T, Codec> fmt::Debug for Handle<T, Codec> {
 impl<T, Codec> Handle<T, Codec>
 where
     T: Send + Sync + 'static,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     /// Creates a new handle for the value.
     pub fn new(value: T) -> Self {
@@ -251,8 +251,8 @@ impl<T, Codec> Drop for Handle<T, Codec> {
 
 /// Handle in transport.
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(bound(serialize = "Codec: CodecT"))]
-#[serde(bound(deserialize = "Codec: CodecT"))]
+#[serde(bound(serialize = "Codec: codec::Codec"))]
+#[serde(bound(deserialize = "Codec: codec::Codec"))]
 pub struct TransportedHandle<T, Codec> {
     /// Handle id.
     id: Uuid,
@@ -266,7 +266,7 @@ pub struct TransportedHandle<T, Codec> {
 
 impl<T, Codec> Serialize for Handle<T, Codec>
 where
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     /// Serializes this handle for sending over a chmux channel.
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -314,7 +314,7 @@ where
 
 impl<'de, T, Codec> Deserialize<'de> for Handle<T, Codec>
 where
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     /// Deserializes this handle after it has been received over a chmux channel.
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>

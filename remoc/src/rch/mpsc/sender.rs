@@ -16,7 +16,11 @@ use super::{
     },
     receiver::RecvError,
 };
-use crate::{chmux, codec::CodecT, RemoteSend};
+use crate::{
+    chmux,
+    codec::{self},
+    RemoteSend,
+};
 
 /// An error occured during sending over an mpsc channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -352,7 +356,7 @@ impl<T, Codec, const BUFFER: usize> Drop for Sender<T, Codec, BUFFER> {
 impl<T, Codec, const BUFFER: usize> Serialize for Sender<T, Codec, BUFFER>
 where
     T: RemoteSend,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     /// Serializes this sender for sending over a chmux channel.
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -437,7 +441,7 @@ where
 impl<'de, T, Codec, const BUFFER: usize> Deserialize<'de> for Sender<T, Codec, BUFFER>
 where
     T: RemoteSend,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     /// Deserializes this sender after it has been received over a chmux channel.
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>

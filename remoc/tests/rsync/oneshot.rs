@@ -1,4 +1,4 @@
-use remoc::{codec::JsonCodec, rch::oneshot};
+use remoc::{codec::Json, rch::oneshot};
 
 use crate::loop_channel;
 
@@ -6,7 +6,7 @@ use crate::loop_channel;
 async fn simple() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx)) =
-        loop_channel::<(oneshot::Sender<i16, JsonCodec>, oneshot::Receiver<i16, JsonCodec>)>().await;
+        loop_channel::<(oneshot::Sender<i16, Json>, oneshot::Receiver<i16, Json>)>().await;
 
     println!("Sending remote oneshot channel sender and receiver");
     let (tx, rx) = oneshot::channel();
@@ -26,7 +26,7 @@ async fn simple() {
 #[tokio::test]
 async fn close() {
     crate::init();
-    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<oneshot::Sender<i16, JsonCodec>>().await;
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<oneshot::Sender<i16, Json>>().await;
 
     println!("Sending remote oneshot channel sender");
     let (tx, mut rx) = oneshot::channel();

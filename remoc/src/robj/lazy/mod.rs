@@ -10,7 +10,7 @@ use tokio::sync::Mutex;
 
 use crate::{
     chmux,
-    codec::CodecT,
+    codec::{self},
     rch::{mpsc, oneshot, remote},
     RemoteSend,
 };
@@ -95,8 +95,8 @@ impl Drop for Provider {
 ///
 /// Allow the reception of a value when requested.
 #[derive(Serialize, Deserialize)]
-#[serde(bound(serialize = "T: RemoteSend, Codec: CodecT"))]
-#[serde(bound(deserialize = "T: RemoteSend, Codec: CodecT"))]
+#[serde(bound(serialize = "T: RemoteSend, Codec: codec::Codec"))]
+#[serde(bound(deserialize = "T: RemoteSend, Codec: codec::Codec"))]
 pub struct Lazy<T, Codec> {
     request_tx: mpsc::Sender<oneshot::Sender<T, Codec>, Codec, 1>,
     #[serde(skip)]
@@ -114,7 +114,7 @@ impl<T, Codec> fmt::Debug for Lazy<T, Codec> {
 impl<T, Codec> Lazy<T, Codec>
 where
     T: RemoteSend,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     /// Creates a new lazy consumer that will receive the specified value.
     ///

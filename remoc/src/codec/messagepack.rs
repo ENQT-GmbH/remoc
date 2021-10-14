@@ -1,15 +1,15 @@
 use serde::{Deserialize, Serialize};
 
-use super::{CodecT, DeserializationError, SerializationError};
+use super::{Codec, DeserializationError, SerializationError};
 
 /// MessagePack codec.
 ///
 /// See [rmp_serde] for details.
 /// This serializes sturctures as maps.
 #[derive(Clone, Serialize, Deserialize)]
-pub struct MessagepackCodec;
+pub struct Messagepack;
 
-impl CodecT for MessagepackCodec {
+impl Codec for Messagepack {
     fn serialize<Writer, Item>(mut writer: Writer, item: &Item) -> Result<(), super::SerializationError>
     where
         Writer: std::io::Write,

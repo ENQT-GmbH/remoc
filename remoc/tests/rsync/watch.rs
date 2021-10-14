@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use remoc::{codec::JsonCodec, rch::watch};
+use remoc::{codec::Json, rch::watch};
 use tokio::time::sleep;
 
 use crate::loop_channel;
@@ -8,7 +8,7 @@ use crate::loop_channel;
 #[tokio::test]
 async fn simple() {
     crate::init();
-    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<watch::Receiver<i16, JsonCodec>>().await;
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<watch::Receiver<i16, Json>>().await;
 
     let start_value = 2;
     let end_value = 124;
@@ -50,7 +50,7 @@ async fn simple() {
 #[tokio::test]
 async fn close() {
     crate::init();
-    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<watch::Sender<i16, JsonCodec>>().await;
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<watch::Sender<i16, Json>>().await;
 
     println!("Sending remote mpsc channel sender");
     let (tx, rx) = watch::channel(123);

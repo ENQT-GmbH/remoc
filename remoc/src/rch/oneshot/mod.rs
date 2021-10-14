@@ -3,7 +3,7 @@
 use serde::{de::DeserializeOwned, Serialize};
 
 use super::mpsc;
-use crate::codec::CodecT;
+use crate::codec;
 
 mod receiver;
 mod sender;
@@ -17,7 +17,7 @@ pub use sender::{SendError, Sender};
 pub fn channel<T, Codec>() -> (Sender<T, Codec>, Receiver<T, Codec>)
 where
     T: Serialize + DeserializeOwned + Send + 'static,
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     let (tx, rx) = mpsc::channel(1);
     (Sender(tx), Receiver(rx))
