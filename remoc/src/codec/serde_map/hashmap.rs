@@ -1,6 +1,6 @@
 //! Serializes and deserializes a [HashMap]`<K, V>` as a [Vec]`<(K, V)>`.
 //!
-//! This is necessary for the [JsonCodec](crate::codec::JsonCodec) since it does not
+//! This is necessary for the [JSON codec](crate::codec::Json) since it does not
 //! support non-string keys on dictionaries.
 //!
 //! Use by applying the attribute `#[serde(with="remoc::codec::serde_map::hashmap")]` on a field.
