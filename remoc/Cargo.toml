@@ -11,7 +11,8 @@ categories = ["asynchronous", "network-programming"]
 license = "Apache-2.0"
 
 [features]
-default = [
+default = ["full", "default-codec-json"]
+full = [
     "serde",
     "rch",
     "rfn",
