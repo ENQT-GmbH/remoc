@@ -1,7 +1,6 @@
 //! Remote trait calling.
 
-use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::{error::Error, fmt, sync::Arc};
 
 use crate::{
     chmux,
@@ -57,7 +56,7 @@ pub use async_trait::async_trait;
 pub use remoc_macro::remote;
 
 /// Call a method on a remotable trait failed.
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CallError {
     /// Server has been dropped.
     Dropped,
@@ -72,6 +71,21 @@ pub enum CallError {
     /// Forwarding at a remote endpoint to another remote endpoint failed.
     RemoteForward,
 }
+
+impl fmt::Display for CallError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Dropped => write!(f, "provider dropped or function panicked"),
+            Self::RemoteSend(err) => write!(f, "send error: {}", err),
+            Self::RemoteReceive(err) => write!(f, "receive error: {}", err),
+            Self::RemoteConnect(err) => write!(f, "connect error: {}", err),
+            Self::RemoteListen(err) => write!(f, "listen error: {}", err),
+            Self::RemoteForward => write!(f, "forwarding error"),
+        }
+    }
+}
+
+impl Error for CallError {}
 
 impl<T> From<mpsc::SendError<T>> for CallError {
     fn from(err: mpsc::SendError<T>) -> Self {
@@ -184,10 +198,9 @@ where
 pub trait ServerSharedMut<T, Codec>: ServerBase
 where
     Self: Sized,
-    Self::Client: Clone,
 {
     /// Creates a new server instance for a shared mutable reference to the target object.
-    fn new(target: Arc<tokio::sync::RwLock<T>>, request_buffer: usize) -> (Self, Self::Client);
+    fn new(target: Arc<LocalRwLock<T>>, request_buffer: usize) -> (Self, Self::Client);
 
     /// Serves the target object.
     ///
@@ -201,10 +214,16 @@ where
 
 // Re-exports for proc macro usage.
 #[doc(hidden)]
-pub use log;
+pub use serde::{Deserialize, Serialize};
 #[doc(hidden)]
 pub use tokio::sync::mpsc as local_mpsc;
 #[doc(hidden)]
 pub use tokio::sync::RwLock as LocalRwLock;
 #[doc(hidden)]
 pub use tokio::{select, spawn};
+
+#[doc(hidden)]
+/// Log message that receiving a request failed for proc macro.
+pub fn receiving_request_failed(err: mpsc::RecvError) {
+    log::warn!("Receiving request failed: {}", &err)
+}

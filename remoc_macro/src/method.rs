@@ -161,25 +161,26 @@ impl TraitMethod {
         let ident = to_pascal_case(&self.ident);
         let ret_ty = &self.ret_ty;
 
-        let mut entries = quote! { __reply_tx: ::remoc::rsync::oneshot::Sender<#ret_ty, Codec>, };
+        let mut entries = quote! { __reply_tx: ::remoc::rch::oneshot::Sender<#ret_ty, Codec>, };
         for NamedArg { attrs, ident, ty } in &self.args {
             let attrs = attribute_tokens(attrs);
             entries.append_all(quote! { #attrs #ident : #ty , });
         }
 
-        quote! { #ident {#entries}, }
+        quote! { #ident {#entries} , }
     }
 
     /// Enum match discriminator and dispatch code.
     pub fn dispatch_discriminator(&self) -> TokenStream {
         let ident = &self.ident;
+        let enum_ident = to_pascal_case(ident);
 
         // Build match and call argument lists.
         let mut entries = quote! { __reply_tx, };
         let mut args = quote! {};
-        for NamedArg { ident, .. } in &self.args {
-            entries.append_all(quote! { #ident, });
-            args.append_all(quote! { #ident, });
+        for NamedArg { ident: arg_ident, .. } in &self.args {
+            entries.append_all(quote! { #arg_ident, });
+            args.append_all(quote! { #arg_ident, });
         }
 
         // Generate call code.
@@ -202,7 +203,7 @@ impl TraitMethod {
 
         // Generate match clause.
         quote! {
-            Self :: #ident => {
+            Self :: #enum_ident { #args __reply_tx } => {
                 #call
             },
         }
@@ -230,11 +231,11 @@ impl TraitMethod {
 
         quote! {
             async fn #ident (#self_ref, #args) -> #ret_ty {
-                let (reply_tx, reply_rx) = ::remoc::rsync::oneshot::channel();
+                let (reply_tx, reply_rx) = ::remoc::rch::oneshot::channel();
                 let req_value = #req_enum :: #req_case { __reply_tx: reply_tx, #entries };
-                let req = ::remoc::rtc::Req::#req_type(req);
-                self.req_tx.send(req).await.map_err(CallError::from)?;
-                let reply = reply_rx.await.map_err(CallError::from)?;
+                let req = ::remoc::rtc::Req::#req_type(req_value);
+                self.req_tx.send(req).await.map_err(::remoc::rtc::CallError::from)?;
+                let reply = reply_rx.await.map_err(::remoc::rtc::CallError::from)?;
                 reply
             }
         }
