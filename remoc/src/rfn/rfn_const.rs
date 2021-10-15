@@ -131,7 +131,7 @@ where
     /// Try to call the remote function.
     pub async fn try_call(&self, argument: A) -> Result<R, CallError> {
         let (result_tx, result_rx) = oneshot::channel();
-        let _ = self.request_tx.send(RFnRequest { argument, result_tx });
+        let _ = self.request_tx.send(RFnRequest { argument, result_tx }).await;
 
         let result = result_rx.await?;
         Ok(result)
@@ -150,5 +150,11 @@ where
     /// The [CallError] type must be convertable to the functions error type.
     pub async fn call(&self, argument: A) -> Result<RT, RE> {
         Ok(self.try_call(argument).await??)
+    }
+}
+
+impl<A, R, Codec> Drop for RFn<A, R, Codec> {
+    fn drop(&mut self) {
+        // empty
     }
 }

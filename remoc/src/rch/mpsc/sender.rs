@@ -143,7 +143,7 @@ pub struct Sender<T, Codec = codec::Default, Buffer = buffer::Default> {
     tx: Weak<tokio::sync::mpsc::Sender<Result<T, RecvError>>>,
     closed_rx: tokio::sync::watch::Receiver<bool>,
     remote_send_err_rx: tokio::sync::watch::Receiver<Option<RemoteSendError>>,
-    _dropped_tx: tokio::sync::mpsc::Sender<()>,
+    dropped_tx: tokio::sync::mpsc::Sender<()>,
     _codec: PhantomData<Codec>,
     _buffer: PhantomData<Buffer>,
 }
@@ -160,7 +160,7 @@ impl<T, Codec, Buffer> Clone for Sender<T, Codec, Buffer> {
             tx: self.tx.clone(),
             closed_rx: self.closed_rx.clone(),
             remote_send_err_rx: self.remote_send_err_rx.clone(),
-            _dropped_tx: self._dropped_tx.clone(),
+            dropped_tx: self.dropped_tx.clone(),
             _codec: PhantomData,
             _buffer: PhantomData,
         }
@@ -195,7 +195,7 @@ where
             tx: Arc::downgrade(&tx),
             closed_rx: closed_rx.clone(),
             remote_send_err_rx,
-            _dropped_tx: dropped_tx,
+            dropped_tx,
             _codec: PhantomData,
             _buffer: PhantomData,
         };
@@ -227,7 +227,7 @@ where
             tx: Weak::new(),
             closed_rx: tokio::sync::watch::channel(true).1,
             remote_send_err_rx: tokio::sync::watch::channel(None).1,
-            _dropped_tx: tokio::sync::mpsc::channel(1).0,
+            dropped_tx: tokio::sync::mpsc::channel(1).0,
             _codec: PhantomData,
             _buffer: PhantomData,
         }
@@ -319,7 +319,7 @@ where
             tx: self.tx.clone(),
             closed_rx: self.closed_rx.clone(),
             remote_send_err_rx: self.remote_send_err_rx.clone(),
-            _dropped_tx: self._dropped_tx.clone(),
+            dropped_tx: self.dropped_tx.clone(),
             _codec: PhantomData,
             _buffer: PhantomData,
         }
@@ -335,7 +335,7 @@ where
             tx: self.tx.clone(),
             closed_rx: self.closed_rx.clone(),
             remote_send_err_rx: self.remote_send_err_rx.clone(),
-            _dropped_tx: self._dropped_tx.clone(),
+            dropped_tx: self.dropped_tx.clone(),
             _codec: PhantomData,
             _buffer: PhantomData,
         }

@@ -18,8 +18,14 @@ mod codec;
 #[cfg(feature = "rch")]
 mod rch;
 
+#[cfg(feature = "rfn")]
+mod rfn;
+
 #[cfg(feature = "robj")]
 mod robj;
+
+#[cfg(feature = "rtc")]
+mod rtc;
 
 static INIT: Once = Once::new();
 
