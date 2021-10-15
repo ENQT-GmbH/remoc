@@ -1,3 +1,5 @@
+//! Arbitrary data storage.
+
 use std::{any::Any, collections::HashMap, fmt, sync::Arc};
 use uuid::Uuid;
 
@@ -10,6 +12,8 @@ pub type AnyEntry = Arc<tokio::sync::RwLock<Option<AnyBox>>>;
 type AnyMap = HashMap<Uuid, AnyEntry>;
 
 /// Stores arbitrary data indexed by automatically generated keys.
+///
+/// Clones share the underlying storage.
 #[derive(Clone)]
 pub struct AnyStorage {
     entries: Arc<std::sync::Mutex<AnyMap>>,

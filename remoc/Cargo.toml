@@ -1,6 +1,6 @@
 [package]
 name = "remoc"
-version = "0.8.0-pre1"
+version = "0.8.0-pre2"
 authors = ["Sebastian Urban <surban@surban.net>", "ENQT GmbH <su@enqt.de>"]
 readme = "README.md"
 repository = "https://github.com/ENQT-GmbH/remoc/"
@@ -11,8 +11,22 @@ categories = ["asynchronous", "network-programming"]
 license = "Apache-2.0"
 
 [features]
-default = ["serde", "obj", "default-codec-json", "codec-bincode", "codec-cbor", "codec-json", "codec-message-pack"]
-obj = ["remoc_macro"]
+default = [
+    "serde",
+    "rch",
+    "rfn",
+    "robj",
+    "rtc",
+    "default-codec-json",
+    "codec-bincode",
+    "codec-cbor",
+    "codec-json",
+    "codec-message-pack",
+]
+rch = ["serde"]
+rfn = ["rch"]
+robj = ["rch"]
+rtc = ["rch", "remoc_macro", "async-trait"]
 
 # Codecs
 codec-bincode = ["bincode"]
@@ -25,7 +39,7 @@ codec-message-pack = ["rmp-serde"]
 default-codec-message-pack = ["codec-message-pack"]
 
 [dependencies]
-remoc_macro = { version = "=0.8.0-pre1", path = "../remoc_macro", optional = true }
+remoc_macro = { version = "=0.8.0-pre2", path = "../remoc_macro", optional = true }
 
 futures = "0.3"
 pin-project = "1.0"
@@ -33,14 +47,12 @@ tokio = { version = "1.11", features = ["macros", "rt", "sync", "time"] }
 tokio-util = { version = "0.6", features = ["codec"] }
 rand = "0.8"
 log = "0.4"
-async-trait = "0.1"
 bytes = "1"
 byteorder = "1.4"
 lazy_static = "1.4"
 uuid = { version = "0.8", features = ["serde", "v4"] }
-
+async-trait = { version = "0.1", optional = true }
 serde = { version = "1.0", features = ["derive"], optional = true }
-
 
 # Codecs
 serde_json = { version = "1.0", optional = true }
@@ -49,7 +61,16 @@ serde_cbor = { version = "0.11", optional = true }
 rmp-serde = { version = "0.15", optional = true }
 
 
-
 [dev-dependencies]
-tokio = { version="1.11", features = ["net", "io-util", "rt", "rt-multi-thread"] }
+tokio = { version = "1.11", features = [
+    "net",
+    "io-util",
+    "rt",
+    "rt-multi-thread",
+] }
 env_logger = "0.9"
+
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

@@ -1,7 +1,8 @@
 [package]
 name = "remoc_macro"
-version = "0.8.0-pre1"
+version = "0.8.0-pre2"
 authors = ["Sebastian Urban <surban@surban.net>", "ENQT GmbH <su@enqt.de>"]
+readme = "README.md"
 repository = "https://github.com/ENQT-GmbH/remoc/"
 edition = "2018"
 description = "Procedural macros for remoc"
