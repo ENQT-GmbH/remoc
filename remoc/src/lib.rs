@@ -1,24 +1,40 @@
-//! ReMOC🐙 — Remote multiplexed objects and channels
-//!
-//! ## Transport constraints
-//!
-//! Both [connect_framed] and [connect_io] spawn the channel multiplexer onto a separate task and
-//! thus the transport must have static lifetime and be [Send] and [Sync].
-//! To avoid this, you can create and run the channel multiplexer manually.
-//! To do so, instance [ChMux](chmux::ChMux) directly and invoke [remote::connect](rch::remote::connect)
-//! to create the initial channel.
-
 #![deny(unsafe_code)]
 #![warn(missing_docs)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
+
+//! ReMOC🐙 — Remote multiplexed objects and channels
+//!
 
 pub mod chmux;
-pub mod codec;
-mod connect;
-pub mod rch;
-mod remote_send;
-pub mod rfn;
-pub mod robj;
-pub mod rtc;
 
-pub use connect::{connect_framed, connect_io, ConnectError};
+#[cfg(feature = "serde")]
+#[cfg_attr(docsrs, doc(cfg(feature = "serde")))]
+pub mod codec;
+
+#[cfg(feature = "rch")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rch")))]
+pub mod rch;
+
+#[cfg(feature = "rch")]
+mod remote_send;
+#[cfg(feature = "rch")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rch")))]
 pub use remote_send::RemoteSend;
+
+#[cfg(feature = "rch")]
+mod connect;
+#[cfg(feature = "rch")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rch")))]
+pub use connect::{connect_framed, connect_io, ConnectError};
+
+#[cfg(feature = "rfn")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rfn")))]
+pub mod rfn;
+
+#[cfg(feature = "robj")]
+#[cfg_attr(docsrs, doc(cfg(feature = "robj")))]
+pub mod robj;
+
+#[cfg(feature = "rtc")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rtc")))]
+pub mod rtc;

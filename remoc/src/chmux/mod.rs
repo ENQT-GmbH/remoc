@@ -1,4 +1,4 @@
-//! # Channel multiplexer
+//! Channel multiplexer.
 //!
 //! Multiplexes multiple channels over a single channel (or anything that implements Sink and Stream).
 //!

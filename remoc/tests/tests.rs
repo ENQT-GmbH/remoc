@@ -1,11 +1,24 @@
+#[cfg(feature = "rch")]
 use futures::{try_join, StreamExt};
-use remoc::{rch::remote, RemoteSend};
+
+#[allow(unused_imports)]
 use std::{net::Ipv4Addr, sync::Once};
+
+#[cfg(feature = "rch")]
 use tokio::net::{TcpListener, TcpStream};
 
+#[cfg(feature = "rch")]
+use remoc::{rch::remote, RemoteSend};
+
 mod chmux;
+
+#[cfg(feature = "serde")]
 mod codec;
+
+#[cfg(feature = "rch")]
 mod rch;
+
+#[cfg(feature = "robj")]
 mod robj;
 
 static INIT: Once = Once::new();
@@ -25,6 +38,7 @@ macro_rules! loop_transport {
     };
 }
 
+#[cfg(feature = "rch")]
 pub async fn loop_channel<T>(
 ) -> ((remote::Sender<T>, remote::Receiver<T>), (remote::Sender<T>, remote::Receiver<T>))
 where
@@ -34,6 +48,7 @@ where
     loop_channel_with_cfg(cfg).await
 }
 
+#[cfg(feature = "rch")]
 pub async fn loop_channel_with_cfg<T>(
     cfg: remoc::chmux::Cfg,
 ) -> ((remote::Sender<T>, remote::Receiver<T>), (remote::Sender<T>, remote::Receiver<T>))
@@ -48,6 +63,7 @@ where
     .expect("creating remote loop channel failed")
 }
 
+#[cfg(feature = "rch")]
 pub async fn tcp_loop_channel<T>(
     tcp_port: u16,
 ) -> ((remote::Sender<T>, remote::Receiver<T>), (remote::Sender<T>, remote::Receiver<T>))

@@ -118,6 +118,7 @@ impl PortDeserializer {
     }
 
     /// Returns the data storage of the channel multiplexer.
+    #[allow(dead_code)]
     pub(crate) fn storage<E>() -> Result<AnyStorage, E>
     where
         E: serde::de::Error,

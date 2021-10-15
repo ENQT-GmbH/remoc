@@ -14,6 +14,7 @@ use crate::{
 };
 
 /// Connection error.
+#[cfg_attr(docsrs, doc(cfg(feature = "rch")))]
 #[derive(Debug, Clone)]
 pub enum ConnectError<TransportSinkError, TransportStreamError> {
     /// Establishing chmux connection failed.
@@ -65,8 +66,16 @@ impl<TransportSinkError, TransportStreamError> From<remote::ConnectError>
 ///
 /// The multiplexer is spawned into a separate task.
 ///
+/// ## Transport constraints
+/// Both [connect_framed] and [connect_io] spawn the channel multiplexer onto a separate task and
+/// thus the transport must have static lifetime and be [Send] and [Sync].
+/// To avoid this, you can create and run the channel multiplexer manually.
+/// To do so, instance [ChMux](chmux::ChMux) directly and invoke [remote::connect](crate::rch::remote::connect)
+/// to create the initial channel.
+///
 /// # Panics
 /// Panics if the chmux configuration is invalid.
+#[cfg_attr(docsrs, doc(cfg(feature = "rch")))]
 pub async fn connect_framed<TransportSink, TransportSinkError, TransportStream, TransportStreamError, T, Codec>(
     chmux_cfg: chmux::Cfg, transport_sink: TransportSink, transport_stream: TransportStream,
 ) -> Result<
@@ -93,8 +102,16 @@ where
 ///
 /// The multiplexer is spawned into a separate task.
 ///
+/// ## Transport constraints
+/// Both [connect_framed] and [connect_io] spawn the channel multiplexer onto a separate task and
+/// thus the transport must have static lifetime and be [Send] and [Sync].
+/// To avoid this, you can create and run the channel multiplexer manually.
+/// To do so, instance [ChMux](chmux::ChMux) directly and invoke [remote::connect](crate::rch::remote::connect)
+/// to create the initial channel.
+///
 /// # Panics
 /// Panics if the chmux configuration is invalid.
+#[cfg_attr(docsrs, doc(cfg(feature = "rch")))]
 pub async fn connect_io<Read, Write, T, Codec>(
     chmux_cfg: chmux::Cfg, input: Read, output: Write,
 ) -> Result<(remote::Sender<T, Codec>, remote::Receiver<T, Codec>), ConnectError<io::Error, io::Error>>
