@@ -5,6 +5,7 @@ use super::{Codec, DeserializationError, SerializationError};
 /// CBOR codec.
 ///
 /// See [serde_cbor] for details.
+#[cfg_attr(docsrs, doc(cfg(feature = "codec-cbor")))]
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Cbor;
 

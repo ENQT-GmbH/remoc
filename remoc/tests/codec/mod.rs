@@ -39,9 +39,9 @@ impl Default for TestStruct {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TestStructWithAttr {
     simple: String,
-    #[serde(with = "remoc::codec::serde_map::btreemap")]
+    #[serde(with = "remoc::codec::map::btreemap")]
     btree: BTreeMap<Vec<u8>, String>,
-    #[serde(with = "remoc::codec::serde_map::hashmap")]
+    #[serde(with = "remoc::codec::map::hashmap")]
     hash: HashMap<(u16, String), u8>,
     enu: Vec<TestEnum>,
 }

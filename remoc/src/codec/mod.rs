@@ -122,7 +122,7 @@ pub trait Codec: Send + Sync + Serialize + for<'de> Deserialize<'de> + Clone + U
         Item: DeserializeOwned;
 }
 
-pub mod serde_map;
+pub mod map;
 
 // ============================================================================
 // Codecs

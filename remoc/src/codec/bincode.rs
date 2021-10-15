@@ -6,6 +6,7 @@ use super::{Codec, DeserializationError, SerializationError};
 ///
 /// See [bincode] for details.
 /// This uses the default function configuration.
+#[cfg_attr(docsrs, doc(cfg(feature = "codec-bincode")))]
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Bincode;
 
