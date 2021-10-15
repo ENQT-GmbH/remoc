@@ -3,7 +3,7 @@
 //! This is necessary for the [JSON codec](crate::codec::Json) since it does not
 //! support non-string keys on dictionaries.
 //!
-//! Use by applying the attribute `#[serde(with="remoc::codec::serde_map::hashmap")]` on a field.
+//! Use by applying the attribute `#[serde(with="remoc::codec::map::hashmap")]` on a field.
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{collections::HashMap, hash::Hash};

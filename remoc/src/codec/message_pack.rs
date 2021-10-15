@@ -6,6 +6,7 @@ use super::{Codec, DeserializationError, SerializationError};
 ///
 /// See [rmp_serde] for details.
 /// This serializes sturctures as maps.
+#[cfg_attr(docsrs, doc(cfg(feature = "codec-message-pack")))]
 #[derive(Clone, Serialize, Deserialize)]
 pub struct MessagePack;
 
