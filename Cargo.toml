@@ -3,4 +3,5 @@ resolver = "2"
 members = [
     "remoc",
     "remoc_macro",
+    "rpc_test"
 ]

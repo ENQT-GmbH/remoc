@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 use remoc::{
-    codec::CodecT,
-    rtc::{async_trait, CallError, Server},
-    rsync::mpsc,
+    rtc::{async_trait, remote, CallError, Server},
+    rch::mpsc,
+    codec
 };
 
 #[derive(Serialize, Deserialize)]
@@ -18,11 +18,11 @@ impl From<CallError> for MyError {
     }
 }
 
-#[async_trait]
+#[remote]
 pub trait MyService<Codec> {
     /// Const fn docs.
     async fn const_fn(
-        &self, arg1: String, arg2: u16, arg3: mpsc::Sender<String, Codec, 1>,
+        &self, arg1: String, arg2: u16, arg3: mpsc::Sender<String>,
     ) -> Result<u32, MyError>;
 
     /// Mut fn docs.
@@ -36,10 +36,10 @@ pub struct MyObject {
 #[async_trait]
 impl<Codec> MyService<Codec> for MyObject
 where
-    Codec: CodecT,
+    Codec: codec::Codec,
 {
     async fn const_fn(
-        &self, arg1: String, arg2: u16, arg3: mpsc::Sender<String, Codec, 1>,
+        &self, arg1: String, arg2: u16, arg3: mpsc::Sender<String>,
     ) -> Result<u32, MyError> {
         Ok(123)
     }

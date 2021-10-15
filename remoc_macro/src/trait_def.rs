@@ -126,7 +126,7 @@ impl TraitDef {
         }
 
         let mut impl_generics = ty_generics.clone();
-        let wc: WhereClause = syn::parse2(quote! { where Codec: ::remoc::codec::CodecT }).unwrap();
+        let wc: WhereClause = syn::parse2(quote! { where Codec: ::remoc::codec::Codec }).unwrap();
         impl_generics.make_where_clause().predicates.extend(wc.predicates);
 
         if with_target {
@@ -238,24 +238,24 @@ impl TraitDef {
             #[doc="Remote server for [#ident] taking the target object by value."]
             #vis struct #server #ty_generics {
                 target: Target,
-                req_rx: ::remoc::rsync::mpsc::Receiver<
+                req_rx: ::remoc::rch::mpsc::Receiver<
                     ::remoc::rtc::Req<
                         #req_value #trait_generics,
                         #req_ref #trait_generics,
                         #req_ref_mut #trait_generics,
                     >,
-                    Codec, 1,
+                    Codec,
                 >,
             }
 
-            #[async_trait(?Send)]
+            #[::remoc::rtc::async_trait(?Send)]
             impl #impl_generics_impl ::remoc::rtc::Server <Target, Codec> for #server #impl_generics_ty #impl_generics_where
             {
                 type Client = #client #trait_generics;
 
                 fn new(target: Target, request_buffer: usize) -> (Self, Self::Client) {
-                    let (req_tx, req_rx) = ::remoc::rsync::mpsc::channel(request_buffer);
-                    (Self { target, req_rx }, Self::Client { req_tx };)
+                    let (req_tx, req_rx) = ::remoc::rch::mpsc::channel(request_buffer);
+                    (Self { target, req_rx }, Self::Client { req_tx })
                 }
 
                 async fn serve(self) -> Option<Target> {
@@ -298,20 +298,20 @@ impl TraitDef {
             #[doc="Remote server for [#ident] taking the target object by reference."]
             #vis struct #server #ty_generics {
                 target: &'target Target,
-                req_rx: ::remoc::rsync::mpsc::Receiver<
+                req_rx: ::remoc::rch::mpsc::Receiver<
                     ::remoc::rtc::Req<(), #req_ref #trait_generics, ()>,
-                    Codec, 1,
+                    Codec,
                 >,
             }
 
-            #[async_trait(?Send)]
+            #[::remoc::rtc::async_trait(?Send)]
             impl #impl_generics_impl ::remoc::rtc::ServerRef <'target, Target, Codec> for #server #impl_generics_ty #impl_generics_where
             {
                 type Client = #client #trait_generics;
 
                 fn new(target: &'target Target, request_buffer: usize) -> (Self, Self::Client) {
-                    let (req_tx, req_rx) = ::remoc::rsync::mpsc::channel(request_buffer);
-                    (Self { target, req_rx }, Self::Client { req_tx };)
+                    let (req_tx, req_rx) = ::remoc::rch::mpsc::channel(request_buffer);
+                    (Self { target, req_rx }, Self::Client { req_tx })
                 }
 
                 async fn serve(self) {
@@ -348,19 +348,20 @@ impl TraitDef {
             #[doc="Remote server for [#ident] taking the target object by mutable reference."]
             #vis struct #server #ty_generics {
                 target: &'target mut Target,
-                req_rx: ::remoc::rsync::mpsc::Receiver<
+                req_rx: ::remoc::rch::mpsc::Receiver<
                     ::remoc::rtc::Req<(), #req_ref #trait_generics, #req_ref_mut #trait_generics>,
-                    Codec, 1,
+                    Codec,
                 >,
             }
 
+            #[::remoc::rtc::async_trait(?Send)]
             impl #impl_generics_impl ::remoc::rtc::ServerRefMut <'target, Target, Codec> for #server #impl_generics_ty #impl_generics_where
             {
                 type Client = #client #trait_generics;
 
                 fn new(target: &'target mut Target, request_buffer: usize) -> (Self, Self::Client) {
-                    let (req_tx, req_rx) = ::remoc::rsync::mpsc::channel(request_buffer);
-                    (Self { target, req_rx }, Self::Client { req_tx };)
+                    let (req_tx, req_rx) = ::remoc::rch::mpsc::channel(request_buffer);
+                    (Self { target, req_rx }, Self::Client { req_tx })
                 }
 
                 async fn serve(self) {
@@ -400,19 +401,20 @@ impl TraitDef {
             #[doc="Remote server for [#ident] taking the target object by shared reference."]
             #vis struct #server #ty_generics {
                 target: ::std::sync::Arc<Target>,
-                req_rx: ::remoc::rsync::mpsc::Receiver<
+                req_rx: ::remoc::rch::mpsc::Receiver<
                     ::remoc::rtc::Req<(), #req_ref #trait_generics, ()>,
-                    Codec, 1,
+                    Codec,
                 >,
             }
 
+            #[::remoc::rtc::async_trait(?Send)]
             impl #impl_generics_impl ::remoc::rtc::ServerShared <Target, Codec> for #server #impl_generics_ty #impl_generics_where
             {
                 type Client = #client #trait_generics;
 
                 fn new(target: ::std::sync::Arc<Target>, request_buffer: usize) -> (Self, Self::Client) {
-                    let (req_tx, req_rx) = ::remoc::rsync::mpsc::channel(request_buffer);
-                    (Self { target, req_rx }, Self::Client { req_tx };)
+                    let (req_tx, req_rx) = ::remoc::rch::mpsc::channel(request_buffer);
+                    (Self { target, req_rx }, Self::Client { req_tx })
                 }
 
                 async fn serve(self, spawn: bool) {
@@ -455,20 +457,21 @@ impl TraitDef {
         quote! {
             #[doc="Remote server for [#ident] taking the target object by shared mutable reference."]
             #vis struct #server #ty_generics {
-                target: ::std::sync::Arc<::remoc::rsync::LocalRwLock<Target>>,
-                req_rx: ::remoc::rsync::mpsc::Receiver<
+                target: ::std::sync::Arc<::remoc::rtc::LocalRwLock<Target>>,
+                req_rx: ::remoc::rch::mpsc::Receiver<
                     ::remoc::rtc::Req<(), #req_ref #trait_generics, #req_ref_mut #trait_generics>,
                     Codec, 1,
                 >,
             }
 
+            #[::remoc::rtc::async_trait(?Send)]
             impl #impl_generics_impl ::remoc::rtc::ServerShared <Target, Codec> for #server #impl_generics_ty #impl_generics_where
             {
                 type Client = #client #trait_generics;
 
-                fn new(target: ::std::sync::Arc<::remoc::rsync::LocalRwLock<Target>>, request_buffer: usize) -> (Self, Self::Client) {
-                    let (req_tx, req_rx) = ::remoc::rsync::mpsc::channel(request_buffer);
-                    (Self { target, req_rx }, Self::Client { req_tx };)
+                fn new(target: ::std::sync::Arc<::remoc::rtc::LocalRwLock<Target>>, request_buffer: usize) -> (Self, Self::Client) {
+                    let (req_tx, req_rx) = ::remoc::rch::mpsc::channel(request_buffer);
+                    (Self { target, req_rx }, Self::Client { req_tx })
                 }
 
                 async fn serve(self, spawn: bool) {
@@ -549,12 +552,13 @@ impl TraitDef {
             #clone
             #attrs
             #vis struct #client_ident #ty_generics {
-                req_tx: ::remoc::rsync::mpsc::Sender<
+                req_tx: ::remoc::rch::mpsc::Sender<
                     ::remoc::rtc::Req<#req_value, #req_ref, #req_ref_mut>,
-                    Codec, 1,
+                    Codec,
                 >,
             }
 
+            #[::remoc::rtc::async_trait(?Send)]
             impl #impl_generics_impl #ident #generics for #client_ident #impl_generics_ty #impl_generics_where {
                 #methods
             }
