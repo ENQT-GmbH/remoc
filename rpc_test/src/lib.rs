@@ -1,28 +1,22 @@
-use serde::{Deserialize, Serialize};
+//mod out;
 
-use remoc::{
-    rtc::{async_trait, remote, CallError, Server},
-    rch::mpsc,
-    codec
-};
-
-#[derive(Serialize, Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub enum MyError {
     Error1,
-    Call(CallError),
+    Call(remoc::rtc::CallError),
 }
 
-impl From<CallError> for MyError {
-    fn from(err: CallError) -> Self {
+impl From<remoc::rtc::CallError> for MyError {
+    fn from(err: remoc::rtc::CallError) -> Self {
         Self::Call(err)
     }
 }
 
-#[remote]
+#[remoc::rtc::remote]
 pub trait MyService<Codec> {
     /// Const fn docs.
     async fn const_fn(
-        &self, arg1: String, arg2: u16, arg3: mpsc::Sender<String>,
+        &self, arg1: String, arg2: u16, arg3: remoc::rch::mpsc::Sender<String, Codec>,
     ) -> Result<u32, MyError>;
 
     /// Mut fn docs.
@@ -33,19 +27,21 @@ pub struct MyObject {
     field1: String,
 }
 
-#[async_trait]
+#[remoc::rtc::async_trait]
 impl<Codec> MyService<Codec> for MyObject
 where
-    Codec: codec::Codec,
+    Codec: remoc::codec::Codec,
 {
     async fn const_fn(
-        &self, arg1: String, arg2: u16, arg3: mpsc::Sender<String>,
+        &self, arg1: String, arg2: u16, arg3: remoc::rch::mpsc::Sender<String, Codec>,
     ) -> Result<u32, MyError> {
+        println!("arg1: {}, arg2: {}", arg1, arg2);
+        arg3.send("Hallo".to_string()).await.unwrap();
         Ok(123)
     }
 
     async fn mut_fn(&mut self, arg1: Vec<String>) -> Result<(), MyError> {
-        //self.data = String::new();
+        self.field1 = arg1.join(",");
         Err(MyError::Error1)
     }
 }
@@ -53,3 +49,18 @@ where
 pub async fn do_test() {
     let obj = MyObject { field1: String::new() };
 }
+
+// 
+// #[remoc::rtc::remote]
+// pub trait MyGenericService<T, Codec> where  T: ::remoc::RemoteSend {
+//     /// Mut fn docs.
+//     async fn mut_fn(&mut self, arg1: T) -> Result<(), MyError>;
+// }
+
+
+// Okay, we need to clear up that generic chaos.
+// Do we need a generic type on the trait?
+// Probably not necessarily, but?
+// Yes, the codec of the request encoding could be determined
+// wholely by the server and client types, that are generic over codec.
+

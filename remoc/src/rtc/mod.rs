@@ -184,10 +184,9 @@ where
 pub trait ServerSharedMut<T, Codec>: ServerBase
 where
     Self: Sized,
-    Self::Client: Clone,
 {
     /// Creates a new server instance for a shared mutable reference to the target object.
-    fn new(target: Arc<tokio::sync::RwLock<T>>, request_buffer: usize) -> (Self, Self::Client);
+    fn new(target: Arc<LocalRwLock<T>>, request_buffer: usize) -> (Self, Self::Client);
 
     /// Serves the target object.
     ///
@@ -201,10 +200,14 @@ where
 
 // Re-exports for proc macro usage.
 #[doc(hidden)]
-pub use log;
-#[doc(hidden)]
 pub use tokio::sync::mpsc as local_mpsc;
 #[doc(hidden)]
 pub use tokio::sync::RwLock as LocalRwLock;
 #[doc(hidden)]
 pub use tokio::{select, spawn};
+
+#[doc(hidden)]
+/// Log message that receiving a request failed for proc macro.
+pub fn receiving_request_failed(err: mpsc::RecvError) {
+    log::warn!("Receiving request failed: {}", &err)
+}

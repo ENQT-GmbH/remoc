@@ -39,12 +39,17 @@ impl Parse for TraitDef {
         let ident: Ident = input.parse()?;
 
         // Parse generics.
-        let generics = input.parse::<Generics>()?;
+        let mut generics = input.parse::<Generics>()?;
         if !generics.params.iter().any(|p| matches!(p, GenericParam::Type(tp) if tp.ident == "Codec")) {
             return Err(input.error("remote trait must be generic over type parameter Codec"));
         }
         if generics.params.iter().any(|p| matches!(p, GenericParam::Type(tp) if tp.ident == "Target")) {
             return Err(input.error("remote trait must not be generic over type parameter Target"));
+        }
+
+        // Generics where clause.
+        if let Some(where_clause) = input.parse::<Option<WhereClause>>()? {
+            generics.make_where_clause().predicates.extend(where_clause.predicates);
         }
 
         // Extract content of trait definition.
@@ -80,6 +85,7 @@ impl TraitDef {
     /// Vanilla trait definition, without remote-specific attributes.
     pub fn vanilla_trait(&self) -> TokenStream {
         let Self { vis, ident, attrs, generics, .. } = self;
+        let where_clause = &generics.where_clause;
         let attrs = attribute_tokens(attrs);
 
         // Trait methods.
@@ -91,7 +97,7 @@ impl TraitDef {
         quote! {
             #attrs
             #[::remoc::rtc::async_trait]
-            #vis trait #ident #generics {
+            #vis trait #ident #generics #where_clause {
                 #defs
             }
         }
@@ -105,6 +111,8 @@ impl TraitDef {
         &self, with_target: bool, with_lifetime: bool, with_send_sync_static: bool,
     ) -> (Generics, Generics) {
         let ident = &self.ident;
+
+        let trait_generics = self.generics.clone();
 
         let mut ty_generics = self.generics.clone();
         let idx = ty_generics
@@ -130,7 +138,7 @@ impl TraitDef {
         impl_generics.make_where_clause().predicates.extend(wc.predicates);
 
         if with_target {
-            let wc: WhereClause = syn::parse2(quote! { where Target: #ident }).unwrap();
+            let wc: WhereClause = syn::parse2(quote! { where Target: #ident #trait_generics }).unwrap();
             impl_generics.make_where_clause().predicates.extend(wc.predicates);
         }
 
@@ -160,6 +168,7 @@ impl TraitDef {
         let (ty_generics, impl_generics) = self.generics(false, false, false);
         let (impl_generics_impl, impl_generics_ty, impl_generics_where) = impl_generics.split_for_impl();
         let (req_value, req_ref, req_ref_mut) = self.request_enum_idents();
+        let ty_generics_list = &ty_generics.params;
 
         let (mut value_entries, mut ref_entries, mut ref_mut_entries) = (quote! {}, quote! {}, quote! {});
         let (mut value_clauses, mut ref_clauses, mut ref_mut_clauses) = (quote! {}, quote! {}, quote! {});
@@ -182,40 +191,52 @@ impl TraitDef {
 
         quote! {
             #[derive(::serde::Serialize, ::serde::Deserialize)]
+            #[serde(bound(serialize = "Codec: ::remoc::codec::Codec"))]
+            #[serde(bound(deserialize = "Codec: ::remoc::codec::Codec"))]
             enum #req_value #ty_generics {
                 #value_entries
+                __Phantom (::std::marker::PhantomData<(#ty_generics_list)>)
             }
 
             impl #impl_generics_impl #req_value #impl_generics_ty #impl_generics_where {
-                async fn dispatch<Target>(self, target: Target) where Target: #ident {
-                    match req {
+                async fn dispatch<Target>(self, target: Target) where Target: #ident #ty_generics {
+                    match self {
                         #value_clauses
+                        Self::__Phantom(_) => ()
                     }
                 }
             }
 
             #[derive(::serde::Serialize, ::serde::Deserialize)]
+            #[serde(bound(serialize = "Codec: ::remoc::codec::Codec"))]
+            #[serde(bound(deserialize = "Codec: ::remoc::codec::Codec"))]
             enum #req_ref #ty_generics {
                 #ref_entries
+                __Phantom (::std::marker::PhantomData<(#ty_generics_list)>)
             }
 
             impl #impl_generics_impl #req_ref #impl_generics_ty #impl_generics_where {
-                async fn dispatch<Target>(self, target: &Target) where Target: #ident {
+                async fn dispatch<Target>(self, target: &Target) where Target: #ident #ty_generics {
                     match self {
                         #ref_clauses
+                        Self::__Phantom(_) => ()
                     }
                 }
             }
 
             #[derive(::serde::Serialize, ::serde::Deserialize)]
+            #[serde(bound(serialize = "Codec: ::remoc::codec::Codec"))]
+            #[serde(bound(deserialize = "Codec: ::remoc::codec::Codec"))]
             enum #req_ref_mut #ty_generics {
                 #ref_mut_entries
+                __Phantom (::std::marker::PhantomData<(#ty_generics_list)>)
             }
 
             impl #impl_generics_impl #req_ref_mut #impl_generics_ty #impl_generics_where {
-                async fn dispatch<Target>(self, target: &mut Target) where Target: #ident {
+                async fn dispatch<Target>(self, target: &mut Target) where Target: #ident #ty_generics {
                     match self {
                         #ref_mut_clauses
+                        Self::__Phantom(_) => ()
                     }
                 }
             }
@@ -248,11 +269,14 @@ impl TraitDef {
                 >,
             }
 
+            impl #impl_generics_impl ::remoc::rtc::ServerBase for #server #impl_generics_ty #impl_generics_where
+            {
+                type Client = #client #trait_generics;
+            }
+
             #[::remoc::rtc::async_trait(?Send)]
             impl #impl_generics_impl ::remoc::rtc::Server <Target, Codec> for #server #impl_generics_ty #impl_generics_where
             {
-                type Client = #client #trait_generics;
-
                 fn new(target: Target, request_buffer: usize) -> (Self, Self::Client) {
                     let (req_tx, req_rx) = ::remoc::rch::mpsc::channel(request_buffer);
                     (Self { target, req_rx }, Self::Client { req_tx })
@@ -274,7 +298,7 @@ impl TraitDef {
                                 req.dispatch(&mut target).await;
                             },
                             Ok(None) => return Some(target),
-                            Err(err) => ::remoc::rtc::log::trace!("Receiving request failed: {}", &err),
+                            Err(err) => ::remoc::rtc::receiving_request_failed(err),
                         }
                     }
                 }
@@ -289,7 +313,7 @@ impl TraitDef {
         let trait_generics = &self.generics;
         let (ty_generics, impl_generics) = self.generics(true, true, false);
         let (impl_generics_impl, impl_generics_ty, impl_generics_where) = impl_generics.split_for_impl();
-        let (_, req_ref, _) = self.request_enum_idents();
+        let (req_value, req_ref, req_ref_mut) = self.request_enum_idents();
 
         let client = self.client_ident();
         let server = format_ident!("{}ServerRef", &ident);
@@ -299,16 +323,23 @@ impl TraitDef {
             #vis struct #server #ty_generics {
                 target: &'target Target,
                 req_rx: ::remoc::rch::mpsc::Receiver<
-                    ::remoc::rtc::Req<(), #req_ref #trait_generics, ()>,
+                    ::remoc::rtc::Req<
+                        #req_value #trait_generics,
+                        #req_ref #trait_generics,
+                        #req_ref_mut #trait_generics,
+                    >,
                     Codec,
                 >,
+            }
+
+            impl #impl_generics_impl ::remoc::rtc::ServerBase for #server #impl_generics_ty #impl_generics_where
+            {
+                type Client = #client #trait_generics;
             }
 
             #[::remoc::rtc::async_trait(?Send)]
             impl #impl_generics_impl ::remoc::rtc::ServerRef <'target, Target, Codec> for #server #impl_generics_ty #impl_generics_where
             {
-                type Client = #client #trait_generics;
-
                 fn new(target: &'target Target, request_buffer: usize) -> (Self, Self::Client) {
                     let (req_tx, req_rx) = ::remoc::rch::mpsc::channel(request_buffer);
                     (Self { target, req_rx }, Self::Client { req_tx })
@@ -324,7 +355,7 @@ impl TraitDef {
                             },
                             Ok(Some(_)) => (),
                             Ok(None) => break,
-                            Err(err) => ::remoc::rtc::log::trace!("Receiving request failed: {}", &err),
+                            Err(err) => ::remoc::rtc::receiving_request_failed(err),
                         }
                     }
                 }
@@ -339,7 +370,7 @@ impl TraitDef {
         let trait_generics = &self.generics;
         let (ty_generics, impl_generics) = self.generics(true, true, false);
         let (impl_generics_impl, impl_generics_ty, impl_generics_where) = impl_generics.split_for_impl();
-        let (_, req_ref, req_ref_mut) = self.request_enum_idents();
+        let (req_value, req_ref, req_ref_mut) = self.request_enum_idents();
 
         let client = self.client_ident();
         let server = format_ident!("{}ServerRefMut", &ident);
@@ -349,16 +380,23 @@ impl TraitDef {
             #vis struct #server #ty_generics {
                 target: &'target mut Target,
                 req_rx: ::remoc::rch::mpsc::Receiver<
-                    ::remoc::rtc::Req<(), #req_ref #trait_generics, #req_ref_mut #trait_generics>,
+                    ::remoc::rtc::Req<
+                        #req_value #trait_generics,
+                        #req_ref #trait_generics,
+                        #req_ref_mut #trait_generics,
+                    >,
                     Codec,
                 >,
+            }
+
+            impl #impl_generics_impl ::remoc::rtc::ServerBase for #server #impl_generics_ty #impl_generics_where
+            {
+                type Client = #client #trait_generics;
             }
 
             #[::remoc::rtc::async_trait(?Send)]
             impl #impl_generics_impl ::remoc::rtc::ServerRefMut <'target, Target, Codec> for #server #impl_generics_ty #impl_generics_where
             {
-                type Client = #client #trait_generics;
-
                 fn new(target: &'target mut Target, request_buffer: usize) -> (Self, Self::Client) {
                     let (req_tx, req_rx) = ::remoc::rch::mpsc::channel(request_buffer);
                     (Self { target, req_rx }, Self::Client { req_tx })
@@ -377,7 +415,7 @@ impl TraitDef {
                             },
                             Ok(Some(_)) => (),
                             Ok(None) => break,
-                            Err(err) => ::remoc::rtc::log::trace!("Receiving request failed: {}", &err),
+                            Err(err) => ::remoc::rtc::receiving_request_failed(err),
                         }
                     }
                 }
@@ -392,7 +430,7 @@ impl TraitDef {
         let trait_generics = &self.generics;
         let (ty_generics, impl_generics) = self.generics(true, true, true);
         let (impl_generics_impl, impl_generics_ty, impl_generics_where) = impl_generics.split_for_impl();
-        let (_, req_ref, _) = self.request_enum_idents();
+        let (req_value, req_ref, req_ref_mut) = self.request_enum_idents();
 
         let client = self.client_ident();
         let server = format_ident!("{}ServerShared", &ident);
@@ -402,16 +440,23 @@ impl TraitDef {
             #vis struct #server #ty_generics {
                 target: ::std::sync::Arc<Target>,
                 req_rx: ::remoc::rch::mpsc::Receiver<
-                    ::remoc::rtc::Req<(), #req_ref #trait_generics, ()>,
+                    ::remoc::rtc::Req<
+                        #req_value #trait_generics,
+                        #req_ref #trait_generics,
+                        #req_ref_mut #trait_generics,
+                    >,
                     Codec,
                 >,
             }
 
-            #[::remoc::rtc::async_trait(?Send)]
-            impl #impl_generics_impl ::remoc::rtc::ServerShared <Target, Codec> for #server #impl_generics_ty #impl_generics_where
+            impl #impl_generics_impl ::remoc::rtc::ServerBase for #server #impl_generics_ty #impl_generics_where
             {
                 type Client = #client #trait_generics;
+            }
 
+            #[::remoc::rtc::async_trait]
+            impl #impl_generics_impl ::remoc::rtc::ServerShared <Target, Codec> for #server #impl_generics_ty #impl_generics_where
+            {
                 fn new(target: ::std::sync::Arc<Target>, request_buffer: usize) -> (Self, Self::Client) {
                     let (req_tx, req_rx) = ::remoc::rch::mpsc::channel(request_buffer);
                     (Self { target, req_rx }, Self::Client { req_tx })
@@ -434,7 +479,7 @@ impl TraitDef {
                             },
                             Ok(Some(_)) => (),
                             Ok(None) => break,
-                            Err(err) => ::remoc::rtc::log::trace!("Receiving request failed: {}", &err),
+                            Err(err) => ::remoc::rtc::receiving_request_failed(err),
                         }
                     }
                 }
@@ -447,9 +492,9 @@ impl TraitDef {
         let Self { vis, ident, .. } = self;
 
         let trait_generics = &self.generics;
-        let (ty_generics, impl_generics) = self.generics(true, true, true);
+        let (ty_generics, impl_generics) = self.generics(true, false, true);
         let (impl_generics_impl, impl_generics_ty, impl_generics_where) = impl_generics.split_for_impl();
-        let (_, req_ref, req_ref_mut) = self.request_enum_idents();
+        let (req_value, req_ref, req_ref_mut) = self.request_enum_idents();
 
         let client = self.client_ident();
         let server = format_ident!("{}ServerSharedMut", &ident);
@@ -459,16 +504,23 @@ impl TraitDef {
             #vis struct #server #ty_generics {
                 target: ::std::sync::Arc<::remoc::rtc::LocalRwLock<Target>>,
                 req_rx: ::remoc::rch::mpsc::Receiver<
-                    ::remoc::rtc::Req<(), #req_ref #trait_generics, #req_ref_mut #trait_generics>,
-                    Codec, 1,
+                    ::remoc::rtc::Req<
+                        #req_value #trait_generics,
+                        #req_ref #trait_generics,
+                        #req_ref_mut #trait_generics,
+                    >,
+                    Codec,
                 >,
             }
 
-            #[::remoc::rtc::async_trait(?Send)]
-            impl #impl_generics_impl ::remoc::rtc::ServerShared <Target, Codec> for #server #impl_generics_ty #impl_generics_where
+            impl #impl_generics_impl ::remoc::rtc::ServerBase for #server #impl_generics_ty #impl_generics_where
             {
                 type Client = #client #trait_generics;
+            }
 
+            #[::remoc::rtc::async_trait]
+            impl #impl_generics_impl ::remoc::rtc::ServerSharedMut <Target, Codec> for #server #impl_generics_ty #impl_generics_where
+            {
                 fn new(target: ::std::sync::Arc<::remoc::rtc::LocalRwLock<Target>>, request_buffer: usize) -> (Self, Self::Client) {
                     let (req_tx, req_rx) = ::remoc::rch::mpsc::channel(request_buffer);
                     (Self { target, req_rx }, Self::Client { req_tx })
@@ -496,7 +548,7 @@ impl TraitDef {
                             },
                             Ok(Some(_)) => (),
                             Ok(None) => break,
-                            Err(err) => ::remoc::rtc::log::trace!("Receiving request failed: {}", &err),
+                            Err(err) => ::remoc::rtc::receiving_request_failed(err),
                         }
                     }
                 }
@@ -549,16 +601,18 @@ impl TraitDef {
 
         quote! {
             #[derive(::serde::Serialize, ::serde::Deserialize)]
+            #[serde(bound(serialize = "Codec: ::remoc::codec::Codec"))]
+            #[serde(bound(deserialize = "Codec: ::remoc::codec::Codec"))]
             #clone
             #attrs
             #vis struct #client_ident #ty_generics {
                 req_tx: ::remoc::rch::mpsc::Sender<
-                    ::remoc::rtc::Req<#req_value, #req_ref, #req_ref_mut>,
+                    ::remoc::rtc::Req<#req_value #ty_generics, #req_ref #ty_generics, #req_ref_mut #ty_generics>,
                     Codec,
                 >,
             }
 
-            #[::remoc::rtc::async_trait(?Send)]
+            #[::remoc::rtc::async_trait]
             impl #impl_generics_impl #ident #generics for #client_ident #impl_generics_ty #impl_generics_where {
                 #methods
             }

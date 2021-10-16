@@ -21,14 +21,12 @@ pub fn remote(_attr: proc_macro::TokenStream, input: proc_macro::TokenStream) ->
     let servers = trait_def.servers();
     let client = trait_def.client();
 
-    let output = 
-    proc_macro::TokenStream::from(quote! {
+    let output = proc_macro::TokenStream::from(quote! {
         #vanilla_trait
         #request_enums
         #servers
         #client
     });
 
-    //println!("{}", &output);
     output
 }
