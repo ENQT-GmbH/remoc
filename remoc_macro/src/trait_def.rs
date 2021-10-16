@@ -121,7 +121,7 @@ impl TraitDef {
                 GenericParam::Const(_) => Some(idx),
                 _ => None,
             })
-            .unwrap_or_else( || ty_generics.params.len());
+            .unwrap_or_else(|| ty_generics.params.len());
         if with_codec {
             let codec_param: TypeParam = syn::parse2(if with_codec_default {
                 quote! { Codec = ::remoc::codec::Default }
@@ -130,7 +130,7 @@ impl TraitDef {
             })
             .unwrap();
             ty_generics.params.insert(idx, GenericParam::Type(codec_param));
-        }        
+        }
         if with_target {
             ty_generics.params.insert(idx, GenericParam::Type(format_ident!("Target").into()));
         }
