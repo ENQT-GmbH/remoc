@@ -5,7 +5,7 @@ use quote::{format_ident, quote, TokenStreamExt};
 use syn::{
     braced,
     parse::{Parse, ParseStream},
-    Attribute, GenericParam, Generics, Ident, Lifetime, LifetimeDef, Token, Visibility, WhereClause,
+    Attribute, GenericParam, Generics, Ident, Lifetime, LifetimeDef, Token, TypeParam, Visibility, WhereClause,
 };
 
 use crate::{
@@ -40,9 +40,6 @@ impl Parse for TraitDef {
 
         // Parse generics.
         let mut generics = input.parse::<Generics>()?;
-        if !generics.params.iter().any(|p| matches!(p, GenericParam::Type(tp) if tp.ident == "Codec")) {
-            return Err(input.error("remote trait must be generic over type parameter Codec"));
-        }
         if generics.params.iter().any(|p| matches!(p, GenericParam::Type(tp) if tp.ident == "Target")) {
             return Err(input.error("remote trait must not be generic over type parameter Target"));
         }
@@ -108,7 +105,8 @@ impl TraitDef {
     /// First return item is server type generics, including Target, Codec and possibly lifetime of target.
     /// Second return itm is server implementation generics, including where-clauses on Target and Codec.
     fn generics(
-        &self, with_target: bool, with_lifetime: bool, with_send_sync_static: bool,
+        &self, with_target: bool, with_codec: bool, with_codec_default: bool, with_lifetime: bool,
+        with_send_sync_static: bool,
     ) -> (Generics, Generics) {
         let ident = &self.ident;
 
@@ -120,10 +118,19 @@ impl TraitDef {
             .iter()
             .enumerate()
             .find_map(|(idx, p)| match p {
-                GenericParam::Type(tp) if tp.ident == "Codec" => Some(idx),
+                GenericParam::Const(_) => Some(idx),
                 _ => None,
             })
+            .unwrap_or_else( || ty_generics.params.len());
+        if with_codec {
+            let codec_param: TypeParam = syn::parse2(if with_codec_default {
+                quote! { Codec = ::remoc::codec::Default }
+            } else {
+                quote! { Codec }
+            })
             .unwrap();
+            ty_generics.params.insert(idx, GenericParam::Type(codec_param));
+        }        
         if with_target {
             ty_generics.params.insert(idx, GenericParam::Type(format_ident!("Target").into()));
         }
@@ -134,8 +141,11 @@ impl TraitDef {
         }
 
         let mut impl_generics = ty_generics.clone();
-        let wc: WhereClause = syn::parse2(quote! { where Codec: ::remoc::codec::Codec }).unwrap();
-        impl_generics.make_where_clause().predicates.extend(wc.predicates);
+
+        if with_codec {
+            let wc: WhereClause = syn::parse2(quote! { where Codec: ::remoc::codec::Codec }).unwrap();
+            impl_generics.make_where_clause().predicates.extend(wc.predicates);
+        }
 
         if with_target {
             let wc: WhereClause = syn::parse2(quote! { where Target: #ident #trait_generics }).unwrap();
@@ -165,10 +175,15 @@ impl TraitDef {
     pub fn request_enums(&self) -> TokenStream {
         let ident = &self.ident;
 
-        let (ty_generics, impl_generics) = self.generics(false, false, false);
+        let (trait_generics, _) = self.generics(false, false, false, false, false);
+        let (ty_generics, impl_generics) = self.generics(false, true, false, false, false);
+        let ty_generics_where = &ty_generics.where_clause;
         let (impl_generics_impl, impl_generics_ty, impl_generics_where) = impl_generics.split_for_impl();
         let (req_value, req_ref, req_ref_mut) = self.request_enum_idents();
         let ty_generics_list = &ty_generics.params;
+
+        let impl_generics_where_pred = &impl_generics_where.unwrap().predicates;
+        let impl_generics_where_str = quote! { #impl_generics_where_pred }.to_string();
 
         let (mut value_entries, mut ref_entries, mut ref_mut_entries) = (quote! {}, quote! {}, quote! {});
         let (mut value_clauses, mut ref_clauses, mut ref_mut_clauses) = (quote! {}, quote! {}, quote! {});
@@ -190,16 +205,16 @@ impl TraitDef {
         }
 
         quote! {
-            #[derive(::serde::Serialize, ::serde::Deserialize)]
-            #[serde(bound(serialize = "Codec: ::remoc::codec::Codec"))]
-            #[serde(bound(deserialize = "Codec: ::remoc::codec::Codec"))]
-            enum #req_value #ty_generics {
+            #[derive(::remoc::rtc::Serialize, ::remoc::rtc::Deserialize)]
+            #[serde(bound(serialize = #impl_generics_where_str))]
+            #[serde(bound(deserialize = #impl_generics_where_str))]
+            enum #req_value #ty_generics #ty_generics_where {
                 #value_entries
                 __Phantom (::std::marker::PhantomData<(#ty_generics_list)>)
             }
 
             impl #impl_generics_impl #req_value #impl_generics_ty #impl_generics_where {
-                async fn dispatch<Target>(self, target: Target) where Target: #ident #ty_generics {
+                async fn dispatch<Target>(self, target: Target) where Target: #ident #trait_generics {
                     match self {
                         #value_clauses
                         Self::__Phantom(_) => ()
@@ -207,16 +222,16 @@ impl TraitDef {
                 }
             }
 
-            #[derive(::serde::Serialize, ::serde::Deserialize)]
-            #[serde(bound(serialize = "Codec: ::remoc::codec::Codec"))]
-            #[serde(bound(deserialize = "Codec: ::remoc::codec::Codec"))]
-            enum #req_ref #ty_generics {
+            #[derive(::remoc::rtc::Serialize, ::remoc::rtc::Deserialize)]
+            #[serde(bound(serialize = #impl_generics_where_str))]
+            #[serde(bound(deserialize = #impl_generics_where_str))]
+            enum #req_ref #ty_generics #ty_generics_where {
                 #ref_entries
                 __Phantom (::std::marker::PhantomData<(#ty_generics_list)>)
             }
 
             impl #impl_generics_impl #req_ref #impl_generics_ty #impl_generics_where {
-                async fn dispatch<Target>(self, target: &Target) where Target: #ident #ty_generics {
+                async fn dispatch<Target>(self, target: &Target) where Target: #ident #trait_generics {
                     match self {
                         #ref_clauses
                         Self::__Phantom(_) => ()
@@ -224,16 +239,16 @@ impl TraitDef {
                 }
             }
 
-            #[derive(::serde::Serialize, ::serde::Deserialize)]
-            #[serde(bound(serialize = "Codec: ::remoc::codec::Codec"))]
-            #[serde(bound(deserialize = "Codec: ::remoc::codec::Codec"))]
-            enum #req_ref_mut #ty_generics {
+            #[derive(::remoc::rtc::Serialize, ::remoc::rtc::Deserialize)]
+            #[serde(bound(serialize = #impl_generics_where_str))]
+            #[serde(bound(deserialize = #impl_generics_where_str))]
+            enum #req_ref_mut #ty_generics #ty_generics_where {
                 #ref_mut_entries
                 __Phantom (::std::marker::PhantomData<(#ty_generics_list)>)
             }
 
             impl #impl_generics_impl #req_ref_mut #impl_generics_ty #impl_generics_where {
-                async fn dispatch<Target>(self, target: &mut Target) where Target: #ident #ty_generics {
+                async fn dispatch<Target>(self, target: &mut Target) where Target: #ident #trait_generics {
                     match self {
                         #ref_mut_clauses
                         Self::__Phantom(_) => ()
@@ -247,23 +262,26 @@ impl TraitDef {
     fn server_value(&self) -> TokenStream {
         let Self { vis, ident, .. } = self;
 
-        let trait_generics = &self.generics;
-        let (ty_generics, impl_generics) = self.generics(true, false, false);
+        let (req_generics, _) = self.generics(false, true, false, false, false);
+        let (ty_generics, impl_generics) = self.generics(true, true, true, false, false);
+        let ty_generics_where = &ty_generics.where_clause;
         let (impl_generics_impl, impl_generics_ty, impl_generics_where) = impl_generics.split_for_impl();
         let (req_value, req_ref, req_ref_mut) = self.request_enum_idents();
 
         let client = self.client_ident();
         let server = format_ident!("{}Server", &ident);
 
+        let doc = format!("Server for [{}] taking the target object by value.", &ident);
+
         quote! {
-            #[doc="Remote server for [#ident] taking the target object by value."]
-            #vis struct #server #ty_generics {
+            #[doc=#doc]
+            #vis struct #server #ty_generics #ty_generics_where {
                 target: Target,
                 req_rx: ::remoc::rch::mpsc::Receiver<
                     ::remoc::rtc::Req<
-                        #req_value #trait_generics,
-                        #req_ref #trait_generics,
-                        #req_ref_mut #trait_generics,
+                        #req_value #req_generics,
+                        #req_ref #req_generics,
+                        #req_ref_mut #req_generics,
                     >,
                     Codec,
                 >,
@@ -271,7 +289,7 @@ impl TraitDef {
 
             impl #impl_generics_impl ::remoc::rtc::ServerBase for #server #impl_generics_ty #impl_generics_where
             {
-                type Client = #client #trait_generics;
+                type Client = #client #req_generics;
             }
 
             #[::remoc::rtc::async_trait(?Send)]
@@ -310,23 +328,26 @@ impl TraitDef {
     fn server_ref(&self) -> TokenStream {
         let Self { vis, ident, .. } = self;
 
-        let trait_generics = &self.generics;
-        let (ty_generics, impl_generics) = self.generics(true, true, false);
+        let (req_generics, _) = self.generics(false, true, false, false, false);
+        let (ty_generics, impl_generics) = self.generics(true, true, true, true, false);
+        let ty_generics_where = &ty_generics.where_clause;
         let (impl_generics_impl, impl_generics_ty, impl_generics_where) = impl_generics.split_for_impl();
         let (req_value, req_ref, req_ref_mut) = self.request_enum_idents();
 
         let client = self.client_ident();
         let server = format_ident!("{}ServerRef", &ident);
 
+        let doc = format!("Server for [{}] taking the target object by reference.", &ident);
+
         quote! {
-            #[doc="Remote server for [#ident] taking the target object by reference."]
-            #vis struct #server #ty_generics {
+            #[doc=#doc]
+            #vis struct #server #ty_generics #ty_generics_where {
                 target: &'target Target,
                 req_rx: ::remoc::rch::mpsc::Receiver<
                     ::remoc::rtc::Req<
-                        #req_value #trait_generics,
-                        #req_ref #trait_generics,
-                        #req_ref_mut #trait_generics,
+                        #req_value #req_generics,
+                        #req_ref #req_generics,
+                        #req_ref_mut #req_generics,
                     >,
                     Codec,
                 >,
@@ -334,7 +355,7 @@ impl TraitDef {
 
             impl #impl_generics_impl ::remoc::rtc::ServerBase for #server #impl_generics_ty #impl_generics_where
             {
-                type Client = #client #trait_generics;
+                type Client = #client #req_generics;
             }
 
             #[::remoc::rtc::async_trait(?Send)]
@@ -367,23 +388,26 @@ impl TraitDef {
     fn server_ref_mut(&self) -> TokenStream {
         let Self { vis, ident, .. } = self;
 
-        let trait_generics = &self.generics;
-        let (ty_generics, impl_generics) = self.generics(true, true, false);
+        let (req_generics, _) = self.generics(false, true, false, false, false);
+        let (ty_generics, impl_generics) = self.generics(true, true, true, true, false);
+        let ty_generics_where = &ty_generics.where_clause;
         let (impl_generics_impl, impl_generics_ty, impl_generics_where) = impl_generics.split_for_impl();
         let (req_value, req_ref, req_ref_mut) = self.request_enum_idents();
 
         let client = self.client_ident();
         let server = format_ident!("{}ServerRefMut", &ident);
 
+        let doc = format!("Server for [{}] taking the target object by mutable reference.", &ident);
+
         quote! {
-            #[doc="Remote server for [#ident] taking the target object by mutable reference."]
-            #vis struct #server #ty_generics {
+            #[doc=#doc]
+            #vis struct #server #ty_generics #ty_generics_where {
                 target: &'target mut Target,
                 req_rx: ::remoc::rch::mpsc::Receiver<
                     ::remoc::rtc::Req<
-                        #req_value #trait_generics,
-                        #req_ref #trait_generics,
-                        #req_ref_mut #trait_generics,
+                        #req_value #req_generics,
+                        #req_ref #req_generics,
+                        #req_ref_mut #req_generics,
                     >,
                     Codec,
                 >,
@@ -391,7 +415,7 @@ impl TraitDef {
 
             impl #impl_generics_impl ::remoc::rtc::ServerBase for #server #impl_generics_ty #impl_generics_where
             {
-                type Client = #client #trait_generics;
+                type Client = #client #req_generics;
             }
 
             #[::remoc::rtc::async_trait(?Send)]
@@ -427,23 +451,26 @@ impl TraitDef {
     fn server_shared(&self) -> TokenStream {
         let Self { vis, ident, .. } = self;
 
-        let trait_generics = &self.generics;
-        let (ty_generics, impl_generics) = self.generics(true, true, true);
+        let (req_generics, _) = self.generics(false, true, false, false, false);
+        let (ty_generics, impl_generics) = self.generics(true, true, true, true, true);
+        let ty_generics_where = &ty_generics.where_clause;
         let (impl_generics_impl, impl_generics_ty, impl_generics_where) = impl_generics.split_for_impl();
         let (req_value, req_ref, req_ref_mut) = self.request_enum_idents();
 
         let client = self.client_ident();
         let server = format_ident!("{}ServerShared", &ident);
 
+        let doc = format!("Server for [{}] taking the target object by shared reference.", &ident);
+
         quote! {
-            #[doc="Remote server for [#ident] taking the target object by shared reference."]
-            #vis struct #server #ty_generics {
+            #[doc=#doc]
+            #vis struct #server #ty_generics #ty_generics_where {
                 target: ::std::sync::Arc<Target>,
                 req_rx: ::remoc::rch::mpsc::Receiver<
                     ::remoc::rtc::Req<
-                        #req_value #trait_generics,
-                        #req_ref #trait_generics,
-                        #req_ref_mut #trait_generics,
+                        #req_value #req_generics,
+                        #req_ref #req_generics,
+                        #req_ref_mut #req_generics,
                     >,
                     Codec,
                 >,
@@ -451,7 +478,7 @@ impl TraitDef {
 
             impl #impl_generics_impl ::remoc::rtc::ServerBase for #server #impl_generics_ty #impl_generics_where
             {
-                type Client = #client #trait_generics;
+                type Client = #client #req_generics;
             }
 
             #[::remoc::rtc::async_trait]
@@ -491,23 +518,26 @@ impl TraitDef {
     fn server_shared_mut(&self) -> TokenStream {
         let Self { vis, ident, .. } = self;
 
-        let trait_generics = &self.generics;
-        let (ty_generics, impl_generics) = self.generics(true, false, true);
+        let (req_generics, _) = self.generics(false, true, false, false, false);
+        let (ty_generics, impl_generics) = self.generics(true, true, true, false, true);
+        let ty_generics_where = &ty_generics.where_clause;
         let (impl_generics_impl, impl_generics_ty, impl_generics_where) = impl_generics.split_for_impl();
         let (req_value, req_ref, req_ref_mut) = self.request_enum_idents();
 
         let client = self.client_ident();
         let server = format_ident!("{}ServerSharedMut", &ident);
 
+        let doc = format!("Server for [{}] taking the target object by shared mutable reference.", &ident);
+
         quote! {
-            #[doc="Remote server for [#ident] taking the target object by shared mutable reference."]
-            #vis struct #server #ty_generics {
+            #[doc=#doc]
+            #vis struct #server #ty_generics #ty_generics_where {
                 target: ::std::sync::Arc<::remoc::rtc::LocalRwLock<Target>>,
                 req_rx: ::remoc::rch::mpsc::Receiver<
                     ::remoc::rtc::Req<
-                        #req_value #trait_generics,
-                        #req_ref #trait_generics,
-                        #req_ref_mut #trait_generics,
+                        #req_value #req_generics,
+                        #req_ref #req_generics,
+                        #req_ref_mut #req_generics,
                     >,
                     Codec,
                 >,
@@ -515,7 +545,7 @@ impl TraitDef {
 
             impl #impl_generics_impl ::remoc::rtc::ServerBase for #server #impl_generics_ty #impl_generics_where
             {
-                type Client = #client #trait_generics;
+                type Client = #client #req_generics;
             }
 
             #[::remoc::rtc::async_trait]
@@ -580,11 +610,18 @@ impl TraitDef {
         let Self { vis, ident, attrs, generics, .. } = self;
         let attrs = attribute_tokens(attrs);
         let client_ident = self.client_ident();
+        let client_ident_str = client_ident.to_string();
 
-        let (ty_generics, impl_generics) = self.generics(false, false, false);
+        let (ty_generics, impl_generics) = self.generics(false, true, true, false, false);
+        let ty_generics_where_ty = &ty_generics.where_clause;
         let (ty_generics_impl, ty_generics_ty, ty_generics_where) = ty_generics.split_for_impl();
         let (impl_generics_impl, impl_generics_ty, impl_generics_where) = impl_generics.split_for_impl();
+
+        let (req_generics, _) = self.generics(false, true, false, false, false);
         let (req_value, req_ref, req_ref_mut) = self.request_enum_idents();
+
+        let impl_generics_where_pred = &impl_generics_where.unwrap().predicates;
+        let impl_generics_where_str = quote! { #impl_generics_where_pred }.to_string();
 
         // Generate client method implementations.
         let mut methods = quote! {};
@@ -599,15 +636,18 @@ impl TraitDef {
             quote! {}
         };
 
+        let doc = format!("Remote client for [{}].\n\nCan be sent to a remote endpoint.", &ident);
+
         quote! {
-            #[derive(::serde::Serialize, ::serde::Deserialize)]
-            #[serde(bound(serialize = "Codec: ::remoc::codec::Codec"))]
-            #[serde(bound(deserialize = "Codec: ::remoc::codec::Codec"))]
+            #[doc=#doc]
+            #[derive(::remoc::rtc::Serialize, ::remoc::rtc::Deserialize)]
+            #[serde(bound(serialize = #impl_generics_where_str))]
+            #[serde(bound(deserialize = #impl_generics_where_str))]
             #clone
             #attrs
-            #vis struct #client_ident #ty_generics {
+            #vis struct #client_ident #ty_generics #ty_generics_where_ty {
                 req_tx: ::remoc::rch::mpsc::Sender<
-                    ::remoc::rtc::Req<#req_value #ty_generics, #req_ref #ty_generics, #req_ref_mut #ty_generics>,
+                    ::remoc::rtc::Req<#req_value #req_generics, #req_ref #req_generics, #req_ref_mut #req_generics>,
                     Codec,
                 >,
             }
@@ -619,7 +659,7 @@ impl TraitDef {
 
             impl #ty_generics_impl ::std::fmt::Debug for #client_ident #ty_generics_ty #ty_generics_where {
                 fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-                    write!(f, "#client_ident")
+                    write!(f, #client_ident_str)
                 }
             }
 

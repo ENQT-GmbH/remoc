@@ -3,6 +3,7 @@
 use std::prelude::rust_2018::*;
 #[macro_use]
 extern crate std;
+/// My error
 pub enum MyError {
     Error1,
     Call(remoc::rtc::CallError),
@@ -183,7 +184,8 @@ impl From<remoc::rtc::CallError> for MyError {
         Self::Call(err)
     }
 }
-pub trait MyService<Codec> {
+/// My service
+pub trait MyService {
     /// Const fn docs.
     #[must_use]
     #[allow(clippy::type_complexity, clippy::type_repetition_in_bounds)]
@@ -191,7 +193,7 @@ pub trait MyService<Codec> {
         &'life0 self,
         arg1: String,
         arg2: u16,
-        arg3: remoc::rch::mpsc::Sender<String, Codec>,
+        arg3: remoc::rch::mpsc::Sender<String>,
     ) -> ::core::pin::Pin<
         Box<
             dyn ::core::future::Future<Output = Result<u32, MyError>>
@@ -219,8 +221,8 @@ pub trait MyService<Codec> {
         'life0: 'async_trait,
         Self: 'async_trait;
 }
-#[serde(bound(serialize = "Codec: ::remoc::codec::Codec"))]
-#[serde(bound(deserialize = "Codec: ::remoc::codec::Codec"))]
+#[serde(bound(serialize = "Codec : :: remoc :: codec :: Codec"))]
+#[serde(bound(deserialize = "Codec : :: remoc :: codec :: Codec"))]
 enum MyServiceReqValue<Codec> {
     __Phantom(::std::marker::PhantomData<(Codec)>),
 }
@@ -396,21 +398,21 @@ where
 {
     async fn dispatch<Target>(self, target: Target)
     where
-        Target: MyService<Codec>,
+        Target: MyService,
     {
         match self {
             Self::__Phantom(_) => (),
         }
     }
 }
-#[serde(bound(serialize = "Codec: ::remoc::codec::Codec"))]
-#[serde(bound(deserialize = "Codec: ::remoc::codec::Codec"))]
+#[serde(bound(serialize = "Codec : :: remoc :: codec :: Codec"))]
+#[serde(bound(deserialize = "Codec : :: remoc :: codec :: Codec"))]
 enum MyServiceReqRef<Codec> {
     ConstFn {
         __reply_tx: ::remoc::rch::oneshot::Sender<Result<u32, MyError>, Codec>,
         arg1: String,
         arg2: u16,
-        arg3: remoc::rch::mpsc::Sender<String, Codec>,
+        arg3: remoc::rch::mpsc::Sender<String>,
     },
     __Phantom(::std::marker::PhantomData<(Codec)>),
 }
@@ -780,7 +782,7 @@ const _: () = {
                                         }
                                     };
                                     let __field3 = match match _serde::de::SeqAccess::next_element::<
-                                        remoc::rch::mpsc::Sender<String, Codec>,
+                                        remoc::rch::mpsc::Sender<String>,
                                     >(
                                         &mut __seq
                                     ) {
@@ -817,7 +819,7 @@ const _: () = {
                                     let mut __field2: _serde::__private::Option<u16> =
                                         _serde::__private::None;
                                     let mut __field3: _serde::__private::Option<
-                                        remoc::rch::mpsc::Sender<String, Codec>,
+                                        remoc::rch::mpsc::Sender<String>,
                                     > = _serde::__private::None;
                                     while let _serde::__private::Some(__key) =
                                         match _serde::de::MapAccess::next_key::<__Field>(&mut __map)
@@ -885,7 +887,7 @@ const _: () = {
                                                 }
                                                 __field3 = _serde::__private::Some(
                                                     match _serde::de::MapAccess::next_value::<
-                                                        remoc::rch::mpsc::Sender<String, Codec>,
+                                                        remoc::rch::mpsc::Sender<String>,
                                                     >(
                                                         &mut __map
                                                     ) {
@@ -1002,7 +1004,7 @@ where
 {
     async fn dispatch<Target>(self, target: &Target)
     where
-        Target: MyService<Codec>,
+        Target: MyService,
     {
         match self {
             Self::ConstFn {
@@ -1136,8 +1138,8 @@ where
         }
     }
 }
-#[serde(bound(serialize = "Codec: ::remoc::codec::Codec"))]
-#[serde(bound(deserialize = "Codec: ::remoc::codec::Codec"))]
+#[serde(bound(serialize = "Codec : :: remoc :: codec :: Codec"))]
+#[serde(bound(deserialize = "Codec : :: remoc :: codec :: Codec"))]
 enum MyServiceReqRefMut<Codec> {
     MutFn {
         __reply_tx: ::remoc::rch::oneshot::Sender<Result<(), MyError>, Codec>,
@@ -1613,7 +1615,7 @@ where
 {
     async fn dispatch<Target>(self, target: &mut Target)
     where
-        Target: MyService<Codec>,
+        Target: MyService,
     {
         match self {
             Self::MutFn { arg1, __reply_tx } => {
@@ -1742,8 +1744,8 @@ where
         }
     }
 }
-///Remote server for [#ident] taking the target object by value.
-pub struct MyServiceServer<Target, Codec> {
+///Server for [MyService] taking the target object by value.
+pub struct MyServiceServer<Target, Codec = ::remoc::codec::Default> {
     target: Target,
     req_rx: ::remoc::rch::mpsc::Receiver<
         ::remoc::rtc::Req<
@@ -1757,14 +1759,14 @@ pub struct MyServiceServer<Target, Codec> {
 impl<Target, Codec> ::remoc::rtc::ServerBase for MyServiceServer<Target, Codec>
 where
     Codec: ::remoc::codec::Codec,
-    Target: MyService<Codec>,
+    Target: MyService,
 {
     type Client = MyServiceClient<Codec>;
 }
 impl<Target, Codec> ::remoc::rtc::Server<Target, Codec> for MyServiceServer<Target, Codec>
 where
     Codec: ::remoc::codec::Codec,
-    Target: MyService<Codec>,
+    Target: MyService,
 {
     fn new(target: Target, request_buffer: usize) -> (Self, Self::Client) {
         let (req_tx, req_rx) = ::remoc::rch::mpsc::channel(request_buffer);
@@ -1816,8 +1818,8 @@ where
         })
     }
 }
-///Remote server for [#ident] taking the target object by mutable reference.
-pub struct MyServiceServerRefMut<'target, Target, Codec> {
+///Server for [MyService] taking the target object by mutable reference.
+pub struct MyServiceServerRefMut<'target, Target, Codec = ::remoc::codec::Default> {
     target: &'target mut Target,
     req_rx: ::remoc::rch::mpsc::Receiver<
         ::remoc::rtc::Req<
@@ -1832,7 +1834,7 @@ impl<'target, Target, Codec> ::remoc::rtc::ServerBase
     for MyServiceServerRefMut<'target, Target, Codec>
 where
     Codec: ::remoc::codec::Codec,
-    Target: MyService<Codec>,
+    Target: MyService,
 {
     type Client = MyServiceClient<Codec>;
 }
@@ -1840,7 +1842,7 @@ impl<'target, Target, Codec> ::remoc::rtc::ServerRefMut<'target, Target, Codec>
     for MyServiceServerRefMut<'target, Target, Codec>
 where
     Codec: ::remoc::codec::Codec,
-    Target: MyService<Codec>,
+    Target: MyService,
 {
     fn new(target: &'target mut Target, request_buffer: usize) -> (Self, Self::Client) {
         let (req_tx, req_rx) = ::remoc::rch::mpsc::channel(request_buffer);
@@ -1879,8 +1881,8 @@ where
         })
     }
 }
-///Remote server for [#ident] taking the target object by shared mutable reference.
-pub struct MyServiceServerSharedMut<Target, Codec> {
+///Server for [MyService] taking the target object by shared mutable reference.
+pub struct MyServiceServerSharedMut<Target, Codec = ::remoc::codec::Default> {
     target: ::std::sync::Arc<::remoc::rtc::LocalRwLock<Target>>,
     req_rx: ::remoc::rch::mpsc::Receiver<
         ::remoc::rtc::Req<
@@ -1894,7 +1896,7 @@ pub struct MyServiceServerSharedMut<Target, Codec> {
 impl<Target, Codec> ::remoc::rtc::ServerBase for MyServiceServerSharedMut<Target, Codec>
 where
     Codec: ::remoc::codec::Codec,
-    Target: MyService<Codec>,
+    Target: MyService,
     Target: ::std::marker::Send + ::std::marker::Sync + 'static,
 {
     type Client = MyServiceClient<Codec>;
@@ -1903,7 +1905,7 @@ impl<Target, Codec> ::remoc::rtc::ServerSharedMut<Target, Codec>
     for MyServiceServerSharedMut<Target, Codec>
 where
     Codec: ::remoc::codec::Codec,
-    Target: MyService<Codec>,
+    Target: MyService,
     Target: ::std::marker::Send + ::std::marker::Sync + 'static,
 {
     fn new(
@@ -1959,9 +1961,13 @@ where
         })
     }
 }
-#[serde(bound(serialize = "Codec: ::remoc::codec::Codec"))]
-#[serde(bound(deserialize = "Codec: ::remoc::codec::Codec"))]
-pub struct MyServiceClient<Codec> {
+///Remote client for [MyService].
+///
+///Can be sent to a remote endpoint.
+#[serde(bound(serialize = "Codec : :: remoc :: codec :: Codec"))]
+#[serde(bound(deserialize = "Codec : :: remoc :: codec :: Codec"))]
+/// My service
+pub struct MyServiceClient<Codec = ::remoc::codec::Default> {
     req_tx: ::remoc::rch::mpsc::Sender<
         ::remoc::rtc::Req<
             MyServiceReqValue<Codec>,
@@ -2231,7 +2237,7 @@ const _: () = {
         }
     }
 };
-impl<Codec> MyService<Codec> for MyServiceClient<Codec>
+impl<Codec> MyService for MyServiceClient<Codec>
 where
     Codec: ::remoc::codec::Codec,
 {
@@ -2245,7 +2251,7 @@ where
         &'life0 self,
         arg1: String,
         arg2: u16,
-        arg3: remoc::rch::mpsc::Sender<String, Codec>,
+        arg3: remoc::rch::mpsc::Sender<String>,
     ) -> ::core::pin::Pin<
         Box<
             dyn ::core::future::Future<Output = Result<u32, MyError>>
@@ -2339,7 +2345,7 @@ where
 impl<Codec> ::std::fmt::Debug for MyServiceClient<Codec> {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         f.write_fmt(::core::fmt::Arguments::new_v1(
-            &["#client_ident"],
+            &["MyServiceClient"],
             &match () {
                 () => [],
             },
@@ -2352,10 +2358,7 @@ impl<Codec> ::std::ops::Drop for MyServiceClient<Codec> {
 pub struct MyObject {
     field1: String,
 }
-impl<Codec> MyService<Codec> for MyObject
-where
-    Codec: remoc::codec::Codec,
-{
+impl MyService for MyObject {
     #[allow(
         clippy::let_unit_value,
         clippy::type_complexity,
@@ -2366,7 +2369,7 @@ where
         &'life0 self,
         arg1: String,
         arg2: u16,
-        arg3: remoc::rch::mpsc::Sender<String, Codec>,
+        arg3: remoc::rch::mpsc::Sender<String>,
     ) -> ::core::pin::Pin<
         Box<
             dyn ::core::future::Future<Output = Result<u32, MyError>>
@@ -2449,7 +2452,8 @@ pub async fn do_test() {
         field1: String::new(),
     };
 }
-pub trait MyGenericService<T, Codec>
+/// My generic service
+pub trait MyGenericService<T>
 where
     T: ::remoc::RemoteSend,
 {
@@ -2470,9 +2474,12 @@ where
         'life0: 'async_trait,
         Self: 'async_trait;
 }
-#[serde(bound(serialize = "Codec: ::remoc::codec::Codec"))]
-#[serde(bound(deserialize = "Codec: ::remoc::codec::Codec"))]
-enum MyGenericServiceReqValue<T, Codec> {
+#[serde(bound(serialize = "T : :: remoc :: RemoteSend, Codec : :: remoc :: codec :: Codec"))]
+#[serde(bound(deserialize = "T : :: remoc :: RemoteSend, Codec : :: remoc :: codec :: Codec"))]
+enum MyGenericServiceReqValue<T, Codec>
+where
+    T: ::remoc::RemoteSend,
+{
     __Phantom(::std::marker::PhantomData<(T, Codec)>),
 }
 #[doc(hidden)]
@@ -2483,6 +2490,8 @@ const _: () = {
     #[automatically_derived]
     impl<T, Codec> _serde::Serialize for MyGenericServiceReqValue<T, Codec>
     where
+        T: ::remoc::RemoteSend,
+        T: ::remoc::RemoteSend,
         Codec: ::remoc::codec::Codec,
     {
         fn serialize<__S>(
@@ -2514,6 +2523,8 @@ const _: () = {
     #[automatically_derived]
     impl<'de, T, Codec> _serde::Deserialize<'de> for MyGenericServiceReqValue<T, Codec>
     where
+        T: ::remoc::RemoteSend,
+        T: ::remoc::RemoteSend,
         Codec: ::remoc::codec::Codec,
     {
         fn deserialize<__D>(__deserializer: __D) -> _serde::__private::Result<Self, __D::Error>
@@ -2590,6 +2601,8 @@ const _: () = {
             }
             struct __Visitor<'de, T, Codec>
             where
+                T: ::remoc::RemoteSend,
+                T: ::remoc::RemoteSend,
                 Codec: ::remoc::codec::Codec,
             {
                 marker: _serde::__private::PhantomData<MyGenericServiceReqValue<T, Codec>>,
@@ -2597,6 +2610,8 @@ const _: () = {
             }
             impl<'de, T, Codec> _serde::de::Visitor<'de> for __Visitor<'de, T, Codec>
             where
+                T: ::remoc::RemoteSend,
+                T: ::remoc::RemoteSend,
                 Codec: ::remoc::codec::Codec,
             {
                 type Value = MyGenericServiceReqValue<T, Codec>;
@@ -2651,16 +2666,19 @@ where
 {
     async fn dispatch<Target>(self, target: Target)
     where
-        Target: MyGenericService<T, Codec>,
+        Target: MyGenericService<T>,
     {
         match self {
             Self::__Phantom(_) => (),
         }
     }
 }
-#[serde(bound(serialize = "Codec: ::remoc::codec::Codec"))]
-#[serde(bound(deserialize = "Codec: ::remoc::codec::Codec"))]
-enum MyGenericServiceReqRef<T, Codec> {
+#[serde(bound(serialize = "T : :: remoc :: RemoteSend, Codec : :: remoc :: codec :: Codec"))]
+#[serde(bound(deserialize = "T : :: remoc :: RemoteSend, Codec : :: remoc :: codec :: Codec"))]
+enum MyGenericServiceReqRef<T, Codec>
+where
+    T: ::remoc::RemoteSend,
+{
     __Phantom(::std::marker::PhantomData<(T, Codec)>),
 }
 #[doc(hidden)]
@@ -2671,6 +2689,8 @@ const _: () = {
     #[automatically_derived]
     impl<T, Codec> _serde::Serialize for MyGenericServiceReqRef<T, Codec>
     where
+        T: ::remoc::RemoteSend,
+        T: ::remoc::RemoteSend,
         Codec: ::remoc::codec::Codec,
     {
         fn serialize<__S>(
@@ -2702,6 +2722,8 @@ const _: () = {
     #[automatically_derived]
     impl<'de, T, Codec> _serde::Deserialize<'de> for MyGenericServiceReqRef<T, Codec>
     where
+        T: ::remoc::RemoteSend,
+        T: ::remoc::RemoteSend,
         Codec: ::remoc::codec::Codec,
     {
         fn deserialize<__D>(__deserializer: __D) -> _serde::__private::Result<Self, __D::Error>
@@ -2778,6 +2800,8 @@ const _: () = {
             }
             struct __Visitor<'de, T, Codec>
             where
+                T: ::remoc::RemoteSend,
+                T: ::remoc::RemoteSend,
                 Codec: ::remoc::codec::Codec,
             {
                 marker: _serde::__private::PhantomData<MyGenericServiceReqRef<T, Codec>>,
@@ -2785,6 +2809,8 @@ const _: () = {
             }
             impl<'de, T, Codec> _serde::de::Visitor<'de> for __Visitor<'de, T, Codec>
             where
+                T: ::remoc::RemoteSend,
+                T: ::remoc::RemoteSend,
                 Codec: ::remoc::codec::Codec,
             {
                 type Value = MyGenericServiceReqRef<T, Codec>;
@@ -2839,16 +2865,19 @@ where
 {
     async fn dispatch<Target>(self, target: &Target)
     where
-        Target: MyGenericService<T, Codec>,
+        Target: MyGenericService<T>,
     {
         match self {
             Self::__Phantom(_) => (),
         }
     }
 }
-#[serde(bound(serialize = "Codec: ::remoc::codec::Codec"))]
-#[serde(bound(deserialize = "Codec: ::remoc::codec::Codec"))]
-enum MyGenericServiceReqRefMut<T, Codec> {
+#[serde(bound(serialize = "T : :: remoc :: RemoteSend, Codec : :: remoc :: codec :: Codec"))]
+#[serde(bound(deserialize = "T : :: remoc :: RemoteSend, Codec : :: remoc :: codec :: Codec"))]
+enum MyGenericServiceReqRefMut<T, Codec>
+where
+    T: ::remoc::RemoteSend,
+{
     MutFn {
         __reply_tx: ::remoc::rch::oneshot::Sender<Result<(), MyError>, Codec>,
         arg1: T,
@@ -2863,6 +2892,8 @@ const _: () = {
     #[automatically_derived]
     impl<T, Codec> _serde::Serialize for MyGenericServiceReqRefMut<T, Codec>
     where
+        T: ::remoc::RemoteSend,
+        T: ::remoc::RemoteSend,
         Codec: ::remoc::codec::Codec,
     {
         fn serialize<__S>(
@@ -2932,6 +2963,8 @@ const _: () = {
     #[automatically_derived]
     impl<'de, T, Codec> _serde::Deserialize<'de> for MyGenericServiceReqRefMut<T, Codec>
     where
+        T: ::remoc::RemoteSend,
+        T: ::remoc::RemoteSend,
         Codec: ::remoc::codec::Codec,
     {
         fn deserialize<__D>(__deserializer: __D) -> _serde::__private::Result<Self, __D::Error>
@@ -3012,6 +3045,8 @@ const _: () = {
             }
             struct __Visitor<'de, T, Codec>
             where
+                T: ::remoc::RemoteSend,
+                T: ::remoc::RemoteSend,
                 Codec: ::remoc::codec::Codec,
             {
                 marker: _serde::__private::PhantomData<MyGenericServiceReqRefMut<T, Codec>>,
@@ -3019,6 +3054,8 @@ const _: () = {
             }
             impl<'de, T, Codec> _serde::de::Visitor<'de> for __Visitor<'de, T, Codec>
             where
+                T: ::remoc::RemoteSend,
+                T: ::remoc::RemoteSend,
                 Codec: ::remoc::codec::Codec,
             {
                 type Value = MyGenericServiceReqRefMut<T, Codec>;
@@ -3120,6 +3157,8 @@ const _: () = {
                             }
                             struct __Visitor<'de, T, Codec>
                             where
+                                T: ::remoc::RemoteSend,
+                                T: ::remoc::RemoteSend,
                                 Codec: ::remoc::codec::Codec,
                             {
                                 marker: _serde::__private::PhantomData<
@@ -3129,6 +3168,8 @@ const _: () = {
                             }
                             impl<'de, T, Codec> _serde::de::Visitor<'de> for __Visitor<'de, T, Codec>
                             where
+                                T: ::remoc::RemoteSend,
+                                T: ::remoc::RemoteSend,
                                 Codec: ::remoc::codec::Codec,
                             {
                                 type Value = MyGenericServiceReqRefMut<T, Codec>;
@@ -3327,7 +3368,7 @@ where
 {
     async fn dispatch<Target>(self, target: &mut Target)
     where
-        Target: MyGenericService<T, Codec>,
+        Target: MyGenericService<T>,
     {
         match self {
             Self::MutFn { arg1, __reply_tx } => {
@@ -3456,8 +3497,11 @@ where
         }
     }
 }
-///Remote server for [#ident] taking the target object by value.
-pub struct MyGenericServiceServer<T, Target, Codec> {
+///Server for [MyGenericService] taking the target object by value.
+pub struct MyGenericServiceServer<T, Target, Codec = ::remoc::codec::Default>
+where
+    T: ::remoc::RemoteSend,
+{
     target: Target,
     req_rx: ::remoc::rch::mpsc::Receiver<
         ::remoc::rtc::Req<
@@ -3472,7 +3516,7 @@ impl<T, Target, Codec> ::remoc::rtc::ServerBase for MyGenericServiceServer<T, Ta
 where
     T: ::remoc::RemoteSend,
     Codec: ::remoc::codec::Codec,
-    Target: MyGenericService<T, Codec>,
+    Target: MyGenericService<T>,
 {
     type Client = MyGenericServiceClient<T, Codec>;
 }
@@ -3481,7 +3525,7 @@ impl<T, Target, Codec> ::remoc::rtc::Server<Target, Codec>
 where
     T: ::remoc::RemoteSend,
     Codec: ::remoc::codec::Codec,
-    Target: MyGenericService<T, Codec>,
+    Target: MyGenericService<T>,
 {
     fn new(target: Target, request_buffer: usize) -> (Self, Self::Client) {
         let (req_tx, req_rx) = ::remoc::rch::mpsc::channel(request_buffer);
@@ -3533,8 +3577,11 @@ where
         })
     }
 }
-///Remote server for [#ident] taking the target object by mutable reference.
-pub struct MyGenericServiceServerRefMut<'target, T, Target, Codec> {
+///Server for [MyGenericService] taking the target object by mutable reference.
+pub struct MyGenericServiceServerRefMut<'target, T, Target, Codec = ::remoc::codec::Default>
+where
+    T: ::remoc::RemoteSend,
+{
     target: &'target mut Target,
     req_rx: ::remoc::rch::mpsc::Receiver<
         ::remoc::rtc::Req<
@@ -3550,7 +3597,7 @@ impl<'target, T, Target, Codec> ::remoc::rtc::ServerBase
 where
     T: ::remoc::RemoteSend,
     Codec: ::remoc::codec::Codec,
-    Target: MyGenericService<T, Codec>,
+    Target: MyGenericService<T>,
 {
     type Client = MyGenericServiceClient<T, Codec>;
 }
@@ -3559,7 +3606,7 @@ impl<'target, T, Target, Codec> ::remoc::rtc::ServerRefMut<'target, Target, Code
 where
     T: ::remoc::RemoteSend,
     Codec: ::remoc::codec::Codec,
-    Target: MyGenericService<T, Codec>,
+    Target: MyGenericService<T>,
 {
     fn new(target: &'target mut Target, request_buffer: usize) -> (Self, Self::Client) {
         let (req_tx, req_rx) = ::remoc::rch::mpsc::channel(request_buffer);
@@ -3598,8 +3645,11 @@ where
         })
     }
 }
-///Remote server for [#ident] taking the target object by shared mutable reference.
-pub struct MyGenericServiceServerSharedMut<T, Target, Codec> {
+///Server for [MyGenericService] taking the target object by shared mutable reference.
+pub struct MyGenericServiceServerSharedMut<T, Target, Codec = ::remoc::codec::Default>
+where
+    T: ::remoc::RemoteSend,
+{
     target: ::std::sync::Arc<::remoc::rtc::LocalRwLock<Target>>,
     req_rx: ::remoc::rch::mpsc::Receiver<
         ::remoc::rtc::Req<
@@ -3615,7 +3665,7 @@ impl<T, Target, Codec> ::remoc::rtc::ServerBase
 where
     T: ::remoc::RemoteSend,
     Codec: ::remoc::codec::Codec,
-    Target: MyGenericService<T, Codec>,
+    Target: MyGenericService<T>,
     Target: ::std::marker::Send + ::std::marker::Sync + 'static,
 {
     type Client = MyGenericServiceClient<T, Codec>;
@@ -3625,7 +3675,7 @@ impl<T, Target, Codec> ::remoc::rtc::ServerSharedMut<Target, Codec>
 where
     T: ::remoc::RemoteSend,
     Codec: ::remoc::codec::Codec,
-    Target: MyGenericService<T, Codec>,
+    Target: MyGenericService<T>,
     Target: ::std::marker::Send + ::std::marker::Sync + 'static,
 {
     fn new(
@@ -3681,9 +3731,16 @@ where
         })
     }
 }
-#[serde(bound(serialize = "Codec: ::remoc::codec::Codec"))]
-#[serde(bound(deserialize = "Codec: ::remoc::codec::Codec"))]
-pub struct MyGenericServiceClient<T, Codec> {
+///Remote client for [MyGenericService].
+///
+///Can be sent to a remote endpoint.
+#[serde(bound(serialize = "T : :: remoc :: RemoteSend, Codec : :: remoc :: codec :: Codec"))]
+#[serde(bound(deserialize = "T : :: remoc :: RemoteSend, Codec : :: remoc :: codec :: Codec"))]
+/// My generic service
+pub struct MyGenericServiceClient<T, Codec = ::remoc::codec::Default>
+where
+    T: ::remoc::RemoteSend,
+{
     req_tx: ::remoc::rch::mpsc::Sender<
         ::remoc::rtc::Req<
             MyGenericServiceReqValue<T, Codec>,
@@ -3701,6 +3758,8 @@ const _: () = {
     #[automatically_derived]
     impl<T, Codec> _serde::Serialize for MyGenericServiceClient<T, Codec>
     where
+        T: ::remoc::RemoteSend,
+        T: ::remoc::RemoteSend,
         Codec: ::remoc::codec::Codec,
     {
         fn serialize<__S>(
@@ -3742,6 +3801,8 @@ const _: () = {
     #[automatically_derived]
     impl<'de, T, Codec> _serde::Deserialize<'de> for MyGenericServiceClient<T, Codec>
     where
+        T: ::remoc::RemoteSend,
+        T: ::remoc::RemoteSend,
         Codec: ::remoc::codec::Codec,
     {
         fn deserialize<__D>(__deserializer: __D) -> _serde::__private::Result<Self, __D::Error>
@@ -3809,6 +3870,8 @@ const _: () = {
             }
             struct __Visitor<'de, T, Codec>
             where
+                T: ::remoc::RemoteSend,
+                T: ::remoc::RemoteSend,
                 Codec: ::remoc::codec::Codec,
             {
                 marker: _serde::__private::PhantomData<MyGenericServiceClient<T, Codec>>,
@@ -3816,6 +3879,8 @@ const _: () = {
             }
             impl<'de, T, Codec> _serde::de::Visitor<'de> for __Visitor<'de, T, Codec>
             where
+                T: ::remoc::RemoteSend,
+                T: ::remoc::RemoteSend,
                 Codec: ::remoc::codec::Codec,
             {
                 type Value = MyGenericServiceClient<T, Codec>;
@@ -3956,7 +4021,7 @@ const _: () = {
         }
     }
 };
-impl<T, Codec> MyGenericService<T, Codec> for MyGenericServiceClient<T, Codec>
+impl<T, Codec> MyGenericService<T> for MyGenericServiceClient<T, Codec>
 where
     T: ::remoc::RemoteSend,
     Codec: ::remoc::codec::Codec,
@@ -4015,7 +4080,7 @@ where
 {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         f.write_fmt(::core::fmt::Arguments::new_v1(
-            &["#client_ident"],
+            &["MyGenericServiceClient"],
             &match () {
                 () => [],
             },

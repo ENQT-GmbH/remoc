@@ -1,6 +1,6 @@
-//! Procedural macros for ReMOC.
-
 #![deny(unsafe_code)]
+
+//! Procedural macros for ReMOC.
 
 use quote::quote;
 use syn::parse_macro_input;
@@ -21,12 +21,15 @@ pub fn remote(_attr: proc_macro::TokenStream, input: proc_macro::TokenStream) ->
     let servers = trait_def.servers();
     let client = trait_def.client();
 
+    #[allow(clippy::let_and_return)]
     let output = proc_macro::TokenStream::from(quote! {
         #vanilla_trait
         #request_enums
         #servers
         #client
     });
+
+    // println!("{}", &output);
 
     output
 }

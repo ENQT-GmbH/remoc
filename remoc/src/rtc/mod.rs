@@ -1,6 +1,5 @@
 //! Remote trait calling.
 
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::{
@@ -205,6 +204,9 @@ pub use tokio::sync::mpsc as local_mpsc;
 pub use tokio::sync::RwLock as LocalRwLock;
 #[doc(hidden)]
 pub use tokio::{select, spawn};
+#[doc(hidden)]
+pub use serde::{Deserialize, Serialize};
+
 
 #[doc(hidden)]
 /// Log message that receiving a request failed for proc macro.

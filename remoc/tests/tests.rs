@@ -24,8 +24,8 @@ mod rfn;
 #[cfg(feature = "robj")]
 mod robj;
 
-//#[cfg(feature = "rtc")]
-//mod rtc;
+#[cfg(feature = "rtc")]
+mod rtc;
 
 static INIT: Once = Once::new();
 

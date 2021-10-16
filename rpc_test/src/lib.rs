@@ -1,5 +1,6 @@
 //mod out;
 
+/// My error
 #[derive(serde::Serialize, serde::Deserialize)]
 pub enum MyError {
     Error1,
@@ -12,11 +13,12 @@ impl From<remoc::rtc::CallError> for MyError {
     }
 }
 
+/// My service
 #[remoc::rtc::remote]
-pub trait MyService<Codec> {
+pub trait MyService {
     /// Const fn docs.
     async fn const_fn(
-        &self, arg1: String, arg2: u16, arg3: remoc::rch::mpsc::Sender<String, Codec>,
+        &self, arg1: String, arg2: u16, arg3: remoc::rch::mpsc::Sender<String>,
     ) -> Result<u32, MyError>;
 
     /// Mut fn docs.
@@ -28,12 +30,9 @@ pub struct MyObject {
 }
 
 #[remoc::rtc::async_trait]
-impl<Codec> MyService<Codec> for MyObject
-where
-    Codec: remoc::codec::Codec,
-{
+impl MyService for MyObject {
     async fn const_fn(
-        &self, arg1: String, arg2: u16, arg3: remoc::rch::mpsc::Sender<String, Codec>,
+        &self, arg1: String, arg2: u16, arg3: remoc::rch::mpsc::Sender<String>,
     ) -> Result<u32, MyError> {
         println!("arg1: {}, arg2: {}", arg1, arg2);
         arg3.send("Hallo".to_string()).await.unwrap();
@@ -50,17 +49,18 @@ pub async fn do_test() {
     let obj = MyObject { field1: String::new() };
 }
 
-// 
-// #[remoc::rtc::remote]
-// pub trait MyGenericService<T, Codec> where  T: ::remoc::RemoteSend {
-//     /// Mut fn docs.
-//     async fn mut_fn(&mut self, arg1: T) -> Result<(), MyError>;
-// }
-
+/// My generic service
+#[remoc::rtc::remote]
+pub trait MyGenericService<T>
+where
+    T: ::remoc::RemoteSend,
+{
+    /// Mut fn docs.
+    async fn mut_fn(&mut self, arg1: T) -> Result<(), MyError>;
+}
 
 // Okay, we need to clear up that generic chaos.
 // Do we need a generic type on the trait?
 // Probably not necessarily, but?
 // Yes, the codec of the request encoding could be determined
 // wholely by the server and client types, that are generic over codec.
-
