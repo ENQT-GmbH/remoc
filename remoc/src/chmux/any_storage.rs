@@ -1,6 +1,11 @@
 //! Arbitrary data storage.
 
-use std::{any::Any, collections::HashMap, fmt, sync::Arc};
+use std::{
+    any::Any,
+    collections::{hash_map::Entry, HashMap},
+    fmt,
+    sync::Arc,
+};
 use uuid::Uuid;
 
 /// Box containing any value that is Send, Sync and static.
@@ -38,12 +43,14 @@ impl AnyStorage {
     /// Panics when a duplicate UUID is generated and inserted into the storage.
     /// The probability of this is happening is extremely low.
     pub fn insert(&self, entry: AnyEntry) -> Uuid {
-        let key = Uuid::new_v4();
         let mut entries = self.entries.lock().unwrap();
-        if entries.insert(key, entry).is_some() {
-            panic!("duplicate UUID");
+        loop {
+            let key = Uuid::new_v4();
+            if let Entry::Vacant(e) = entries.entry(key) {
+                e.insert(entry);
+                return key;
+            }
         }
-        key
     }
 
     /// Returns the value from the storage for the specified key.
