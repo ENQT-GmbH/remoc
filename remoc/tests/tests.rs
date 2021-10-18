@@ -8,7 +8,7 @@ use std::{net::Ipv4Addr, sync::Once};
 use tokio::net::{TcpListener, TcpStream};
 
 #[cfg(feature = "rch")]
-use remoc::{rch::remote, RemoteSend};
+use remoc::{rch::base, RemoteSend};
 
 mod chmux;
 
@@ -45,8 +45,7 @@ macro_rules! loop_transport {
 }
 
 #[cfg(feature = "rch")]
-pub async fn loop_channel<T>(
-) -> ((remote::Sender<T>, remote::Receiver<T>), (remote::Sender<T>, remote::Receiver<T>))
+pub async fn loop_channel<T>() -> ((base::Sender<T>, base::Receiver<T>), (base::Sender<T>, base::Receiver<T>))
 where
     T: RemoteSend,
 {
@@ -57,7 +56,7 @@ where
 #[cfg(feature = "rch")]
 pub async fn loop_channel_with_cfg<T>(
     cfg: remoc::chmux::Cfg,
-) -> ((remote::Sender<T>, remote::Receiver<T>), (remote::Sender<T>, remote::Receiver<T>))
+) -> ((base::Sender<T>, base::Receiver<T>), (base::Sender<T>, base::Receiver<T>))
 where
     T: RemoteSend,
 {
@@ -83,7 +82,7 @@ where
 #[cfg(feature = "rch")]
 pub async fn tcp_loop_channel<T>(
     tcp_port: u16,
-) -> ((remote::Sender<T>, remote::Receiver<T>), (remote::Sender<T>, remote::Receiver<T>))
+) -> ((base::Sender<T>, base::Receiver<T>), (base::Sender<T>, base::Receiver<T>))
 where
     T: RemoteSend,
 {

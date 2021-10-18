@@ -16,8 +16,8 @@ use crate::{
     chmux::{AnyBox, AnyEntry},
     codec::{self},
     rch::{
+        base::{PortDeserializer, PortSerializer},
         buffer, mpsc,
-        remote::{PortDeserializer, PortSerializer},
     },
 };
 

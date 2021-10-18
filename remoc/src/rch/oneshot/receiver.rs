@@ -7,7 +7,7 @@ use std::{
     task::{Context, Poll},
 };
 
-use super::super::{buffer, mpsc, remote};
+use super::super::{base, buffer, mpsc};
 use crate::{
     chmux,
     codec::{self},
@@ -20,7 +20,7 @@ pub enum RecvError {
     /// Sender dropped without sending a value.
     Closed,
     /// Receiving from a remote endpoint failed.
-    RemoteReceive(remote::RecvError),
+    RemoteReceive(base::RecvError),
     /// Connecting a sent channel failed.
     RemoteConnect(chmux::ConnectError),
     /// Listening for a connection from a received channel failed.
@@ -58,7 +58,7 @@ pub enum TryRecvError {
     /// Sender dropped without sending a value.
     Closed,
     /// Receiving from a remote endpoint failed.
-    RemoteReceive(remote::RecvError),
+    RemoteReceive(base::RecvError),
     /// Connecting a sent channel failed.
     RemoteConnect(chmux::ConnectError),
     /// Listening for a connection from a received channel failed.

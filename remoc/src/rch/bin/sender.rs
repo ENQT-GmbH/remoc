@@ -7,7 +7,7 @@ use std::{
 
 use super::{
     super::{
-        remote::{PortDeserializer, PortSerializer},
+        base::{PortDeserializer, PortSerializer},
         ConnectError,
     },
     Interlock, Location,

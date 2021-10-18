@@ -7,10 +7,7 @@ use std::{
 };
 
 use super::{
-    super::{
-        buffer, mpsc,
-        remote::{self},
-    },
+    super::{base, buffer, mpsc},
     BroadcastMsg,
 };
 use crate::{chmux, codec, RemoteSend};
@@ -25,7 +22,7 @@ pub enum RecvError {
     /// Attempting to receive again will return the oldest message still retained by the channel.
     Lagged,
     /// Receiving from a remote endpoint failed.
-    RemoteReceive(remote::RecvError),
+    RemoteReceive(base::RecvError),
     /// Connecting a sent channel failed.
     RemoteConnect(chmux::ConnectError),
     /// Listening for a connection from a received channel failed.
@@ -80,7 +77,7 @@ pub enum TryRecvError {
     /// Attempting to receive again will return the oldest message still retained by the channel.
     Lagged,
     /// Receiving from a remote endpoint failed.
-    RemoteReceive(remote::RecvError),
+    RemoteReceive(base::RecvError),
     /// Connecting a sent channel failed.
     RemoteConnect(chmux::ConnectError),
     /// Listening for a connection from a received channel failed.
