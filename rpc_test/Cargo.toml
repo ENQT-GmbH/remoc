@@ -10,4 +10,3 @@ remoc = {path="../remoc"}
 tokio = "1"
 serde = { version = "1", features = ["derive"] }
 
-[workspace]

@@ -56,7 +56,7 @@ pub use async_trait::async_trait;
 pub use remoc_macro::remote;
 
 /// Call a method on a remotable trait failed.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CallError {
     /// Server has been dropped.
     Dropped,

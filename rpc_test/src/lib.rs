@@ -1,5 +1,7 @@
 //mod out;
 
+mod generics;
+
 /// My error
 #[derive(serde::Serialize, serde::Deserialize)]
 pub enum MyError {
