@@ -15,7 +15,9 @@ pub enum PortsExhausted {
     Wait(Option<Duration>),
 }
 
-/// Multiplexer configuration.
+/// Channel multiplexer configuration.
+///
+/// In most cases the default configuration ([Cfg::default]) is fine and should be used.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Cfg {

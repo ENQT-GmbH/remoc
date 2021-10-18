@@ -4,7 +4,7 @@ use std::{error::Error, fmt, sync::Arc};
 
 use crate::{
     chmux,
-    rch::{mpsc, oneshot, remote},
+    rch::{base, mpsc, oneshot},
 };
 
 /// Attribute that must be applied on traits and their implementations that
@@ -61,9 +61,9 @@ pub enum CallError {
     /// Server has been dropped.
     Dropped,
     /// Sending to a remote endpoint failed.
-    RemoteSend(remote::SendErrorKind),
+    RemoteSend(base::SendErrorKind),
     /// Receiving from a remote endpoint failed.
-    RemoteReceive(remote::RecvError),
+    RemoteReceive(base::RecvError),
     /// Connecting a sent channel failed.
     RemoteConnect(chmux::ConnectError),
     /// Listening for a received channel failed.

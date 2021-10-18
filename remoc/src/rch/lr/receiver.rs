@@ -9,7 +9,7 @@ use std::{
 
 use super::{
     super::{
-        remote::{self, PortDeserializer, PortSerializer},
+        base::{self, PortDeserializer, PortSerializer},
         ConnectError,
     },
     Interlock, Location,
@@ -32,12 +32,12 @@ pub enum RecvError {
     Connect(ConnectError),
 }
 
-impl From<remote::RecvError> for RecvError {
-    fn from(err: remote::RecvError) -> Self {
+impl From<base::RecvError> for RecvError {
+    fn from(err: base::RecvError) -> Self {
         match err {
-            remote::RecvError::Receive(err) => Self::Receive(err),
-            remote::RecvError::Deserialize(err) => Self::Deserialize(err),
-            remote::RecvError::MissingPorts(ports) => Self::MissingPorts(ports),
+            base::RecvError::Receive(err) => Self::Receive(err),
+            base::RecvError::Deserialize(err) => Self::Deserialize(err),
+            base::RecvError::MissingPorts(ports) => Self::MissingPorts(ports),
         }
     }
 }
@@ -67,11 +67,10 @@ impl Error for RecvError {}
 
 /// The receiver part of a local/remote channel.
 pub struct Receiver<T, Codec = codec::Default> {
-    pub(super) receiver: Option<Result<remote::Receiver<T, Codec>, ConnectError>>,
+    pub(super) receiver: Option<Result<base::Receiver<T, Codec>, ConnectError>>,
     pub(super) sender_tx:
-        Option<tokio::sync::mpsc::UnboundedSender<Result<remote::Sender<T, Codec>, ConnectError>>>,
-    pub(super) receiver_rx:
-        tokio::sync::mpsc::UnboundedReceiver<Result<remote::Receiver<T, Codec>, ConnectError>>,
+        Option<tokio::sync::mpsc::UnboundedSender<Result<base::Sender<T, Codec>, ConnectError>>>,
+    pub(super) receiver_rx: tokio::sync::mpsc::UnboundedReceiver<Result<base::Receiver<T, Codec>, ConnectError>>,
     pub(super) interlock: Arc<Mutex<Interlock>>,
 }
 
@@ -104,7 +103,7 @@ where
     }
 
     /// Establishes the connection and returns a reference to the remote receiver.
-    async fn get(&mut self) -> Result<&mut remote::Receiver<T, Codec>, ConnectError> {
+    async fn get(&mut self) -> Result<&mut base::Receiver<T, Codec>, ConnectError> {
         self.connect().await;
         self.receiver.as_mut().unwrap().as_mut().map_err(|err| err.clone())
     }
@@ -154,7 +153,7 @@ where
 
                 match connect.await {
                     Ok((raw_tx, _)) => {
-                        let tx = remote::Sender::new(raw_tx);
+                        let tx = base::Sender::new(raw_tx);
                         let _ = sender_tx.send(Ok(tx));
                     }
                     Err(err) => {
@@ -186,7 +185,7 @@ where
             async move {
                 match request.accept_from(local_port).await {
                     Ok((_, raw_rx)) => {
-                        let rx = remote::Receiver::new(raw_rx);
+                        let rx = base::Receiver::new(raw_rx);
                         let _ = receiver_tx.send(Ok(rx));
                     }
                     Err(err) => {

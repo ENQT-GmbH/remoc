@@ -9,7 +9,7 @@ use std::{
 
 use super::{
     super::{
-        remote::{self, PortDeserializer, PortSerializer},
+        base::{self, PortDeserializer, PortSerializer},
         ConnectError,
     },
     Interlock, Location,
@@ -19,7 +19,7 @@ use crate::{
     codec::{self, SerializationError},
 };
 
-pub use super::super::remote::Closed;
+pub use super::super::base::Closed;
 
 /// An error that occured during remote sending.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -65,11 +65,11 @@ impl fmt::Display for SendErrorKind {
     }
 }
 
-impl From<remote::SendErrorKind> for SendErrorKind {
-    fn from(err: remote::SendErrorKind) -> Self {
+impl From<base::SendErrorKind> for SendErrorKind {
+    fn from(err: base::SendErrorKind) -> Self {
         match err {
-            remote::SendErrorKind::Serialize(err) => Self::Serialize(err),
-            remote::SendErrorKind::Send(err) => Self::Send(err),
+            base::SendErrorKind::Serialize(err) => Self::Serialize(err),
+            base::SendErrorKind::Send(err) => Self::Send(err),
         }
     }
 }
@@ -80,8 +80,8 @@ impl<T> fmt::Display for SendError<T> {
     }
 }
 
-impl<T> From<remote::SendError<T>> for SendError<T> {
-    fn from(err: remote::SendError<T>) -> Self {
+impl<T> From<base::SendError<T>> for SendError<T> {
+    fn from(err: base::SendError<T>) -> Self {
         Self { kind: err.kind.into(), item: err.item }
     }
 }
@@ -90,10 +90,10 @@ impl<T> Error for SendError<T> where T: fmt::Debug {}
 
 /// The sender part of a local/remote channel.
 pub struct Sender<T, Codec = codec::Default> {
-    pub(super) sender: Option<Result<remote::Sender<T, Codec>, ConnectError>>,
-    pub(super) sender_rx: tokio::sync::mpsc::UnboundedReceiver<Result<remote::Sender<T, Codec>, ConnectError>>,
+    pub(super) sender: Option<Result<base::Sender<T, Codec>, ConnectError>>,
+    pub(super) sender_rx: tokio::sync::mpsc::UnboundedReceiver<Result<base::Sender<T, Codec>, ConnectError>>,
     pub(super) receiver_tx:
-        Option<tokio::sync::mpsc::UnboundedSender<Result<remote::Receiver<T, Codec>, ConnectError>>>,
+        Option<tokio::sync::mpsc::UnboundedSender<Result<base::Receiver<T, Codec>, ConnectError>>>,
     pub(super) interlock: Arc<Mutex<Interlock>>,
 }
 
@@ -120,7 +120,7 @@ where
     Codec: codec::Codec,
 {
     /// Establishes the connection and returns a reference to the remote sender.
-    async fn get(&mut self) -> Result<&mut remote::Sender<T, Codec>, ConnectError> {
+    async fn get(&mut self) -> Result<&mut base::Sender<T, Codec>, ConnectError> {
         if self.sender.is_none() {
             self.sender = Some(self.sender_rx.recv().await.unwrap_or(Err(ConnectError::Dropped)));
         }
@@ -174,7 +174,7 @@ where
 
                 match connect.await {
                     Ok((_, raw_rx)) => {
-                        let rx = remote::Receiver::new(raw_rx);
+                        let rx = base::Receiver::new(raw_rx);
                         let _ = receiver_tx.send(Ok(rx));
                     }
                     Err(err) => {
@@ -206,7 +206,7 @@ where
             async move {
                 match request.accept_from(local_port).await {
                     Ok((raw_tx, _)) => {
-                        let tx = remote::Sender::new(raw_tx);
+                        let tx = base::Sender::new(raw_tx);
                         let _ = sender_tx.send(Ok(tx));
                     }
                     Err(err) => {

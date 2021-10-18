@@ -5,7 +5,7 @@ use std::{error::Error, fmt};
 
 use crate::{
     chmux,
-    rch::{oneshot, remote},
+    rch::{base, oneshot},
 };
 
 pub mod msg;
@@ -23,7 +23,7 @@ pub enum CallError {
     /// Provider was dropped or function panicked.
     Dropped,
     /// Receiving from a remote endpoint failed.
-    RemoteReceive(remote::RecvError),
+    RemoteReceive(base::RecvError),
     /// Connecting a sent channel failed.
     RemoteConnect(chmux::ConnectError),
     /// Listening for a connection from a received channel failed.

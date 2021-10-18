@@ -9,7 +9,7 @@ use std::{
 use super::msg::{ReadRequest, Value, WriteRequest};
 use crate::{
     chmux, codec,
-    rch::{buffer, mpsc, oneshot, remote},
+    rch::{base, buffer, mpsc, oneshot},
     RemoteSend,
 };
 
@@ -19,7 +19,7 @@ pub enum LockError {
     /// The [owner](super::Owner) has been dropped.
     Dropped,
     /// Receiving from a remote endpoint failed.
-    RemoteReceive(remote::RecvError),
+    RemoteReceive(base::RecvError),
     /// Connecting a sent channel failed.
     RemoteConnect(chmux::ConnectError),
     /// Listening for a connection from a received channel failed.

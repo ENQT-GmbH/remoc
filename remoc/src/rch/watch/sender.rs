@@ -11,7 +11,7 @@ use std::{
 
 use super::{
     super::{
-        remote::{self, PortDeserializer, PortSerializer},
+        base::{self, PortDeserializer, PortSerializer},
         RemoteSendError, BACKCHANNEL_MSG_ERROR,
     },
     receiver::RecvError,
@@ -29,7 +29,7 @@ pub enum SendError {
     /// The remote end closed the channel.
     Closed,
     /// Sending to a remote endpoint failed.
-    RemoteSend(remote::SendErrorKind),
+    RemoteSend(base::SendErrorKind),
     /// Connecting a sent channel failed.
     RemoteConnect(chmux::ConnectError),
     /// Listening to a received channel failed.
@@ -236,7 +236,7 @@ where
                 };
 
                 // Decode raw received data using remote receiver.
-                let mut remote_rx = remote::Receiver::<Result<T, RecvError>, Codec>::new(raw_rx);
+                let mut remote_rx = base::Receiver::<Result<T, RecvError>, Codec>::new(raw_rx);
 
                 // Process events.
                 loop {
@@ -310,7 +310,7 @@ where
                 };
 
                 // Encode data using remote sender for sending.
-                let mut remote_tx = remote::Sender::<Result<T, RecvError>, Codec>::new(raw_tx);
+                let mut remote_tx = base::Sender::<Result<T, RecvError>, Codec>::new(raw_tx);
 
                 // Process events.
                 loop {

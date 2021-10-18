@@ -15,7 +15,7 @@ use tokio_util::codec::LengthDelimitedCodec;
 use crate::{
     chmux::{self, ChMux, ChMuxError},
     codec,
-    rch::remote,
+    rch::base,
     RemoteSend,
 };
 
@@ -25,8 +25,8 @@ use crate::{
 pub enum ConnectError<TransportSinkError, TransportStreamError> {
     /// Establishing [chmux] connection failed.
     ChMux(ChMuxError<TransportSinkError, TransportStreamError>),
-    /// Opening initial [remote](rch::base) channel failed.
-    RemoteConnect(remote::ConnectError),
+    /// Opening initial [remote](crate::rch::base) channel failed.
+    RemoteConnect(base::ConnectError),
 }
 
 impl<TransportSinkError, TransportStreamError> fmt::Display
@@ -58,17 +58,17 @@ impl<TransportSinkError, TransportStreamError> From<ChMuxError<TransportSinkErro
     }
 }
 
-impl<TransportSinkError, TransportStreamError> From<remote::ConnectError>
+impl<TransportSinkError, TransportStreamError> From<base::ConnectError>
     for ConnectError<TransportSinkError, TransportStreamError>
 {
-    fn from(err: remote::ConnectError) -> Self {
+    fn from(err: base::ConnectError) -> Self {
         Self::RemoteConnect(err)
     }
 }
 
 /// Methods for establishing a connection over a physical transport.
 ///
-/// You must poll this returned future or spawn it for the connection to work.
+/// You must poll this returned future or spawn it onto a task for the connection to work.
 #[cfg_attr(docsrs, doc(cfg(feature = "rch")))]
 #[must_use = "You must poll or spawn the Connect future for the connection to work."]
 pub struct Connect<'transport, TransportSinkError, TransportStreamError>(
@@ -92,8 +92,8 @@ impl<'transport, TransportSinkError, TransportStreamError>
     ) -> Result<
         (
             Connect<'transport, TransportSinkError, TransportStreamError>,
-            remote::Sender<T, Codec>,
-            remote::Receiver<T, Codec>,
+            base::Sender<T, Codec>,
+            base::Receiver<T, Codec>,
         ),
         ConnectError<TransportSinkError, TransportStreamError>,
     >
@@ -111,7 +111,7 @@ impl<'transport, TransportSinkError, TransportStreamError>
         tokio::select! {
             biased;
             Err(err) = &mut connection => Err(err.into()),
-            result = remote::connect(&client, &mut listener) => {
+            result = base::connect(&client, &mut listener) => {
                 match result {
                     Ok((tx, rx)) => Ok((connection, tx, rx)),
                     Err(err) => Err(err.into()),
@@ -139,7 +139,7 @@ impl<'transport> Connect<'transport, io::Error, io::Error> {
     pub async fn io<Read, Write, T, Codec>(
         chmux_cfg: chmux::Cfg, input: Read, output: Write,
     ) -> Result<
-        (Connect<'transport, io::Error, io::Error>, remote::Sender<T, Codec>, remote::Receiver<T, Codec>),
+        (Connect<'transport, io::Error, io::Error>, base::Sender<T, Codec>, base::Receiver<T, Codec>),
         ConnectError<io::Error, io::Error>,
     >
     where
@@ -169,7 +169,7 @@ impl<'transport> Connect<'transport, io::Error, io::Error> {
     /// A [chmux] connection is established over the transport and a remote channel is opened.
     /// This prepends a length header to each chmux packet for transportation over the unframed connection.
     ///
-    /// This method performs internal buffering of read and writes.
+    /// This method performs internal buffering of reads and writes.
     ///
     /// You must poll the returned [Connect] future or spawn it for the connection to work.
     ///
@@ -178,7 +178,7 @@ impl<'transport> Connect<'transport, io::Error, io::Error> {
     pub async fn io_buffered<Read, Write, T, Codec>(
         chmux_cfg: chmux::Cfg, input: Read, output: Write, buffer: usize,
     ) -> Result<
-        (Connect<'transport, io::Error, io::Error>, remote::Sender<T, Codec>, remote::Receiver<T, Codec>),
+        (Connect<'transport, io::Error, io::Error>, base::Sender<T, Codec>, base::Receiver<T, Codec>),
         ConnectError<io::Error, io::Error>,
     >
     where

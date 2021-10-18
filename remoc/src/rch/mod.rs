@@ -9,13 +9,13 @@ use crate::chmux;
 
 mod interlock;
 
+pub mod base;
 pub mod bin;
 pub mod broadcast;
 pub mod buffer;
 pub mod lr;
 pub mod mpsc;
 pub mod oneshot;
-pub mod remote;
 pub mod watch;
 
 /// Error connecting a remote channel.
@@ -46,7 +46,7 @@ pub(crate) const BACKCHANNEL_MSG_ERROR: u8 = 0x02;
 
 #[derive(Clone)]
 pub(crate) enum RemoteSendError {
-    Send(remote::SendErrorKind),
+    Send(base::SendErrorKind),
     Connect(chmux::ConnectError),
     Listen(chmux::ListenerError),
     Forward,

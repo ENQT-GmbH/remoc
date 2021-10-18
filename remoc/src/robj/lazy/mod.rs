@@ -11,7 +11,7 @@ use tokio::sync::Mutex;
 use crate::{
     chmux,
     codec::{self},
-    rch::{buffer, mpsc, oneshot, remote},
+    rch::{base, buffer, mpsc, oneshot},
     RemoteSend,
 };
 
@@ -21,7 +21,7 @@ pub enum FetchError {
     /// Provider dropped before getting the value.
     Dropped,
     /// Receiving from a remote endpoint failed.
-    RemoteReceive(remote::RecvError),
+    RemoteReceive(base::RecvError),
     /// Connecting a sent channel failed.
     RemoteConnect(chmux::ConnectError),
     /// Listening for a connection from a received channel failed.

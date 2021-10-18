@@ -9,7 +9,7 @@ use std::{
 };
 
 use super::{
-    super::{buffer, mpsc, remote},
+    super::{base, buffer, mpsc},
     BroadcastMsg, Receiver,
 };
 use crate::{
@@ -24,7 +24,7 @@ pub enum SendError<T> {
     /// All receivers have been dropped.
     Closed(T),
     /// Sending to a remote endpoint failed.
-    RemoteSend(remote::SendErrorKind),
+    RemoteSend(base::SendErrorKind),
     /// Connecting a sent channel failed.
     RemoteConnect(chmux::ConnectError),
     /// Listening to a received channel failed.
