@@ -1,7 +1,11 @@
-//! Multi producer single customer channel.
+//! Multi producer single customer remote channel.
 //!
 //! The sender and receiver can both be sent to remote endpoints.
-//! Forwarding is supported.
+//! The channel also works if both halves are local.
+//! Forwarding over multiple connections is supported.
+//!
+//! This has similar functionality as [tokio::sync::mpsc] with the additional
+//! ability to work over remote connections.
 
 use crate::RemoteSend;
 
@@ -10,8 +14,8 @@ mod receiver;
 mod sender;
 
 pub use distributor::{DistributedReceiverHandle, Distributor};
-pub use receiver::{Receiver, RecvError, TransportedReceiver};
-pub use sender::{Permit, SendError, Sender, TransportedSender, TrySendError};
+pub use receiver::{Receiver, RecvError};
+pub use sender::{Permit, SendError, Sender, TrySendError};
 
 /// Creates a bounded channel for communicating between asynchronous tasks with backpressure.
 ///

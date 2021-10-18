@@ -1,6 +1,6 @@
 //! A read/write lock that can be sent to remote endpoints.
 
-pub mod msg;
+mod msg;
 mod owner;
 #[allow(clippy::module_inception)]
 mod rw_lock;

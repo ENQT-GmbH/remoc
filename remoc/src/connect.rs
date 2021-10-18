@@ -79,7 +79,7 @@ impl<'transport, TransportSinkError, TransportStreamError>
     Connect<'transport, TransportSinkError, TransportStreamError>
 {
     /// Establishes a connection over a framed transport (a [sink](Sink) and a [stream](Stream) of binary data) and
-    /// returns a remote sender and receiver.
+    /// returns a remote [sender](base::Sender) and [receiver](base::Receiver).
     ///
     /// This establishes a [chmux] connection over the transport and opens a remote channel.
     ///
@@ -123,7 +123,7 @@ impl<'transport, TransportSinkError, TransportStreamError>
 
 impl<'transport> Connect<'transport, io::Error, io::Error> {
     /// Establishes a connection over an IO transport (an [AsyncRead] and [AsyncWrite]) and
-    /// returns a remote sender and receiver.
+    /// returns a remote [sender](base::Sender) and [receiver](base::Receiver).
     ///
     /// A [chmux] connection is established over the transport and a remote channel is opened.
     /// This prepends a length header to each chmux packet for transportation over the unframed connection.
@@ -164,7 +164,7 @@ impl<'transport> Connect<'transport, io::Error, io::Error> {
     }
 
     /// Establishes a buffered connection over an IO transport (an [AsyncRead] and [AsyncWrite]) and
-    /// returns a remote sender and receiver.
+    /// returns a remote [sender](base::Sender) and [receiver](base::Receiver).
     ///
     /// A [chmux] connection is established over the transport and a remote channel is opened.
     /// This prepends a length header to each chmux packet for transportation over the unframed connection.

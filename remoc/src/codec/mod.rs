@@ -1,4 +1,37 @@
-//! Codecs for transforming values into and from binary format.
+//! Codecs for transforming values into and from binary wire format.
+//!
+//! All codecs in this module are wrappers around the [serde] crates implementing the
+//! data representations.
+//! Thus you should refer to the corresponding crate documentation for information
+//! about limitations and backward as well as foreward compatibility.
+//!
+//! ## Crate features
+//!
+//! Each codec is gated by the corresponding crate feature `codec-*`, i.e.
+//! the JSON codec is only available if the crate features `codec-json` is enabled.
+//!
+//! The default codec, named [Default](struct@Default), can be selected by enabling the
+//! appropriate `default-codec-*` crate feature.
+//! For example, if you want to use the JSON codec by default, enable the crate feature
+//! `default-codec-json`.
+//! Only one default codec feature must be enabled, otherwise a compile error will occur.
+//! The default codec should only be selected by an application and not a library crate
+//! that uses ReMOC.
+//! Otherwise a conflict between multiple libraries that depend upon different default
+//! codecs will occur.
+//! 
+//! The following features select the default codec.
+//! 
+//!   * `default-codec-bincode` -- enables and selects [Bincode] as the default codec
+//!   * `default-codec-cbor` -- enables and selects [Cbor] as the default codec
+//!   * `default-codec-json` -- enables and selects [Json] as the default codec
+//!   * `default-codec-message-pack` -- enables selects [MessagePack] as the default codec
+//!
+//! By default all codecs are enabled and the default codec is JSON, i.e. the `default-codec-json`
+//! crate feature is enabled.
+//! Thus to change the default codec, you must specify `default-features = false` when 
+//! referencing ReMOC in your `Cargo.toml`.
+//! 
 
 use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize};
 use std::{

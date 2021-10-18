@@ -4,12 +4,12 @@ use std::{fmt, sync::Arc};
 
 use super::{msg::RFnRequest, CallError};
 use crate::{
-    codec::{self},
+    codec,
     rch::{buffer, mpsc, oneshot},
     RemoteSend,
 };
 
-/// Provides a remotely callable async Fn function.
+/// Provides a remotely callable async [Fn] function.
 ///
 /// Dropping the provider will stop making the function available for remote calls.
 pub struct RFnProvider {
@@ -42,7 +42,7 @@ impl Drop for RFnProvider {
     }
 }
 
-/// Calls an async Fn function possibly located on a remote endpoint.
+/// Calls an async [Fn] function possibly located on a remote endpoint.
 ///
 /// The remote function can be cloned and executed simultaneously from multiple callers.
 /// For each invocation a new async task is spawned.
@@ -83,6 +83,8 @@ where
     }
 
     /// Create a new remote function and return it with its provider.
+    ///
+    /// See the [module-level documentation](super) for details.
     pub fn provided<F, Fut>(fun: F) -> (Self, RFnProvider)
     where
         F: Fn(A) -> Fut + Send + Sync + 'static,

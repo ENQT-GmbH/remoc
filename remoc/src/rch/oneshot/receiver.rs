@@ -90,6 +90,8 @@ impl From<mpsc::RecvError> for TryRecvError {
 impl Error for TryRecvError {}
 
 /// Receive a value from the associated sender.
+///
+/// Await this future to receive the value.
 #[derive(Serialize, Deserialize)]
 #[serde(bound(serialize = "T: RemoteSend, Codec: codec::Codec"))]
 #[serde(bound(deserialize = "T: RemoteSend, Codec: codec::Codec"))]

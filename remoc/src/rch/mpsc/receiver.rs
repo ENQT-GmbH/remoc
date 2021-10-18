@@ -67,7 +67,7 @@ pub(crate) struct ReceiverInner<T> {
 
 /// Mpsc receiver in transport.
 #[derive(Serialize, Deserialize)]
-pub struct TransportedReceiver<T, Codec> {
+pub(crate) struct TransportedReceiver<T, Codec> {
     /// chmux port number.
     port: u32,
     /// Data type.

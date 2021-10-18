@@ -82,7 +82,7 @@ impl<T, Codec> fmt::Debug for Receiver<T, Codec> {
 
 /// Watch receiver in transport.
 #[derive(Serialize, Deserialize)]
-pub struct TransportedReceiver<T, Codec> {
+pub(crate) struct TransportedReceiver<T, Codec> {
     /// chmux port number.
     port: u32,
     /// Current data value.

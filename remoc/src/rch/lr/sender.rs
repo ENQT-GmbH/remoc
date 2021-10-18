@@ -105,7 +105,7 @@ impl<T, Codec> fmt::Debug for Sender<T, Codec> {
 
 /// A local/remote channel sender in transport.
 #[derive(Debug, Serialize, Deserialize)]
-pub struct TransportedSender<T, Codec> {
+pub(crate) struct TransportedSender<T, Codec> {
     /// chmux port number.
     pub port: u32,
     /// Data type.

@@ -1,9 +1,15 @@
-#![deny(unsafe_code)]
+#![forbid(unsafe_code)]
 #![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 //! ReMOC🐙 — Remote multiplexed objects and channels
 //!
+//! # Crate features
+//! 
+//! The modules of this crate are gated by crate features, as shown below.
+//! For ease of use all features are enabled by default.
+//! See the [codec module](codec) documentation on how to select a default codec.
+//! The `full` feature enables all functionality but does not include a default codec.
 
 pub mod chmux;
 

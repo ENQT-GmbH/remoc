@@ -168,7 +168,7 @@ impl<T, Codec, Buffer> Clone for Sender<T, Codec, Buffer> {
 
 /// Mpsc sender in transport.
 #[derive(Serialize, Deserialize)]
-pub struct TransportedSender<T, Codec> {
+pub(crate) struct TransportedSender<T, Codec> {
     /// chmux port number. `None` if closed.
     port: Option<u32>,
     /// Data type.

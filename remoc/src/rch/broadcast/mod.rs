@@ -1,9 +1,12 @@
-//! A multi-producer, multi-consumer broadcast queue.
+//! A multi-producer, multi-consumer broadcast queue with receivers that may be located on remote endpoints.
 //!
 //! Each sent value is seen by all consumers.
 //! The senders must be local, while the receivers can be sent to
 //! remote endpoints.
 //! Forwarding is supported.
+//!
+//! This has similar functionality as [tokio::sync::broadcast] with the additional
+//! ability to work over remote connections.
 
 use serde::{Deserialize, Serialize};
 
@@ -18,7 +21,7 @@ pub use sender::{SendError, Sender};
 
 /// Broadcast transport message.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum BroadcastMsg<T> {
+pub(crate) enum BroadcastMsg<T> {
     /// Value.
     Value(T),
     /// Lagged notification.

@@ -1,4 +1,9 @@
-//! Local/remote channels.
+//! A channel that exchanges values of arbitrary type with a remote endpoint and
+//! is established by sending exactly one half of it over an existing channel.
+//!
+//! This is a lighter and more restricted version of an [MPSC channel](super::mpsc).
+//! It does not spawn a task per connected channel, but forwarding is not supported
+//! and exactly one half of the channel must be sent to a remote endpoint.
 
 use std::sync::{Arc, Mutex};
 
@@ -6,8 +11,8 @@ mod receiver;
 mod sender;
 
 use super::interlock::{Interlock, Location};
-pub use receiver::{Receiver, RecvError, TransportedReceiver};
-pub use sender::{SendError, SendErrorKind, Sender, TransportedSender};
+pub use receiver::{Receiver, RecvError};
+pub use sender::{SendError, SendErrorKind, Sender};
 
 /// Creates a new local/remote channel that is established by sending either the sender or receiver
 /// over a remote channel.

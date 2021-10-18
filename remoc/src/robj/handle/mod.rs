@@ -253,7 +253,7 @@ impl<T, Codec> Drop for Handle<T, Codec> {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(bound(serialize = "Codec: codec::Codec"))]
 #[serde(bound(deserialize = "Codec: codec::Codec"))]
-pub struct TransportedHandle<T, Codec> {
+pub(crate) struct TransportedHandle<T, Codec> {
     /// Handle id.
     id: Uuid,
     /// Dropped notification.
