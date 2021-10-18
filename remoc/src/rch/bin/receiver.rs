@@ -14,7 +14,7 @@ use super::{
 };
 use crate::chmux;
 
-/// A chmux channel receiver.
+/// A binary channel receiver.
 pub struct Receiver {
     pub(super) receiver: Option<Result<chmux::Receiver, ConnectError>>,
     pub(super) sender_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<chmux::Sender, ConnectError>>>,

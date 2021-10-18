@@ -4,12 +4,12 @@ use std::fmt;
 
 use super::{msg::RFnRequest, CallError};
 use crate::{
-    codec::{self},
+    codec,
     rch::{buffer, mpsc, oneshot},
     RemoteSend,
 };
 
-/// Provides a remotely callable async FnMut function.
+/// Provides a remotely callable async [FnMut] function.
 ///
 /// Dropping the provider will stop making the function available for remote calls.
 pub struct RFnMutProvider {
@@ -42,7 +42,7 @@ impl Drop for RFnMutProvider {
     }
 }
 
-/// Calls an async FnMut function possibly located on a remote endpoint.
+/// Calls an async [FnMut] function possibly located on a remote endpoint.
 #[derive(Serialize, Deserialize)]
 #[serde(bound(serialize = "A: RemoteSend, R: RemoteSend, Codec: codec::Codec"))]
 #[serde(bound(deserialize = "A: RemoteSend, R: RemoteSend, Codec: codec::Codec"))]
@@ -74,6 +74,8 @@ where
     }
 
     /// Create a new remote function and return it with its provider.
+    ///
+    /// See the [module-level documentation](super) for details.
     pub fn provided<F, Fut>(mut fun: F) -> (Self, RFnMutProvider)
     where
         F: FnMut(A) -> Fut + Send + Sync + 'static,

@@ -21,7 +21,7 @@ pub use sender::{SendError, Sender};
 
 /// Broadcast transport message.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum BroadcastMsg<T> {
+pub(crate) enum BroadcastMsg<T> {
     /// Value.
     Value(T),
     /// Lagged notification.

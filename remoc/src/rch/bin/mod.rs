@@ -4,6 +4,9 @@
 //! One end of the channel must be local while the other end must be remote.
 //! Forwarding is not supported.
 //!
+//! If the sole use is to transfer a large binary object into one direction,
+//! consider using a [lazy blob](crate::robj::lazy_blob) instead.
+//!
 //! This is a wrapper around a [chmux](crate::chmux) channel that allows to
 //! establish a connection by sending the sender or receiver to a remote endpoint.
 
