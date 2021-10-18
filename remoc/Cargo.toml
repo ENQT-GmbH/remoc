@@ -43,7 +43,6 @@ default-codec-message-pack = ["codec-message-pack"]
 remoc_macro = { version = "=0.8.0-pre3", path = "../remoc_macro", optional = true }
 
 futures = "0.3"
-pin-project = "1.0"
 tokio = { version = "1.11", features = ["macros", "rt", "sync", "time"] }
 tokio-util = { version = "0.6", features = ["codec"] }
 rand = "0.8"
@@ -73,5 +72,4 @@ env_logger = "0.9"
 
 
 [package.metadata.docs.rs]
-all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
