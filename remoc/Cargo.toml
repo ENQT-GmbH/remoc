@@ -24,7 +24,7 @@ full = [
     "codec-json",
     "codec-message-pack",
 ]
-rch = ["serde"]
+rch = ["serde", "tokio-util"]
 rfn = ["rch"]
 robj = ["rch"]
 rtc = ["rch", "remoc_macro", "async-trait"]
@@ -44,7 +44,7 @@ remoc_macro = { version = "=0.8.0-pre3", path = "../remoc_macro", optional = tru
 
 futures = "0.3"
 tokio = { version = "1.11", features = ["macros", "rt", "sync", "time"] }
-tokio-util = { version = "0.6", features = ["codec"] }
+tokio-util = { version = "0.6", features = ["codec"], optional = true}
 rand = "0.8"
 log = "0.4"
 bytes = "1"
@@ -68,6 +68,7 @@ tokio = { version = "1.11", features = [
     "rt",
     "rt-multi-thread",
 ] }
+tokio-util = { version = "0.6", features = ["codec"] }
 env_logger = "0.9"
 
 
