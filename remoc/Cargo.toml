@@ -24,7 +24,7 @@ full = [
     "codec-json",
     "codec-message-pack",
 ]
-rch = ["serde", "tokio-util"]
+rch = ["serde", "tokio-util", "tokio/io-util"]
 rfn = ["rch"]
 robj = ["rch"]
 rtc = ["rch", "remoc_macro", "async-trait"]

@@ -25,7 +25,7 @@ pub use remote_send::RemoteSend;
 mod connect;
 #[cfg(feature = "rch")]
 #[cfg_attr(docsrs, doc(cfg(feature = "rch")))]
-pub use connect::{connect_framed, connect_io, ConnectError};
+pub use connect::{Connect, ConnectError};
 
 #[cfg(feature = "rfn")]
 #[cfg_attr(docsrs, doc(cfg(feature = "rfn")))]

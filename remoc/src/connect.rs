@@ -1,25 +1,31 @@
 //! Initial connection functions.
 
 use bytes::Bytes;
-use futures::{Sink, Stream, TryStreamExt};
-use std::{convert::TryInto, error::Error, fmt, io};
-use tokio::io::{AsyncRead, AsyncWrite};
+use futures::{future::BoxFuture, Future, FutureExt, Sink, Stream, TryStreamExt};
+use std::{
+    convert::TryInto,
+    error::Error,
+    fmt, io,
+    pin::Pin,
+    task::{Context, Poll},
+};
+use tokio::io::{AsyncRead, AsyncWrite, BufReader, BufWriter};
 use tokio_util::codec::LengthDelimitedCodec;
 
 use crate::{
     chmux::{self, ChMux, ChMuxError},
-    codec::{self},
+    codec,
     rch::remote,
     RemoteSend,
 };
 
-/// Connection error.
+/// Error occured during establishing a connection over a physical transport.
 #[cfg_attr(docsrs, doc(cfg(feature = "rch")))]
 #[derive(Debug, Clone)]
 pub enum ConnectError<TransportSinkError, TransportStreamError> {
-    /// Establishing chmux connection failed.
+    /// Establishing [chmux] connection failed.
     ChMux(ChMuxError<TransportSinkError, TransportStreamError>),
-    /// Opening initial remote channel failed.
+    /// Opening initial [remote](rch::base) channel failed.
     RemoteConnect(remote::ConnectError),
 }
 
@@ -60,78 +66,141 @@ impl<TransportSinkError, TransportStreamError> From<remote::ConnectError>
     }
 }
 
-/// Establishes a connection over a framed transport and returns a remote sender and receiver.
+/// Methods for establishing a connection over a physical transport.
 ///
-/// This establishes a chmux connection over the transport and opens a remote channel.
-///
-/// The multiplexer is spawned into a separate task.
-///
-/// ## Transport constraints
-/// Both [connect_framed] and [connect_io] spawn the channel multiplexer onto a separate task and
-/// thus the transport must have static lifetime and be [Send] and [Sync].
-/// To avoid this, you can create and run the channel multiplexer manually.
-/// To do so, instance [ChMux](chmux::ChMux) directly and invoke [remote::connect](crate::rch::remote::connect)
-/// to create the initial channel.
-///
-/// # Panics
-/// Panics if the chmux configuration is invalid.
+/// You must poll this returned future or spawn it for the connection to work.
 #[cfg_attr(docsrs, doc(cfg(feature = "rch")))]
-pub async fn connect_framed<TransportSink, TransportSinkError, TransportStream, TransportStreamError, T, Codec>(
-    chmux_cfg: chmux::Cfg, transport_sink: TransportSink, transport_stream: TransportStream,
-) -> Result<
-    (remote::Sender<T, Codec>, remote::Receiver<T, Codec>),
-    ConnectError<TransportSinkError, TransportStreamError>,
->
-where
-    TransportSink: Sink<Bytes, Error = TransportSinkError> + Send + Sync + Unpin + 'static,
-    TransportSinkError: Error + Send + Sync + 'static,
-    TransportStream: Stream<Item = Result<Bytes, TransportStreamError>> + Send + Sync + Unpin + 'static,
-    TransportStreamError: Error + Send + Sync + 'static,
-    T: RemoteSend,
-    Codec: codec::Codec,
+#[must_use = "You must poll or spawn the Connect future for the connection to work."]
+pub struct Connect<'transport, TransportSinkError, TransportStreamError>(
+    BoxFuture<'transport, Result<(), ChMuxError<TransportSinkError, TransportStreamError>>>,
+);
+
+impl<'transport, TransportSinkError, TransportStreamError>
+    Connect<'transport, TransportSinkError, TransportStreamError>
 {
-    let (mux, client, mut listener) = ChMux::new(chmux_cfg, transport_sink, transport_stream).await?;
-    tokio::spawn(mux.run());
-    Ok(remote::connect(&client, &mut listener).await?)
+    /// Establishes a connection over a framed transport (a [sink](Sink) and a [stream](Stream) of binary data) and
+    /// returns a remote sender and receiver.
+    ///
+    /// This establishes a [chmux] connection over the transport and opens a remote channel.
+    ///
+    /// You must poll the returned [Connect] future or spawn it for the connection to work.
+    ///
+    /// # Panics
+    /// Panics if the chmux configuration is invalid.
+    pub async fn framed<TransportSink, TransportStream, T, Codec>(
+        chmux_cfg: chmux::Cfg, transport_sink: TransportSink, transport_stream: TransportStream,
+    ) -> Result<
+        (
+            Connect<'transport, TransportSinkError, TransportStreamError>,
+            remote::Sender<T, Codec>,
+            remote::Receiver<T, Codec>,
+        ),
+        ConnectError<TransportSinkError, TransportStreamError>,
+    >
+    where
+        TransportSink: Sink<Bytes, Error = TransportSinkError> + Send + Sync + Unpin + 'transport,
+        TransportSinkError: Error + Send + Sync + 'static,
+        TransportStream: Stream<Item = Result<Bytes, TransportStreamError>> + Send + Sync + Unpin + 'transport,
+        TransportStreamError: Error + Send + Sync + 'static,
+        T: RemoteSend,
+        Codec: codec::Codec,
+    {
+        let (mux, client, mut listener) = ChMux::new(chmux_cfg, transport_sink, transport_stream).await?;
+        let mut connection = Self(mux.run().boxed());
+
+        tokio::select! {
+            biased;
+            Err(err) = &mut connection => Err(err.into()),
+            result = remote::connect(&client, &mut listener) => {
+                match result {
+                    Ok((tx, rx)) => Ok((connection, tx, rx)),
+                    Err(err) => Err(err.into()),
+                }
+            }
+        }
+    }
 }
 
-/// Establishes a connection over an IO transport and returns a remote sender and receiver.
-///
-/// This prepends a length header to each chmux packet for transportation over the unframed connection.
-/// A chmux connection is established over the transport and a remote channel is opened.
-///
-/// The multiplexer is spawned into a separate task.
-///
-/// ## Transport constraints
-/// Both [connect_framed] and [connect_io] spawn the channel multiplexer onto a separate task and
-/// thus the transport must have static lifetime and be [Send] and [Sync].
-/// To avoid this, you can create and run the channel multiplexer manually.
-/// To do so, instance [ChMux](chmux::ChMux) directly and invoke [remote::connect](crate::rch::remote::connect)
-/// to create the initial channel.
-///
-/// # Panics
-/// Panics if the chmux configuration is invalid.
-#[cfg_attr(docsrs, doc(cfg(feature = "rch")))]
-pub async fn connect_io<Read, Write, T, Codec>(
-    chmux_cfg: chmux::Cfg, input: Read, output: Write,
-) -> Result<(remote::Sender<T, Codec>, remote::Receiver<T, Codec>), ConnectError<io::Error, io::Error>>
-where
-    Read: AsyncRead + Send + Sync + Unpin + 'static,
-    Write: AsyncWrite + Send + Sync + Unpin + 'static,
-    T: RemoteSend,
-    Codec: codec::Codec,
+impl<'transport> Connect<'transport, io::Error, io::Error> {
+    /// Establishes a connection over an IO transport (an [AsyncRead] and [AsyncWrite]) and
+    /// returns a remote sender and receiver.
+    ///
+    /// A [chmux] connection is established over the transport and a remote channel is opened.
+    /// This prepends a length header to each chmux packet for transportation over the unframed connection.
+    ///
+    /// This method performs no buffering of read and writes and thus may exhibit suboptimal
+    /// performance if the underlying reader and writer are unbuffered.
+    /// In this case use [io_buffered](Self::io_buffered) instead.
+    ///
+    /// You must poll the returned [Connect] future or spawn it for the connection to work.
+    ///
+    /// # Panics
+    /// Panics if the chmux configuration is invalid.
+    pub async fn io<Read, Write, T, Codec>(
+        chmux_cfg: chmux::Cfg, input: Read, output: Write,
+    ) -> Result<
+        (Connect<'transport, io::Error, io::Error>, remote::Sender<T, Codec>, remote::Receiver<T, Codec>),
+        ConnectError<io::Error, io::Error>,
+    >
+    where
+        Read: AsyncRead + Send + Sync + Unpin + 'transport,
+        Write: AsyncWrite + Send + Sync + Unpin + 'transport,
+        T: RemoteSend,
+        Codec: codec::Codec,
+    {
+        let max_recv_frame_length: usize = chmux_cfg.max_frame_length().try_into().unwrap();
+        let transport_sink = LengthDelimitedCodec::builder()
+            .little_endian()
+            .length_field_length(4)
+            .max_frame_length(u32::MAX as _)
+            .new_write(output);
+        let transport_stream = LengthDelimitedCodec::builder()
+            .little_endian()
+            .length_field_length(4)
+            .max_frame_length(max_recv_frame_length)
+            .new_read(input)
+            .map_ok(|item| item.freeze());
+        Self::framed(chmux_cfg, transport_sink, transport_stream).await
+    }
+
+    /// Establishes a buffered connection over an IO transport (an [AsyncRead] and [AsyncWrite]) and
+    /// returns a remote sender and receiver.
+    ///
+    /// A [chmux] connection is established over the transport and a remote channel is opened.
+    /// This prepends a length header to each chmux packet for transportation over the unframed connection.
+    ///
+    /// This method performs internal buffering of read and writes.
+    ///
+    /// You must poll the returned [Connect] future or spawn it for the connection to work.
+    ///
+    /// # Panics
+    /// Panics if the chmux configuration is invalid.
+    pub async fn io_buffered<Read, Write, T, Codec>(
+        chmux_cfg: chmux::Cfg, input: Read, output: Write, buffer: usize,
+    ) -> Result<
+        (Connect<'transport, io::Error, io::Error>, remote::Sender<T, Codec>, remote::Receiver<T, Codec>),
+        ConnectError<io::Error, io::Error>,
+    >
+    where
+        Read: AsyncRead + Send + Sync + Unpin + 'transport,
+        Write: AsyncWrite + Send + Sync + Unpin + 'transport,
+        T: RemoteSend,
+        Codec: codec::Codec,
+    {
+        let buf_input = BufReader::with_capacity(buffer, input);
+        let buf_output = BufWriter::with_capacity(buffer, output);
+        Self::io(chmux_cfg, buf_input, buf_output).await
+    }
+}
+
+impl<'transport, TransportSinkError, TransportStreamError> Future
+    for Connect<'transport, TransportSinkError, TransportStreamError>
 {
-    let max_recv_frame_length: usize = chmux_cfg.max_frame_length().try_into().unwrap();
-    let transport_sink = LengthDelimitedCodec::builder()
-        .little_endian()
-        .length_field_length(4)
-        .max_frame_length(u32::MAX as _)
-        .new_write(output);
-    let transport_stream = LengthDelimitedCodec::builder()
-        .little_endian()
-        .length_field_length(4)
-        .max_frame_length(max_recv_frame_length)
-        .new_read(input)
-        .map_ok(|item| item.freeze());
-    connect_framed(chmux_cfg, transport_sink, transport_stream).await
+    /// Result of connection after it has been terminated.
+    type Output = Result<(), ChMuxError<TransportSinkError, TransportStreamError>>;
+
+    /// This future runs the dispatcher for this connection.
+    fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        Pin::into_inner(self).0.poll_unpin(cx)
+    }
 }
