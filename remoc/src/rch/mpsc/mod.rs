@@ -14,8 +14,8 @@ mod receiver;
 mod sender;
 
 pub use distributor::{DistributedReceiverHandle, Distributor};
-pub use receiver::{Receiver, RecvError, TransportedReceiver};
-pub use sender::{Permit, SendError, Sender, TransportedSender, TrySendError};
+pub use receiver::{Receiver, RecvError};
+pub use sender::{Permit, SendError, Sender, TrySendError};
 
 /// Creates a bounded channel for communicating between asynchronous tasks with backpressure.
 ///

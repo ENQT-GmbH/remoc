@@ -1,12 +1,14 @@
-//! A channel that exchanges values of arbitrary type with a remote endpoint.
+//! A channel that exchanges values of arbitrary type with a remote endpoint
+//! and is primarily used as the initial channel after [establishing a connection](crate::Connect)
+//! with a remote endpoint.
 //!
 //! Each value is serialized into binary format before sending and deserialized
 //! after it has been received.
 //!
 //! The sender and receiver of this channel cannot be sent to a remote endpoint.
-//! However, you can send senders and receivers of other channel types (for example
-//! [mpsc](super::mpsc), [oneshot](super::oneshot) or [watch](super::watch)) via
-//! this channel to a remote endpoint.
+//! However, you can send (objects containing) senders and receivers of other
+//! channel types (for example [mpsc](super::mpsc), [oneshot](super::oneshot) or
+//! [watch](super::watch)) via this channel to a remote endpoint.
 
 use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt};

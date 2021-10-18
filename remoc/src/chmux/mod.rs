@@ -1,11 +1,17 @@
 //! Low-level channel multiplexer.
 //!
-//! Multiplexes multiple channels over a single physical channel
+//! Multiplexes multiple binary channels over a single binary channel
 //! (anything that implements [Sink](futures::Sink) and [Stream](futures::Stream)).
+//! A connection is established by calling [ChMux::new].
 //!
-//! You probably do not want to use this directly.
+//! **You probably do not want to use this module directly.**
 //! Instead use methods from [Connect](crate::Connect) to establish a connection over
 //! a physical transport.
+//!
+//! # Protocol version compatibility
+//! Two endpoints can only communicate if they have the same [protocol version](PROTOCOL_VERSION).
+//! A change in protocol version will be accompanied by an increase of the
+//! major version number of the ReMOC crate.
 
 use std::{error::Error, fmt};
 

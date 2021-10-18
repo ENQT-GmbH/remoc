@@ -94,7 +94,7 @@ pub(crate) struct SenderInner<T, Codec> {
 
 /// Watch sender in transport.
 #[derive(Serialize, Deserialize)]
-pub struct TransportedSender<T, Codec> {
+pub(crate) struct TransportedSender<T, Codec> {
     /// chmux port number.
     port: u32,
     /// Current data value.

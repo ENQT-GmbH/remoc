@@ -14,8 +14,8 @@ use crate::RemoteSend;
 mod receiver;
 mod sender;
 
-pub use receiver::{Receiver, RecvError, TransportedReceiver};
-pub use sender::{SendError, Sender, TransportedSender};
+pub use receiver::{Receiver, RecvError};
+pub use sender::{SendError, Sender};
 
 /// Length of queuing for storing errors that occured during remote send.
 const ERROR_QUEUE: usize = 16;

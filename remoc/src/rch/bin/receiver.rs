@@ -30,7 +30,7 @@ impl fmt::Debug for Receiver {
 
 /// A chmux channel receiver in transport.
 #[derive(Debug, Serialize, Deserialize)]
-pub struct TransportedReceiver {
+pub(crate) struct TransportedReceiver {
     /// chmux port number.
     pub port: u32,
 }

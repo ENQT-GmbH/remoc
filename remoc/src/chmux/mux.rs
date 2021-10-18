@@ -198,6 +198,7 @@ impl TransportMsg {
 }
 
 /// Channel multiplexer.
+#[must_use = "You must call run() on the ChMux object for the connection to work."]
 pub struct ChMux<TransportSink, TransportStream> {
     /// Trace id.
     trace_id: String,

@@ -12,8 +12,8 @@ use std::sync::{Arc, Mutex};
 mod receiver;
 mod sender;
 
-pub use receiver::{Receiver, TransportedReceiver};
-pub use sender::{Sender, TransportedSender};
+pub use receiver::Receiver;
+pub use sender::Sender;
 
 use super::interlock::{Interlock, Location};
 
