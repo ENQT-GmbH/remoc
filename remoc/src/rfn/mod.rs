@@ -16,6 +16,8 @@
 //!
 //! Create a wrapper locally and send it to a remote endpoint, for example over a
 //! channel from the [rch](crate::rch) module.
+//! You can also send the wrapper as part of a larger object, such as a struct, tuple
+//! or enum.
 //! Then use the `call` method on the remote endpoint to remotely invoke the local function.
 //!
 //! Note that the function is executed locally.

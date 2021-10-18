@@ -19,8 +19,19 @@
 //! that uses ReMOC.
 //! Otherwise a conflict between multiple libraries that depend upon different default
 //! codecs will occur.
+//! 
+//! The following features select the default codec.
+//! 
+//!   * `default-codec-bincode` -- enables and selects [Bincode] as the default codec
+//!   * `default-codec-cbor` -- enables and selects [Cbor] as the default codec
+//!   * `default-codec-json` -- enables and selects [Json] as the default codec
+//!   * `default-codec-message-pack` -- enables selects [MessagePack] as the default codec
 //!
-//! By default all codecs are enabled and the default codec is JSON.
+//! By default all codecs are enabled and the default codec is JSON, i.e. the `default-codec-json`
+//! crate feature is enabled.
+//! Thus to change the default codec, you must specify `default-features = false` when 
+//! referencing ReMOC in your `Cargo.toml`.
+//! 
 
 use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize};
 use std::{
