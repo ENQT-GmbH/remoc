@@ -1,5 +1,5 @@
 #[cfg(feature = "rch")]
-use futures::{try_join, StreamExt};
+use futures::{join, StreamExt};
 
 #[allow(unused_imports)]
 use std::{net::Ipv4Addr, sync::Once};
@@ -62,11 +62,22 @@ where
     T: RemoteSend,
 {
     loop_transport!(0, transport_a_tx, transport_a_rx, transport_b_tx, transport_b_rx);
-    try_join!(
-        remoc::connect_framed(cfg.clone(), transport_a_tx, transport_a_rx),
-        remoc::connect_framed(cfg, transport_b_tx, transport_b_rx),
-    )
-    .expect("creating remote loop channel failed")
+
+    let a_cfg = cfg.clone();
+    let a = async move {
+        let (conn, tx, rx) = remoc::Connect::framed(a_cfg, transport_a_tx, transport_a_rx).await.unwrap();
+        tokio::spawn(conn);
+        (tx, rx)
+    };
+
+    let b_cfg = cfg.clone();
+    let b = async move {
+        let (conn, tx, rx) = remoc::Connect::framed(b_cfg, transport_b_tx, transport_b_rx).await.unwrap();
+        tokio::spawn(conn);
+        (tx, rx)
+    };
+
+    join!(a, b)
 }
 
 #[cfg(feature = "rch")]
@@ -80,14 +91,20 @@ where
         let listener = TcpListener::bind((Ipv4Addr::new(127, 0, 0, 1), tcp_port)).await.unwrap();
         let (socket, _) = listener.accept().await.unwrap();
         let (socket_rx, socket_tx) = socket.into_split();
-        remoc::connect_io(Default::default(), socket_rx, socket_tx).await
+        let (conn, tx, rx) =
+            remoc::Connect::io_buffered(Default::default(), socket_rx, socket_tx, 100_000).await.unwrap();
+        tokio::spawn(conn);
+        (tx, rx)
     };
 
     let client = async move {
         let socket = TcpStream::connect((Ipv4Addr::new(127, 0, 0, 1), tcp_port)).await.unwrap();
         let (socket_rx, socket_tx) = socket.into_split();
-        remoc::connect_io(Default::default(), socket_rx, socket_tx).await
+        let (conn, tx, rx) =
+            remoc::Connect::io_buffered(Default::default(), socket_rx, socket_tx, 8721).await.unwrap();
+        tokio::spawn(conn);
+        (tx, rx)
     };
 
-    try_join!(server, client).expect("creating remote TCP loop channel failed")
+    join!(server, client)
 }
