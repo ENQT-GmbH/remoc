@@ -1,7 +1,11 @@
-//! Channel multiplexer.
+//! Low-level channel multiplexer.
 //!
-//! Multiplexes multiple channels over a single channel (or anything that implements Sink and Stream).
+//! Multiplexes multiple channels over a single physical channel 
+//! (anything that implements [Sink](futures::Sink) and [Stream](futures::Stream)).
 //!
+//! You probably do not want to use this directly.
+//! Instead use methods from [Connect](crate::Connect) to establish a connection over
+//! a physical transport.
 
 use std::{error::Error, fmt};
 
