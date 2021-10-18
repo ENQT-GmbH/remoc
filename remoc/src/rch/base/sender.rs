@@ -105,7 +105,7 @@ impl PortSerializer {
     /// Open a chmux port to the remote endpoint.
     ///
     /// Returns the local port number and calls the specified function with the connect object.
-    pub(crate) fn connect<E>(
+    pub fn connect<E>(
         callback: impl FnOnce(chmux::Connect) -> BoxFuture<'static, ()> + Send + 'static,
     ) -> Result<u32, E>
     where
@@ -126,8 +126,7 @@ impl PortSerializer {
     }
 
     /// Returns the data storage of the channel multiplexer.
-    #[allow(dead_code)]
-    pub(crate) fn storage<E>() -> Result<AnyStorage, E>
+    pub fn storage<E>() -> Result<AnyStorage, E>
     where
         E: serde::ser::Error,
     {
@@ -156,7 +155,7 @@ where
     T: Serialize + Send + 'static,
     Codec: codec::Codec,
 {
-    /// Create a remote sender from a ChMux sender.
+    /// Creates a base remote sender from a [chmux] sender.
     pub fn new(sender: chmux::Sender) -> Self {
         Self { sender, big_data: 0, _data: PhantomData, _codec: PhantomData }
     }

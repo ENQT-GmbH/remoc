@@ -1,4 +1,11 @@
-//! A single-producer, multi-consumer channel that only retains the last sent value.
+//! A single-producer, multi-consumer remote channel that only retains the last sent value.
+//!
+//! The sender and receiver can both be sent to remote endpoints.
+//! The channel also works if both halves are local.
+//! Forwarding over multiple connections is supported.
+//!
+//! This has similar functionality as [tokio::sync::watch] with the additional
+//! ability to work over remote connections.
 
 use std::{fmt, ops::Deref};
 

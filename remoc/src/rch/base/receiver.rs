@@ -118,8 +118,7 @@ impl PortDeserializer {
     }
 
     /// Returns the data storage of the channel multiplexer.
-    #[allow(dead_code)]
-    pub(crate) fn storage<E>() -> Result<AnyStorage, E>
+    pub fn storage<E>() -> Result<AnyStorage, E>
     where
         E: serde::de::Error,
     {
@@ -161,7 +160,7 @@ where
     T: DeserializeOwned + Send + 'static,
     Codec: codec::Codec,
 {
-    /// Create a remote receiver from a ChMux receiver.
+    /// Creates a base remote receiver from a [chmux] receiver.
     pub fn new(receiver: chmux::Receiver) -> Self {
         Self {
             receiver,

@@ -1,6 +1,6 @@
 //! Low-level channel multiplexer.
 //!
-//! Multiplexes multiple channels over a single physical channel 
+//! Multiplexes multiple channels over a single physical channel
 //! (anything that implements [Sink](futures::Sink) and [Stream](futures::Stream)).
 //!
 //! You probably do not want to use this directly.

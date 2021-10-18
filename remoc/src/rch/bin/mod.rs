@@ -1,4 +1,4 @@
-//! Binary channel.
+//! A channel that exchanges binary data with a remote endpoint.
 //!
 //! Allow low-overhead exchange of binary data.
 //! One end of the channel must be local while the other end must be remote.

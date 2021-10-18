@@ -4,22 +4,22 @@
 //! data representations.
 //! Thus you should refer to the corresponding crate documentation for information
 //! about limitations and backward as well as foreward compatibility.
-//! 
-//! ## Crate codec features 
-//! 
+//!
+//! ## Crate features
+//!
 //! Each codec is gated by the corresponding crate feature `codec-*`, i.e.
 //! the JSON codec is only available if the crate features `codec-json` is enabled.
-//! 
-//! The default codec, named [Default](struct@Default), can be selected by enabling the 
+//!
+//! The default codec, named [Default](struct@Default), can be selected by enabling the
 //! appropriate `default-codec-*` crate feature.
 //! For example, if you want to use the JSON codec by default, enable the crate feature
 //! `default-codec-json`.
 //! Only one default codec feature must be enabled, otherwise a compile error will occur.
 //! The default codec should only be selected by an application and not a library crate
 //! that uses ReMOC.
-//! Otherwise a conflict between multiple libraries that depend upon different default 
+//! Otherwise a conflict between multiple libraries that depend upon different default
 //! codecs will occur.
-//! 
+//!
 //! By default all codecs are enabled and the default codec is JSON.
 
 use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize};
