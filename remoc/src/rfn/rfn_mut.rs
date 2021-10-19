@@ -43,6 +43,8 @@ impl Drop for RFnMutProvider {
 }
 
 /// Calls an async [FnMut] function possibly located on a remote endpoint.
+///
+/// The function can take between zero and ten arguments.
 #[derive(Serialize, Deserialize)]
 #[serde(bound(serialize = "A: RemoteSend, R: RemoteSend, Codec: codec::Codec"))]
 #[serde(bound(deserialize = "A: RemoteSend, R: RemoteSend, Codec: codec::Codec"))]
@@ -52,7 +54,7 @@ pub struct RFnMut<A, R, Codec = codec::Default> {
 
 impl<A, R, Codec> fmt::Debug for RFnMut<A, R, Codec> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("RFn").finish_non_exhaustive()
+        f.debug_struct("RFn").finish()
     }
 }
 
@@ -63,12 +65,12 @@ where
     Codec: codec::Codec,
 {
     /// Create a new remote function.
-    pub fn new<F, Fut>(fun: F) -> Self
+    fn new_int<F, Fut>(fun: F) -> Self
     where
         F: FnMut(A) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = R> + Send,
     {
-        let (rfn, provider) = Self::provided(fun);
+        let (rfn, provider) = Self::provided_int(fun);
         provider.keep();
         rfn
     }
@@ -76,7 +78,7 @@ where
     /// Create a new remote function and return it with its provider.
     ///
     /// See the [module-level documentation](super) for details.
-    pub fn provided<F, Fut>(mut fun: F) -> (Self, RFnMutProvider)
+    fn provided_int<F, Fut>(mut fun: F) -> (Self, RFnMutProvider)
     where
         F: FnMut(A) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = R> + Send,
@@ -118,7 +120,7 @@ where
     }
 
     /// Try to call the remote function.
-    pub async fn try_call(&mut self, argument: A) -> Result<R, CallError> {
+    async fn try_call_int(&mut self, argument: A) -> Result<R, CallError> {
         let (result_tx, result_rx) = oneshot::channel();
         let _ = self.request_tx.send(RFnRequest { argument, result_tx }).await;
 
@@ -137,10 +139,23 @@ where
     /// Call the remote function.
     ///
     /// The [CallError] type must be convertable to the functions error type.
-    pub async fn call(&mut self, argument: A) -> Result<RT, RE> {
-        Ok(self.try_call(argument).await??)
+    async fn call_int(&mut self, argument: A) -> Result<RT, RE> {
+        Ok(self.try_call_int(argument).await??)
     }
 }
+
+// Calls for variable number of arguments.
+#[rustfmt::skip] arg_stub!(RFnMut, FnMut, RFnMutProvider, new_0, provided_0, (&mut), );
+#[rustfmt::skip] arg_stub!(RFnMut, FnMut, RFnMutProvider, new_1, provided_1, (&mut), arg1: A1);
+#[rustfmt::skip] arg_stub!(RFnMut, FnMut, RFnMutProvider, new_2, provided_2, (&mut), arg1: A1, arg2: A2);
+#[rustfmt::skip] arg_stub!(RFnMut, FnMut, RFnMutProvider, new_3, provided_3, (&mut), arg1: A1, arg2: A2, arg3: A3);
+#[rustfmt::skip] arg_stub!(RFnMut, FnMut, RFnMutProvider, new_4, provided_4, (&mut), arg1: A1, arg2: A2, arg3: A3, arg4: A4);
+#[rustfmt::skip] arg_stub!(RFnMut, FnMut, RFnMutProvider, new_5, provided_5, (&mut), arg1: A1, arg2: A2, arg3: A3, arg4: A4, arg5: A5);
+#[rustfmt::skip] arg_stub!(RFnMut, FnMut, RFnMutProvider, new_6, provided_6, (&mut), arg1: A1, arg2: A2, arg3: A3, arg4: A4, arg5: A5, arg6: A6);
+#[rustfmt::skip] arg_stub!(RFnMut, FnMut, RFnMutProvider, new_7, provided_7, (&mut), arg1: A1, arg2: A2, arg3: A3, arg4: A4, arg5: A5, arg6: A6, arg7: A7);
+#[rustfmt::skip] arg_stub!(RFnMut, FnMut, RFnMutProvider, new_8, provided_8, (&mut), arg1: A1, arg2: A2, arg3: A3, arg4: A4, arg5: A5, arg6: A6, arg7: A7, arg8: A8);
+#[rustfmt::skip] arg_stub!(RFnMut, FnMut, RFnMutProvider, new_9, provided_9, (&mut), arg1: A1, arg2: A2, arg3: A3, arg4: A4, arg5: A5, arg6: A6, arg7: A7, arg8: A8, arg9: A9);
+#[rustfmt::skip] arg_stub!(RFnMut, FnMut, RFnMutProvider, new_10, provided_10, (&mut), arg1: A1, arg2: A2, arg3: A3, arg4: A4, arg5: A5, arg6: A6, arg7: A7, arg8: A8, arg9: A9, arg10: A10);
 
 impl<A, R, Codec> Drop for RFnMut<A, R, Codec> {
     fn drop(&mut self) {

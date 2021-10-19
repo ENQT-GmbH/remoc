@@ -5,11 +5,11 @@ use crate::loop_channel;
 #[tokio::test]
 async fn simple() {
     crate::init();
-    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<RFnOnce<i16, Result<String, CallError>>>().await;
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<RFnOnce<_, Result<String, CallError>>>().await;
 
     let reply_value = "reply".to_string();
     let fn_value = reply_value.clone();
-    let rfn = RFnOnce::new(|arg: i16| async move {
+    let rfn = RFnOnce::new_1(|arg: i16| async move {
         assert_eq!(arg, 123);
         Ok(fn_value)
     });

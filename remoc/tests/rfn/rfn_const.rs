@@ -5,9 +5,9 @@ use crate::loop_channel;
 #[tokio::test]
 async fn simple() {
     crate::init();
-    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<RFn<i16, Result<i16, CallError>>>().await;
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<RFn<_, _>>().await;
 
-    let rfn = RFn::new(|arg: i16| async move { Ok(-arg) });
+    let rfn = RFn::new_1(|arg: i16| async move { Ok::<_, CallError>(-arg) });
 
     println!("Sending remote function");
     a_tx.send(rfn).await.unwrap();
