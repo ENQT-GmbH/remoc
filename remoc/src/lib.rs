@@ -2,7 +2,7 @@
 #![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-//! ReMOC🐙 — Remote multiplexed objects and channels
+//! ReMOC 🦑 — Remote multiplexed objects and channels
 //!
 //! # Crate features
 //!
