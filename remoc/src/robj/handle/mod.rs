@@ -159,6 +159,8 @@ impl<Codec> fmt::Debug for State<Codec> {
 ///
 /// If the value is stored locally, the handle can be used to obtain the value
 /// or a (mutable) reference to it.
+///
+/// See [module-level documentation](self) for details.
 #[derive(Clone)]
 pub struct Handle<T, Codec = codec::Default> {
     state: State<Codec>,

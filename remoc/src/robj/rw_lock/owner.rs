@@ -14,6 +14,8 @@ use crate::{
 /// The owner of [RwLock]s holding a shared value.
 ///
 /// All acquired locks become invalid when this is dropped.
+///
+/// See [module-level documentation](super) for details.
 pub struct Owner<T, Codec = codec::Default> {
     task: Option<JoinHandle<T>>,
     rw_lock: RwLock<T, Codec>,
@@ -67,22 +69,7 @@ where
 
         loop {
             tokio::select! {
-                // Read value request.
-                res = read_req_rx.recv() => {
-                    let ReadRequest {value_tx} = if let Ok(Some(req)) = res {
-                        req
-                    } else {
-                        continue;
-                    };
-
-                    // Send current value together with invalidation channels.
-                    let v = Value {
-                        value: value.clone(),
-                        dropped_tx: dropped_tx.clone(),
-                        invalid_rx: invalid_rx.clone(),
-                    };
-                    let _ = value_tx.send(v);
-                },
+                biased;
 
                 // Write value request.
                 res = write_req_rx.recv() => {
@@ -125,7 +112,24 @@ where
                         // Send confirmation.
                         let _ = confirm_tx.send(());
                     }
-                }
+                },
+
+                // Read value request.
+                res = read_req_rx.recv() => {
+                    let ReadRequest {value_tx} = if let Ok(Some(req)) = res {
+                        req
+                    } else {
+                        continue;
+                    };
+
+                    // Send current value together with invalidation channels.
+                    let v = Value {
+                        value: value.clone(),
+                        dropped_tx: dropped_tx.clone(),
+                        invalid_rx: invalid_rx.clone(),
+                    };
+                    let _ = value_tx.send(v);
+                },
             }
         }
     }

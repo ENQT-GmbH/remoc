@@ -6,6 +6,13 @@
 //!
 //! This has similar functionality as [tokio::sync::watch] with the additional
 //! ability to work over remote connections.
+//!
+//! ## Alternatives
+//!
+//! If your endpoints need the ability to change the value and synchronize the changes
+//! with other endpoints, consider using an [read/write lock](crate::robj::rw_lock)
+//! instead.
+//!
 
 use std::{fmt, ops::Deref};
 

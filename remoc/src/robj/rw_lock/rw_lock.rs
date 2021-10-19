@@ -88,6 +88,8 @@ impl Error for CommitError {}
 /// A lock that allows reading of a shared value, possibly stored on a remote endpoint.
 ///
 /// This can be cloned and sent to remote endpoints.
+///
+/// See [module-level documentation](super) for details.
 #[derive(Serialize, Deserialize)]
 #[serde(bound(serialize = "T: RemoteSend, Codec: codec::Codec"))]
 #[serde(bound(deserialize = "T: RemoteSend, Codec: codec::Codec"))]
@@ -193,6 +195,10 @@ where
 }
 
 /// RAII structure used to release the shared read access of a lock when dropped.
+///
+/// As long as this is held, no write access to the lock can occur.
+/// It is therefore recommend to either hold the guard for only short periods of time
+/// or call [invalidated](Self::invalidated) to be notified when write access is requested.
 pub struct ReadGuard<'a, T, Codec = codec::Default>(tokio::sync::RwLockReadGuard<'a, Value<T, Codec>>);
 
 impl<'a, T, Codec> ReadGuard<'a, T, Codec>
@@ -247,6 +253,8 @@ impl<'a, T, Codec> Drop for ReadGuard<'a, T, Codec> {
 /// A lock that allows reading and writing of a shared value, possibly stored on a remote endpoint.
 ///
 /// This can be cloned and sent to remote endpoints.
+///
+/// See [module-level documentation](super) for details.
 #[derive(Serialize, Deserialize)]
 #[serde(bound(serialize = "T: RemoteSend, Codec: codec::Codec"))]
 #[serde(bound(deserialize = "T: RemoteSend, Codec: codec::Codec"))]
@@ -295,11 +303,13 @@ where
     /// When called the following things occur:
     ///
     /// 1. A message is sent to the [owner](super::Owner), indicating that write access is requested.
-    /// 2. The owner messages all [read guards](ReadGuard) that they are invalidated.
+    /// 2. The owner stops processing read requests and messages all [read guards](ReadGuard) that
+    ///    they are invalidated.
     /// 3. The owner waits from confirmation from all read guards that they have been dropped.
     /// 4. The owner sends the current shared value to this RwLock, which creates a [WriteGuard]
     ///    to allow write access.
     /// 5. Once [WriteGuard::commit] has been called, the updated value is sent back to the owner.
+    /// 6. The owner starts processing other read and write requests again.
     pub async fn write(&self) -> Result<WriteGuard<T, Codec>, LockError> {
         let (value_tx, value_rx) = oneshot::channel();
         let (new_value_tx, new_value_rx) = oneshot::channel();
