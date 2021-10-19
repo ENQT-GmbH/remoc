@@ -6,6 +6,44 @@
 //!
 //! This has similar functionality as [tokio::sync::mpsc] with the additional
 //! ability to work over remote connections.
+//!
+//! # Example
+//!
+//! In the following example the client sends a number and an MPSC channel sender to the server.
+//! The server counts to the number and sends each value to the client over the MPSC channel.
+//!
+//! ```
+//! use remoc::prelude::*;
+//!
+//! #[derive(Debug, serde::Serialize, serde::Deserialize)]
+//! struct CountReq {
+//!     up_to: u32,
+//!     seq_tx: rch::mpsc::Sender<u32>,
+//! }
+//!
+//! // This would be run on the client.
+//! async fn client(mut tx: rch::base::Sender<CountReq>) {
+//!     let (seq_tx, mut seq_rx) = rch::mpsc::channel(1);
+//!     tx.send(CountReq { up_to: 4, seq_tx }).await.unwrap();
+//!
+//!     assert_eq!(seq_rx.recv().await.unwrap(), Some(0));
+//!     assert_eq!(seq_rx.recv().await.unwrap(), Some(1));
+//!     assert_eq!(seq_rx.recv().await.unwrap(), Some(2));
+//!     assert_eq!(seq_rx.recv().await.unwrap(), Some(3));
+//!     assert_eq!(seq_rx.recv().await.unwrap(), None);
+//! }
+//!
+//! // This would be run on the server.
+//! async fn server(mut rx: rch::base::Receiver<CountReq>) {
+//!     while let Some(CountReq { up_to, seq_tx }) = rx.recv().await.unwrap() {
+//!         for i in 0..up_to {
+//!             seq_tx.send(i).await.unwrap();
+//!         }
+//!     }
+//! }
+//! # tokio_test::block_on(remoc::doctest::client_server(client, server));
+//! ```
+//!
 
 use crate::RemoteSend;
 

@@ -12,7 +12,7 @@
 //! Each wrapper spawns an async tasks that processes function execution requests
 //! from the remote endpoint.
 //!
-//! ## Usage
+//! # Usage
 //!
 //! Create a wrapper locally and send it to a remote endpoint, for example over a
 //! channel from the [rch](crate::rch) module.
@@ -24,7 +24,7 @@
 //! Note that the function is executed locally.
 //! Only the arguments and return value are transmitted from and to the remote endpoint.
 //!
-//! ## Return type
+//! # Return type
 //!
 //! Since a remote function call can fail due to connection problems, the return type
 //! of the wrapped function must always be of the [Result] type.
@@ -33,7 +33,7 @@
 //! If you return a different type the `call` method will not be available on the wrapper,
 //! but you can still use the `try_call` method, which wraps the result into a [Result] type.
 //!
-//! ## Providers
+//! # Providers
 //!
 //! Optionally you can use the `provided` method of each wrapper to obtain a
 //! provider for each remote function wrapper.

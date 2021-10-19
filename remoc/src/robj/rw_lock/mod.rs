@@ -14,7 +14,7 @@
 //! and the remote endpoints, thus its performance is limited by the physical connection
 //! latency.
 //!
-//! ## Usage
+//! # Usage
 //!
 //! [Create an RwLock owner](Owner::new) and use [Owner::rw_lock] to acquire
 //! read/write locks that can be send to remote endpoints, for example over a
@@ -24,7 +24,7 @@
 //! When the [owner](Owner) is dropped, all locks become invalid and the value
 //! is dropped.
 //!
-//! ## Alternatives
+//! # Alternatives
 //!
 //! If you require to broadcast value to multiple endpoints that just require read
 //! access, a [watch channel](crate::rch::watch) might be a simpler and better option.

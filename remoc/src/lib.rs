@@ -51,3 +51,7 @@ pub mod rtc;
 mod provider;
 #[cfg(any(feature = "rfn", feature = "robj"))]
 pub use provider::Provider;
+
+#[doc(hidden)]
+#[cfg(feature = "rch")]
+pub mod doctest;
