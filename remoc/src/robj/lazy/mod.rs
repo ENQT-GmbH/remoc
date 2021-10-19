@@ -9,6 +9,8 @@
 //! While this can save transmission bandwidth the drawback is an additional
 //! delay of the connection round-trip time when the lazy value is requested.
 //!
+//! This can be forwarded over multiple remote endpoints.
+//!
 
 use futures::{
     future::{self, BoxFuture, MaybeDone},
@@ -103,6 +105,8 @@ impl Drop for Provider {
 /// Lazy value.
 ///
 /// Allow the reception of a value when requested.
+///
+/// See [module-level documentation](self) for details.
 #[derive(Serialize, Deserialize)]
 #[serde(bound(serialize = "T: RemoteSend, Codec: codec::Codec"))]
 #[serde(bound(deserialize = "T: RemoteSend, Codec: codec::Codec"))]

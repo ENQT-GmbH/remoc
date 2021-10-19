@@ -1,4 +1,19 @@
-//! Lazy transmission of large binary data.
+//! Lazy transmission of binary data.
+//!
+//! This allows a remote endpoint to optionally request the transmission of binary data.
+//! For example, a client may only be interested sometimes in some data or it
+//! wants to know the size of the data before receiving it.
+//! By wrapping the binary data in a [LazyBlob], the client can query its size by
+//! [LazyBlob::len] and request transfer by calling [LazyBlob::get].
+//!
+//! Transmission is performed over a [chmux] binary channel without the overhead
+//! of a [codec].
+//! The transmission takes place in chunks, so that other channels are not blocked
+//! when transferring a large amount of binary data.
+//!
+//! A [LazyBlob] can be forwarded over multiple remote endpoints.
+//! The size of the binary data is limited by [usize::MAX].
+//!
 
 use bytes::Bytes;
 use futures::{
@@ -13,7 +28,7 @@ use tokio::sync::Mutex;
 use crate::{
     chmux,
     chmux::DataBuf,
-    codec::{self},
+    codec,
     rch::{buffer, mpsc, ConnectError},
 };
 
@@ -97,7 +112,11 @@ impl Drop for Provider {
     }
 }
 
-/// Lazily transferred binary data.
+/// Lazily transferred binary data. 🐡💤
+///
+/// Allows efficient transmission of large binary data on-demand.
+///
+/// See [module-level documentation](self) for details.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound(serialize = "Codec: codec::Codec"))]
 #[serde(bound(deserialize = "Codec: codec::Codec"))]
