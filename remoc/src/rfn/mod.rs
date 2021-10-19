@@ -5,9 +5,9 @@
 //! Since Rust differentiates between immutable, mutable and by-value functions,
 //! remote wrappers for all three kinds of functions are provided here.
 //!
-//! All wrappers take a single function argument, but you can use a tuple as
-//! argument to simulate standard multi-argument call syntax.
-//! The argument and return type of the function must be [remote sendable](crate::RemoteSend).
+//! All wrappers take between zero and ten arguments, but you can use a tuple as
+//! argument if you need more than that.
+//! The arguments and return type of the function must be [remote sendable](crate::RemoteSend).
 //!
 //! Each wrapper spawns an async tasks that processes function execution requests
 //! from the remote endpoint.
@@ -16,12 +16,13 @@
 //!
 //! Create a wrapper locally and send it to a remote endpoint, for example over a
 //! channel from the [rch](crate::rch) module.
+//! You must use the `new_n` method where `n` is the number of arguments of the function.
 //! You can also send the wrapper as part of a larger object, such as a struct, tuple
 //! or enum.
 //! Then use the `call` method on the remote endpoint to remotely invoke the local function.
 //!
 //! Note that the function is executed locally.
-//! Only the argument and return value are transmitted from and to the remote endpoint.
+//! Only the arguments and return value are transmitted from and to the remote endpoint.
 //!
 //! ## Return type
 //!
@@ -50,15 +51,6 @@ use crate::{
     chmux,
     rch::{base, oneshot},
 };
-
-mod msg;
-mod rfn_const;
-mod rfn_mut;
-mod rfn_once;
-
-pub use rfn_const::{RFn, RFnProvider};
-pub use rfn_mut::{RFnMut, RFnMutProvider};
-pub use rfn_once::{RFnOnce, RFnOnceProvider};
 
 /// An error occured during calling a remote function.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -96,3 +88,68 @@ impl From<oneshot::RecvError> for CallError {
 }
 
 impl Error for CallError {}
+
+/// Generate argument call stubs.
+macro_rules! arg_stub {
+    ($name:ident, $fn_type:ident, $provider_type:ident, $new:ident, $provided:ident, ( $( $self_prefix:tt )* ), $( $arg:ident : $arg_type:ident ),*) => {
+        impl < $( $arg_type , )* R, Codec> $name < ($($arg_type ,)*), R, Codec>
+        where
+            $( $arg_type : RemoteSend ,)*
+            R: RemoteSend,
+            Codec: codec::Codec,
+        {
+            /// Create a new remote function.
+            #[allow(unused_mut)]
+            pub fn $new <F, Fut>(mut fun: F) -> Self
+            where
+                F: $fn_type ($($arg_type),*) -> Fut + Send + Sync + 'static,
+                Fut: Future<Output = R> + Send,
+            {
+                Self::new_int(move |( $($arg ,)* )| fun($($arg),*))
+            }
+
+            /// Create a new remote function and return it with its provider.
+            ///
+            /// See the [module-level documentation](super) for details.
+            #[allow(unused_mut)]
+            pub fn $provided <F, Fut>(mut fun: F) -> (Self, $provider_type)
+            where
+                F: $fn_type ($($arg_type),*) -> Fut + Send + Sync + 'static,
+                Fut: Future<Output = R> + Send,
+            {
+                Self::provided_int(move |( $($arg ,)* )| fun($($arg),*))
+            }
+
+            /// Try to call the remote function.
+            #[allow(clippy::too_many_arguments)]
+            pub async fn try_call( $( $self_prefix )* self, $( $arg : $arg_type ),* ) -> Result<R, CallError> {
+                self.try_call_int(( $($arg ,)* )).await
+            }
+        }
+
+        impl < $($arg_type ,)* RT, RE, Codec> $name < ($($arg_type ,)* ), Result<RT, RE>, Codec>
+        where
+            $( $arg_type : RemoteSend ,)*
+            RT: RemoteSend,
+            RE: RemoteSend + From<CallError>,
+            Codec: codec::Codec,
+        {
+            /// Call the remote function.
+            ///
+            /// The [CallError] type must be convertable to the functions error type.
+            #[allow(clippy::too_many_arguments)]
+            pub async fn call($( $self_prefix )* self, $( $arg : $arg_type ),*) -> Result<RT, RE> {
+                self.call_int(( $($arg ,)* )).await
+            }
+        }
+    };
+}
+
+mod msg;
+mod rfn_const;
+mod rfn_mut;
+mod rfn_once;
+
+pub use rfn_const::{RFn, RFnProvider};
+pub use rfn_mut::{RFnMut, RFnMutProvider};
+pub use rfn_once::{RFnOnce, RFnOnceProvider};

@@ -46,6 +46,8 @@ impl Drop for RFnProvider {
 ///
 /// The remote function can be cloned and executed simultaneously from multiple callers.
 /// For each invocation a new async task is spawned.
+///
+/// The function can take between zero and ten arguments.
 #[derive(Serialize, Deserialize)]
 #[serde(bound(serialize = "A: RemoteSend, R: RemoteSend, Codec: codec::Codec"))]
 #[serde(bound(deserialize = "A: RemoteSend, R: RemoteSend, Codec: codec::Codec"))]
@@ -61,7 +63,7 @@ impl<A, R, Codec> Clone for RFn<A, R, Codec> {
 
 impl<A, R, Codec> fmt::Debug for RFn<A, R, Codec> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("RFn").finish_non_exhaustive()
+        f.debug_struct("RFn").finish()
     }
 }
 
@@ -72,12 +74,12 @@ where
     Codec: codec::Codec,
 {
     /// Create a new remote function.
-    pub fn new<F, Fut>(fun: F) -> Self
+    fn new_int<F, Fut>(fun: F) -> Self
     where
         F: Fn(A) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = R> + Send,
     {
-        let (rfn, provider) = Self::provided(fun);
+        let (rfn, provider) = Self::provided_int(fun);
         provider.keep();
         rfn
     }
@@ -85,7 +87,7 @@ where
     /// Create a new remote function and return it with its provider.
     ///
     /// See the [module-level documentation](super) for details.
-    pub fn provided<F, Fut>(fun: F) -> (Self, RFnProvider)
+    fn provided_int<F, Fut>(fun: F) -> (Self, RFnProvider)
     where
         F: Fn(A) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = R> + Send,
@@ -131,7 +133,7 @@ where
     }
 
     /// Try to call the remote function.
-    pub async fn try_call(&self, argument: A) -> Result<R, CallError> {
+    async fn try_call_int(&self, argument: A) -> Result<R, CallError> {
         let (result_tx, result_rx) = oneshot::channel();
         let _ = self.request_tx.send(RFnRequest { argument, result_tx }).await;
 
@@ -150,10 +152,23 @@ where
     /// Call the remote function.
     ///
     /// The [CallError] type must be convertable to the functions error type.
-    pub async fn call(&self, argument: A) -> Result<RT, RE> {
-        Ok(self.try_call(argument).await??)
+    async fn call_int(&self, argument: A) -> Result<RT, RE> {
+        Ok(self.try_call_int(argument).await??)
     }
 }
+
+// Calls for variable number of arguments.
+#[rustfmt::skip] arg_stub!(RFn, Fn, RFnProvider, new_0, provided_0, (&), );
+#[rustfmt::skip] arg_stub!(RFn, Fn, RFnProvider, new_1, provided_1, (&), arg1: A1);
+#[rustfmt::skip] arg_stub!(RFn, Fn, RFnProvider, new_2, provided_2, (&), arg1: A1, arg2: A2);
+#[rustfmt::skip] arg_stub!(RFn, Fn, RFnProvider, new_3, provided_3, (&), arg1: A1, arg2: A2, arg3: A3);
+#[rustfmt::skip] arg_stub!(RFn, Fn, RFnProvider, new_4, provided_4, (&), arg1: A1, arg2: A2, arg3: A3, arg4: A4);
+#[rustfmt::skip] arg_stub!(RFn, Fn, RFnProvider, new_5, provided_5, (&), arg1: A1, arg2: A2, arg3: A3, arg4: A4, arg5: A5);
+#[rustfmt::skip] arg_stub!(RFn, Fn, RFnProvider, new_6, provided_6, (&), arg1: A1, arg2: A2, arg3: A3, arg4: A4, arg5: A5, arg6: A6);
+#[rustfmt::skip] arg_stub!(RFn, Fn, RFnProvider, new_7, provided_7, (&), arg1: A1, arg2: A2, arg3: A3, arg4: A4, arg5: A5, arg6: A6, arg7: A7);
+#[rustfmt::skip] arg_stub!(RFn, Fn, RFnProvider, new_8, provided_8, (&), arg1: A1, arg2: A2, arg3: A3, arg4: A4, arg5: A5, arg6: A6, arg7: A7, arg8: A8);
+#[rustfmt::skip] arg_stub!(RFn, Fn, RFnProvider, new_9, provided_9, (&), arg1: A1, arg2: A2, arg3: A3, arg4: A4, arg5: A5, arg6: A6, arg7: A7, arg8: A8, arg9: A9);
+#[rustfmt::skip] arg_stub!(RFn, Fn, RFnProvider, new_10, provided_10, (&), arg1: A1, arg2: A2, arg3: A3, arg4: A4, arg5: A5, arg6: A6, arg7: A7, arg8: A8, arg9: A9, arg10: A10);
 
 impl<A, R, Codec> Drop for RFn<A, R, Codec> {
     fn drop(&mut self) {
