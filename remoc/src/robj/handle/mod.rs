@@ -3,7 +3,7 @@
 //! Handles provide the ability to send a shared reference to a local object to
 //! a remote endpoint.
 //! The remote endpoint cannot access the referenced object remotely but it can send back
-//! the handle, which can then be dereferenced locally.
+//! the handle (or a clone of it), which can then be dereferenced locally.
 //!
 //! Handles can be cloned and they are reference counted.
 //! If all handles to the object are dropped, it is dropped automatically.
@@ -12,8 +12,23 @@
 //! 
 //! [Create a handle](Handle::new) to an object and send it to a remote endpoint, for example 
 //! over a channel from the [rch](crate::rch) module.
-//! When you receive a handle from the remote endpoint, use [Handle::as_ref] to access the
-//! object it references.
+//! When you receive a handle that was created locally from the remote endpoint, use [Handle::as_ref] 
+//! to access the object it references.
+//! Calling [Handle::as_ref] on a handle that was not created locally will result in an error.
+//! 
+//! ## Security
+//! 
+//! When sending a handle an UUID is generated, associated with the object and send to the
+//! remote endpoint.
+//! Since the object itself is never send, there is no risk that private data within the object 
+//! may be accessed remotely.
+//! 
+//! The UUID is associated with the [channel multiplexer](crate::chmux) over which the 
+//! handle was sent to the remote endpoint and a received handle can only access the object
+//! if it is received over the same channel multiplexer connection.
+//! Thus, even if the UUID is eavesdropped during transmission, another remote endpoint connected
+//! via a different channel multiplexer connection will not be able to access the object
+//! by constructing and sending back a handle with the eavesdropped UUID.
 //! 
 
 use serde::{Deserialize, Serialize};
@@ -197,6 +212,8 @@ where
     /// Takes the value of the handle and returns it, if it is stored locally.
     ///
     /// The handle and all its clones become invalid.
+    /// 
+    /// This blocks until all existing read and write reference have been released.
     pub async fn into_inner(mut self) -> Result<T, HandleError> {
         let entry = match mem::take(&mut self.state) {
             State::LocalCreated { entry, .. } => entry,
@@ -215,6 +232,8 @@ where
     }
 
     /// Returns a reference to the value of the handle, if it is stored locally.
+    /// 
+    /// This blocks until all existing write reference have been released.
     pub async fn as_ref(&self) -> Result<Ref<T>, HandleError> {
         let entry = match &self.state {
             State::LocalCreated { entry, .. } | State::LocalReceived { entry, .. } => entry.clone(),
@@ -237,6 +256,8 @@ where
     }
 
     /// Returns a mutable reference to the value of the handle, if it is stored locally.
+    /// 
+    /// This blocks until all existing read and write reference have been released.
     pub async fn as_mut(&mut self) -> Result<RefMut<T>, HandleError> {
         let entry = match &self.state {
             State::LocalCreated { entry, .. } | State::LocalReceived { entry, .. } => entry.clone(),
