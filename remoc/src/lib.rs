@@ -46,3 +46,8 @@ pub mod robj;
 #[cfg(feature = "rtc")]
 #[cfg_attr(docsrs, doc(cfg(feature = "rtc")))]
 pub mod rtc;
+
+#[cfg(any(feature = "rfn", feature = "robj"))]
+mod provider;
+#[cfg(any(feature = "rfn", feature = "robj"))]
+pub use provider::Provider;

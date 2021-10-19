@@ -18,7 +18,7 @@ pub struct RFnMutProvider {
 
 impl fmt::Debug for RFnMutProvider {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("RFnMutProvider").finish_non_exhaustive()
+        f.debug_struct("RFnMutProvider").finish()
     }
 }
 
@@ -54,7 +54,7 @@ pub struct RFnMut<A, R, Codec = codec::Default> {
 
 impl<A, R, Codec> fmt::Debug for RFnMut<A, R, Codec> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("RFn").finish()
+        f.debug_struct("RFnMut").finish()
     }
 }
 
