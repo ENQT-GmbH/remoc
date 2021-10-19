@@ -87,13 +87,13 @@ impl<'transport, TransportSinkError, TransportStreamError>
     ///
     /// # Panics
     /// Panics if the chmux configuration is invalid.
-    pub async fn framed<TransportSink, TransportStream, T, Codec>(
+    pub async fn framed<TransportSink, TransportStream, Tx, Rx, Codec>(
         chmux_cfg: chmux::Cfg, transport_sink: TransportSink, transport_stream: TransportStream,
     ) -> Result<
         (
             Connect<'transport, TransportSinkError, TransportStreamError>,
-            base::Sender<T, Codec>,
-            base::Receiver<T, Codec>,
+            base::Sender<Tx, Codec>,
+            base::Receiver<Rx, Codec>,
         ),
         ConnectError<TransportSinkError, TransportStreamError>,
     >
@@ -102,7 +102,8 @@ impl<'transport, TransportSinkError, TransportStreamError>
         TransportSinkError: Error + Send + Sync + 'static,
         TransportStream: Stream<Item = Result<Bytes, TransportStreamError>> + Send + Sync + Unpin + 'transport,
         TransportStreamError: Error + Send + Sync + 'static,
-        T: RemoteSend,
+        Tx: RemoteSend,
+        Rx: RemoteSend,
         Codec: codec::Codec,
     {
         let (mux, client, mut listener) = ChMux::new(chmux_cfg, transport_sink, transport_stream).await?;
@@ -136,16 +137,17 @@ impl<'transport> Connect<'transport, io::Error, io::Error> {
     ///
     /// # Panics
     /// Panics if the chmux configuration is invalid.
-    pub async fn io<Read, Write, T, Codec>(
+    pub async fn io<Read, Write, Tx, Rx, Codec>(
         chmux_cfg: chmux::Cfg, input: Read, output: Write,
     ) -> Result<
-        (Connect<'transport, io::Error, io::Error>, base::Sender<T, Codec>, base::Receiver<T, Codec>),
+        (Connect<'transport, io::Error, io::Error>, base::Sender<Tx, Codec>, base::Receiver<Rx, Codec>),
         ConnectError<io::Error, io::Error>,
     >
     where
         Read: AsyncRead + Send + Sync + Unpin + 'transport,
         Write: AsyncWrite + Send + Sync + Unpin + 'transport,
-        T: RemoteSend,
+        Tx: RemoteSend,
+        Rx: RemoteSend,
         Codec: codec::Codec,
     {
         let max_recv_frame_length: usize = chmux_cfg.max_frame_length().try_into().unwrap();
@@ -175,16 +177,17 @@ impl<'transport> Connect<'transport, io::Error, io::Error> {
     ///
     /// # Panics
     /// Panics if the chmux configuration is invalid.
-    pub async fn io_buffered<Read, Write, T, Codec>(
+    pub async fn io_buffered<Read, Write, Tx, Rx, Codec>(
         chmux_cfg: chmux::Cfg, input: Read, output: Write, buffer: usize,
     ) -> Result<
-        (Connect<'transport, io::Error, io::Error>, base::Sender<T, Codec>, base::Receiver<T, Codec>),
+        (Connect<'transport, io::Error, io::Error>, base::Sender<Tx, Codec>, base::Receiver<Rx, Codec>),
         ConnectError<io::Error, io::Error>,
     >
     where
         Read: AsyncRead + Send + Sync + Unpin + 'transport,
         Write: AsyncWrite + Send + Sync + Unpin + 'transport,
-        T: RemoteSend,
+        Tx: RemoteSend,
+        Rx: RemoteSend,
         Codec: codec::Codec,
     {
         let buf_input = BufReader::with_capacity(buffer, input);

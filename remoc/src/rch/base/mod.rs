@@ -9,6 +9,37 @@
 //! However, you can send (objects containing) senders and receivers of other
 //! channel types (for example [mpsc](super::mpsc), [oneshot](super::oneshot) or
 //! [watch](super::watch)) via this channel to a remote endpoint.
+//!
+//! # Example
+//!
+//! In the following example the client sends a number over a base channel to the server.
+//! The server converts it into a string and sends it back over another base channel.
+//! The base channels have been obtained using a [connect function](crate::Connect).
+//!
+//! ```
+//! use remoc::prelude::*;
+//!
+//! // This would be run on the client.
+//! async fn client(mut tx: rch::base::Sender<u16>, mut rx: rch::base::Receiver<String>) {
+//!     tx.send(1).await.unwrap();
+//!     assert_eq!(rx.recv().await.unwrap(), Some("1".to_string()));
+//!
+//!     tx.send(2).await.unwrap();
+//!     assert_eq!(rx.recv().await.unwrap(), Some("2".to_string()));
+//!
+//!     tx.send(3).await.unwrap();
+//!     assert_eq!(rx.recv().await.unwrap(), Some("3".to_string()));
+//! }
+//!
+//! // This would be run on the server.
+//! async fn server(mut tx: rch::base::Sender<String>, mut rx: rch::base::Receiver<u16>) {
+//!     while let Some(number) = rx.recv().await.unwrap() {
+//!         tx.send(number.to_string()).await.unwrap();
+//!     }
+//! }
+//! # tokio_test::block_on(remoc::doctest::client_server_bidir(client, server));
+//! ```
+//!
 
 use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt};
@@ -69,11 +100,12 @@ impl From<chmux::ListenerError> for ConnectError {
 /// one connection request from the listener.
 ///
 /// Other connections may coexist on the chmux connection.
-pub async fn connect<T, Codec>(
+pub async fn connect<Tx, Rx, Codec>(
     client: &chmux::Client, listener: &mut chmux::Listener,
-) -> Result<(Sender<T, Codec>, Receiver<T, Codec>), ConnectError>
+) -> Result<(Sender<Tx, Codec>, Receiver<Rx, Codec>), ConnectError>
 where
-    T: RemoteSend,
+    Tx: RemoteSend,
+    Rx: RemoteSend,
     Codec: codec::Codec,
 {
     let (client_sr, listener_sr) = tokio::join!(client.connect(), listener.accept());
