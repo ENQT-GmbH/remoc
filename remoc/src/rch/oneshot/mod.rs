@@ -6,6 +6,38 @@
 //!
 //! This has similar functionality as [tokio::sync::oneshot] with the additional
 //! ability to work over remote connections.
+//!
+//! # Example
+//!
+//! In the following example the client sends a number and a oneshot channel sender to the server.
+//! The server squares the received number and sends the result back over the oneshot channel.
+//!
+//! ```
+//! use remoc::prelude::*;
+//!
+//! #[derive(Debug, serde::Serialize, serde::Deserialize)]
+//! struct SquareReq {
+//!     number: u32,
+//!     result_tx: rch::oneshot::Sender<u32>,
+//! }
+//!
+//! // This would be run on the client.
+//! async fn client(mut tx: rch::base::Sender<SquareReq>) {
+//!     let (result_tx, result_rx) = rch::oneshot::channel();
+//!     tx.send(SquareReq { number: 4, result_tx }).await.unwrap();
+//!     let result = result_rx.await.unwrap();
+//!     assert_eq!(result, 16);
+//! }
+//!
+//! // This would be run on the server.
+//! async fn server(mut rx: rch::base::Receiver<SquareReq>) {
+//!     while let Some(req) = rx.recv().await.unwrap() {
+//!         req.result_tx.send(req.number * req.number).unwrap();
+//!     }
+//! }
+//! # tokio_test::block_on(remoc::doctest::client_server(client, server));
+//! ```
+//!
 
 use serde::{de::DeserializeOwned, Serialize};
 

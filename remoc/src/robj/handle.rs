@@ -8,7 +8,7 @@
 //! Handles can be cloned and they are reference counted.
 //! If all handles to the object are dropped, it is dropped automatically.
 //!
-//! ## Usage
+//! # Usage
 //!
 //! [Create a handle](Handle::new) to an object and send it to a remote endpoint, for example
 //! over a channel from the [rch](crate::rch) module.
@@ -16,7 +16,7 @@
 //! to access the object it references.
 //! Calling [Handle::as_ref] on a handle that was not created locally will result in an error.
 //!
-//! ## Security
+//! # Security
 //!
 //! When sending a handle an UUID is generated, associated with the object and send to the
 //! remote endpoint.

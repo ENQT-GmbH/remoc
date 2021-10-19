@@ -5,7 +5,7 @@
 //! Thus you should refer to the corresponding crate documentation for information
 //! about limitations and backward as well as foreward compatibility.
 //!
-//! ## Crate features
+//! # Crate features
 //!
 //! Each codec is gated by the corresponding crate feature `codec-*`, i.e.
 //! the JSON codec is only available if the crate features `codec-json` is enabled.

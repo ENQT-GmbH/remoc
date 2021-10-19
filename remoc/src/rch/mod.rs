@@ -8,7 +8,7 @@
 //! The [RemoteSend](crate::RemoteSend) trait is implemented automatically
 //! for all types that fulfill these requirements.
 //!
-//! ## Establishing a channel connection with a remote endpoint
+//! # Establishing a channel connection with a remote endpoint
 //!
 //! Except for a [base channel](base), a channel connection is established by sending
 //! the Sender or Receiver half of a channel to a remote endpoint over an already
@@ -21,7 +21,7 @@
 //! In most cases there is no need to create it directly and you will probably only use it
 //! after it has been returned from an [initial connect function](crate::Connect).
 //!
-//! ## Channel types
+//! # Channel types
 //!
 //! [Broadcast](broadcast), [MPSC](mpsc), [oneshot] and [watch] channels are closely
 //! modelled after the channels found in [tokio::sync].
@@ -39,7 +39,7 @@
 //! However, it does not support forwarding and exactly one half of it must be on a remote
 //! endpoint.
 //!
-//! ## Acknowledgements and connection latency
+//! # Acknowledgements and connection latency
 //!
 //! The channels do not wait for acknowledgement of transmitted values.
 //! Thus, the next value can be queued for transmission before the previous value
@@ -57,7 +57,7 @@
 //! The remote endpoint can then send back an empty message as confirmation over the oneshot channel
 //! after it has processed the received value.
 //!
-//! ## Size considerations
+//! # Size considerations
 //!
 //! The size of the objects exchanged is not limited.
 //! If the object is small enough it is first serialized into a buffer and then sent as

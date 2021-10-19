@@ -1,4 +1,4 @@
-# ReMOC🐙 — Remote multiplexed objects and channels
+# ReMOC 🦑 — Remote multiplexed objects and channels
 
 [![crates.io page](https://img.shields.io/crates/v/remoc)](https://crates.io/crates/remoc)
 [![docs.rs page](https://docs.rs/remoc/badge.svg)](https://docs.rs/remoc)
