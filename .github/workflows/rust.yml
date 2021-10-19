@@ -2,35 +2,34 @@ name: Rust
 
 on:
   push:
-    branches: [ master ]
+    branches: [master]
   pull_request:
-    branches: [ master ]
+    branches: [master]
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v2
-    - name: Check code formatting
-      run: cargo fmt -- --check
-    - name: Build
-      run: cargo build --examples --bins --quiet
-    - name: Build documentation
-      run: cargo doc --no-deps --quiet
-    - name: Run tests
-      run: cargo test --quiet
-    - name: Code analysis
-      run: cargo clippy --quiet
-    - name: Test rch feature only
-      run: cargo test --no-default-features --quiet --features rch
-    - name: Test rfn feature only
-      run: cargo test --no-default-features --quiet --features rfn
-    - name: Test robj feature only
-      run: cargo test --no-default-features --quiet --features robj
-    - name: Test rti feature only
-      run: cargo test --no-default-features --quiet --features rti
+      - uses: actions/checkout@v2
+      - name: Check code formatting
+        run: cargo fmt -- --check
+      - name: Build
+        run: cargo build --examples --bins --quiet
+      - name: Build documentation
+        run: cargo doc --no-deps --quiet
+      - name: Run tests
+        run: cargo test --quiet
+      - name: Code analysis
+        run: cargo clippy --quiet
+      - name: Test rch feature only
+        run: cargo test --no-default-features --quiet --features rch --features default-codec-bincode
+      - name: Test rfn feature only
+        run: cargo test --no-default-features --quiet --features rfn --features default-codec-cbor
+      - name: Test robj feature only
+        run: cargo test --no-default-features --quiet --features robj --features default-codec-json
+      - name: Test rti feature only
+        run: cargo test --no-default-features --quiet --features rti --features default-codec-message-pack
