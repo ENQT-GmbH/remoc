@@ -1,16 +1,25 @@
 //! Lazy transmission of values.
+//!
+//! This allows a remote endpoint to optionally request the transmission of a value.
+//! For example, a client may only be interested sometimes in the value of a field
+//! of a larger struct.
+//! By wrapping the value of this field in a [Lazy], the value of the field is
+//! not initially transmitted with the struct, but the client can request it by
+//! calling [Lazy::get] if interested.
+//! While this can save transmission bandwidth the drawback is an additional
+//! delay of the connection round-trip time when the lazy value is requested.
+//!
 
 use futures::{
     future::{self, BoxFuture, MaybeDone},
-    FutureExt,
+    Future, FutureExt,
 };
 use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt, marker::PhantomData, ops::Deref, pin::Pin, sync::Arc};
 use tokio::sync::Mutex;
 
 use crate::{
-    chmux,
-    codec::{self},
+    chmux, codec,
     rch::{base, buffer, mpsc, oneshot},
     RemoteSend,
 };
@@ -65,7 +74,7 @@ pub struct Provider {
 
 impl fmt::Debug for Provider {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Provider").finish_non_exhaustive()
+        f.debug_struct("Provider").finish()
     }
 }
 
@@ -91,7 +100,7 @@ impl Drop for Provider {
     }
 }
 
-/// Lazy consumer.
+/// Lazy value.
 ///
 /// Allow the reception of a value when requested.
 #[derive(Serialize, Deserialize)]
@@ -116,18 +125,39 @@ where
     T: RemoteSend,
     Codec: codec::Codec,
 {
-    /// Creates a new lazy consumer that will receive the specified value.
+    /// Creates a new lazy value that will receive the specified value.
     ///
-    /// The value is stored locally until the lazy consumer requests it
-    /// or is dropped.
+    /// The value is stored locally until [get](Self::get) is called or this
+    /// object is dropped.
     pub fn new(value: T) -> Self {
-        let (lazy, provider) = Self::provided(value);
+        Self::new_future(async move { value })
+    }
+
+    /// Creates a new lazy value that will receive the value returned by the
+    /// specified future.
+    ///
+    /// The future is stored unevaluated until [get](Self::get) is called or this
+    /// object is dropped.
+    pub fn new_future<F>(value_fut: F) -> Self
+    where
+        F: Future<Output = T> + Send + 'static,
+    {
+        let (lazy, provider) = Self::provided_future(value_fut);
         provider.keep();
         lazy
     }
 
-    /// Creates a new pair of lazy consumer and provider with the specified value.
+    /// Creates a new pair of lazy value and provider with the specified value.
     pub fn provided(value: T) -> (Self, Provider) {
+        Self::provided_future(async move { value })
+    }
+
+    /// Creates a new pair of lazy value and provider with the value returned by
+    /// the specified future.
+    pub fn provided_future<F>(value_fut: F) -> (Self, Provider)
+    where
+        F: Future<Output = T> + Send + 'static,
+    {
         let (request_tx, request_rx) = mpsc::channel::<oneshot::Sender<T, Codec>, _>(1);
         let request_tx = request_tx.set_buffer::<buffer::Custom<1>>();
         let mut request_rx = request_rx.set_buffer::<buffer::Custom<1>>();
@@ -137,6 +167,7 @@ where
             tokio::select! {
                 res = request_rx.recv() => {
                     if let Ok(Some(value_tx)) = res {
+                        let value = value_fut.await;
                         let _ = value_tx.send(value);
                     }
                 },
