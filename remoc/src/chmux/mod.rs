@@ -79,35 +79,3 @@ where
     StreamError: Error,
 {
 }
-
-/// Return if connection terminated.
-///
-/// Argument must be of type `Result<_, SendError>` or `Result<_, ReceiveError>`.
-///
-/// Returns from the current function (with no return value) if the
-/// argument is an error result due to a closed channel or terminated
-/// multiplexer. Otherwise the result is passed unmodified.
-#[macro_export]
-macro_rules! term {
-    ($exp:expr) => {
-        match $exp {
-            Ok(v) => Ok(v),
-            Err(err) if err.is_terminated() => return,
-            Err(err) => Err(err),
-        }
-    };
-}
-
-/// Ignore errors due to connection terminated.
-///
-/// Argument must be of type `Result<(), SendError>`.
-#[macro_export]
-macro_rules! ignore_term {
-    ($exp:expr) => {
-        match $exp {
-            Ok(()) => Ok(()),
-            Err(err) if err.is_terminated() => Ok(()),
-            Err(err) => Err(err),
-        }
-    };
-}
