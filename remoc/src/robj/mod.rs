@@ -1,6 +1,6 @@
 //! Remote objects.
-//! 
-//! 
+//!
+//!
 
 pub mod handle;
 pub mod lazy;
