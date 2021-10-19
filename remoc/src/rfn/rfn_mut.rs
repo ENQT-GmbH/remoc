@@ -45,6 +45,38 @@ impl Drop for RFnMutProvider {
 /// Calls an async [FnMut] function possibly located on a remote endpoint.
 ///
 /// The function can take between zero and ten arguments.
+///
+/// # Example
+///
+/// In the following example the server sends a remote function that sums
+/// numbers using an internal accumulator.
+/// The client receives the remote function and calls it three times.
+///
+/// ```
+/// use remoc::prelude::*;
+///
+/// type SumRFnMut = rfn::RFnMut<(u32,), Result<u32, rfn::CallError>>;
+///
+/// // This would be run on the client.
+/// async fn client(mut rx: rch::base::Receiver<SumRFnMut>) {
+///     let mut rfn_mut = rx.recv().await.unwrap().unwrap();
+///     assert_eq!(rfn_mut.call(3).await.unwrap(), 3);
+///     assert_eq!(rfn_mut.call(2).await.unwrap(), 5);
+///     assert_eq!(rfn_mut.call(11).await.unwrap(), 16);
+/// }
+///
+/// // This would be run on the server.
+/// async fn server(mut tx: rch::base::Sender<SumRFnMut>) {
+///     let mut sum = 0;
+///     let func = move |x| {
+///         sum += x;
+///         async move { Ok(sum) }
+///     };
+///     let rfn_mut = rfn::RFnMut::new_1(func);
+///     tx.send(rfn_mut).await.unwrap();
+/// }
+/// # tokio_test::block_on(remoc::doctest::client_server(server, client));
+/// ```
 #[derive(Serialize, Deserialize)]
 #[serde(bound(serialize = "A: RemoteSend, R: RemoteSend, Codec: codec::Codec"))]
 #[serde(bound(deserialize = "A: RemoteSend, R: RemoteSend, Codec: codec::Codec"))]

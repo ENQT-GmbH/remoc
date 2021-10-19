@@ -6,7 +6,7 @@
 //!
 //! **You probably do not want to use this module directly.**
 //! Instead use methods from [Connect](crate::Connect) to establish a connection over
-//! a physical transport.
+//! a physical transport and work with high-level [remote channels](crate::rch).
 //!
 //! # Protocol version compatibility
 //! Two endpoints can only communicate if they have the same [protocol version](PROTOCOL_VERSION).

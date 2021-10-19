@@ -41,6 +41,33 @@ impl Drop for RFnOnceProvider {
 /// Calls an async [FnOnce] function possibly located on a remote endpoint.
 ///
 /// The function can take between zero and ten arguments.
+///
+/// # Example
+///
+/// In the following example the server sends a remote function that returns
+/// a string that is moved into the closure.
+/// The client receives the remote function and calls it.
+///
+/// ```
+/// use remoc::prelude::*;
+///
+/// type GetRFnOnce = rfn::RFnOnce<(), Result<String, rfn::CallError>>;
+///
+/// // This would be run on the client.
+/// async fn client(mut rx: rch::base::Receiver<GetRFnOnce>) {
+///     let mut rfn_once = rx.recv().await.unwrap().unwrap();
+///     assert_eq!(rfn_once.call().await.unwrap(), "Hallo".to_string());
+/// }
+///
+/// // This would be run on the server.
+/// async fn server(mut tx: rch::base::Sender<GetRFnOnce>) {
+///     let msg = "Hallo".to_string();
+///     let func = || async move { Ok(msg) };
+///     let rfn_once = rfn::RFnOnce::new_0(func);
+///     tx.send(rfn_once).await.unwrap();
+/// }
+/// # tokio_test::block_on(remoc::doctest::client_server(server, client));
+/// ```
 #[derive(Serialize, Deserialize)]
 #[serde(bound(serialize = "A: RemoteSend, R: RemoteSend, Codec: codec::Codec"))]
 #[serde(bound(deserialize = "A: RemoteSend, R: RemoteSend, Codec: codec::Codec"))]

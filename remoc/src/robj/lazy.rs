@@ -11,6 +11,37 @@
 //!
 //! This can be forwarded over multiple remote endpoints.
 //!
+//! # Example
+//!
+//! In the following example the client sends a message to the server.
+//! The value of the field `big_data` is not initially transmitted, but
+//! retrieved when the server calls `get()` on it.
+//!
+//! ```
+//! use remoc::prelude::*;
+//! use remoc::robj::lazy::Lazy;
+//!
+//! #[derive(Debug, serde::Serialize, serde::Deserialize)]
+//! struct Msg {
+//!     data: u32,
+//!     big_data: Lazy<String>,
+//! }
+//!
+//! // This would be run on the client.
+//! async fn client(mut tx: rch::base::Sender<Msg>) {
+//!     let msg = Msg { data: 123, big_data: Lazy::new("long data".to_string()) };
+//!     tx.send(msg).await.unwrap();
+//! }
+//!
+//! // This would be run on the server.
+//! async fn server(mut rx: rch::base::Receiver<Msg>) {
+//!     let msg = rx.recv().await.unwrap().unwrap();
+//!     assert_eq!(msg.data, 123);
+//!     assert_eq!(*msg.big_data.get().await.unwrap(), "long data");
+//! }
+//! # tokio_test::block_on(remoc::doctest::client_server(client, server));
+//! ```
+//!
 
 use futures::{
     future::{self, BoxFuture, MaybeDone},

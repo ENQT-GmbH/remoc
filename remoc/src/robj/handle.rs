@@ -30,6 +30,44 @@
 //! via a different channel multiplexer connection will not be able to access the object
 //! by constructing and sending back a handle with the eavesdropped UUID.
 //!
+//! # Example
+//!
+//! In the following example the server creates sends a handle and sends it to the client.
+//! The client tries to dereference a handle but receives an error because the handle
+//! was not created locally.
+//! The client then sends back the handle to the server.
+//! The server can successfully dereference the received handle.
+//!
+//! ```
+//! use remoc::prelude::*;
+//! use remoc::robj::handle::{Handle, HandleError};
+//!
+//! // This would be run on the client.
+//! async fn client(
+//!     mut tx: rch::base::Sender<Handle<String>>,
+//!     mut rx: rch::base::Receiver<Handle<String>>,
+//! ) {
+//!     let handle = rx.recv().await.unwrap().unwrap();
+//!     assert!(matches!(handle.as_ref().await, Err(HandleError::Unknown)));
+//!     tx.send(handle).await.unwrap();
+//! }
+//!
+//! // This would be run on the server.
+//! async fn server(
+//!     mut tx: rch::base::Sender<Handle<String>>,
+//!     mut rx: rch::base::Receiver<Handle<String>>,
+//! ) {
+//!     let data = "private data".to_string();
+//!     let handle = Handle::new(data);
+//!     assert_eq!(*handle.as_ref().await.unwrap(), "private data".to_string());
+//!
+//!     tx.send(handle).await.unwrap();
+//!
+//!     let handle = rx.recv().await.unwrap().unwrap();
+//!     assert_eq!(*handle.as_ref().await.unwrap(), "private data".to_string());
+//! }
+//! # tokio_test::block_on(remoc::doctest::client_server_bidir(client, server));
+//! ```
 
 use serde::{Deserialize, Serialize};
 use std::{
