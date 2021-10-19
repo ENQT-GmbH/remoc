@@ -31,5 +31,5 @@ jobs:
         run: cargo test --no-default-features --quiet --features rfn --features default-codec-cbor
       - name: Test robj feature only
         run: cargo test --no-default-features --quiet --features robj --features default-codec-json
-      - name: Test rti feature only
-        run: cargo test --no-default-features --quiet --features rti --features default-codec-message-pack
+      - name: Test rtc feature only
+        run: cargo test --no-default-features --quiet --features rtc --features default-codec-message-pack
