@@ -1,4 +1,35 @@
 //! Remote handle to an object.
+//!
+//! Handles provide the ability to send a shared reference to a local object to
+//! a remote endpoint.
+//! The remote endpoint cannot access the referenced object remotely but it can send back
+//! the handle (or a clone of it), which can then be dereferenced locally.
+//!
+//! Handles can be cloned and they are reference counted.
+//! If all handles to the object are dropped, it is dropped automatically.
+//!
+//! ## Usage
+//! 
+//! [Create a handle](Handle::new) to an object and send it to a remote endpoint, for example 
+//! over a channel from the [rch](crate::rch) module.
+//! When you receive a handle that was created locally from the remote endpoint, use [Handle::as_ref] 
+//! to access the object it references.
+//! Calling [Handle::as_ref] on a handle that was not created locally will result in an error.
+//! 
+//! ## Security
+//! 
+//! When sending a handle an UUID is generated, associated with the object and send to the
+//! remote endpoint.
+//! Since the object itself is never send, there is no risk that private data within the object 
+//! may be accessed remotely.
+//! 
+//! The UUID is associated with the [channel multiplexer](crate::chmux) over which the 
+//! handle was sent to the remote endpoint and a received handle can only access the object
+//! if it is received over the same channel multiplexer connection.
+//! Thus, even if the UUID is eavesdropped during transmission, another remote endpoint connected
+//! via a different channel multiplexer connection will not be able to access the object
+//! by constructing and sending back a handle with the eavesdropped UUID.
+//! 
 
 use serde::{Deserialize, Serialize};
 use std::{
@@ -14,7 +45,7 @@ use uuid::Uuid;
 
 use crate::{
     chmux::{AnyBox, AnyEntry},
-    codec::{self},
+    codec,
     rch::{
         base::{PortDeserializer, PortSerializer},
         buffer, mpsc,
@@ -43,6 +74,9 @@ impl fmt::Display for HandleError {
 impl std::error::Error for HandleError {}
 
 /// Provider for a handle.
+///
+/// Dropping the provider causes all corresponding handles to become
+/// invalid and the underlying object to be dropped.
 pub struct Provider {
     keep_tx: Option<tokio::sync::watch::Sender<bool>>,
 }
@@ -143,6 +177,9 @@ where
     Codec: codec::Codec,
 {
     /// Creates a new handle for the value.
+    ///
+    /// There is *no* requirement on `T` to be [remote sendable](crate::RemoteSend), since
+    /// it is never send to a remote endpoint.
     pub fn new(value: T) -> Self {
         let (handle, provider) = Self::provided(value);
         provider.keep();
@@ -151,6 +188,12 @@ where
 
     /// Creates a new handle for the value and returns it together
     /// with its provider.
+    ///
+    /// This allows you to drop the object without relying upon all handles being
+    /// dropped, possibly by a remote endpoint.
+    /// This is especially useful when you connect to untrusted remote endpoints
+    /// that could try to obtain and keep a large number of handles to
+    /// perform a denial of service attack by exhausting your memory.
     pub fn provided(value: T) -> (Self, Provider) {
         let (keep_tx, keep_rx) = tokio::sync::watch::channel(false);
 
@@ -169,6 +212,8 @@ where
     /// Takes the value of the handle and returns it, if it is stored locally.
     ///
     /// The handle and all its clones become invalid.
+    /// 
+    /// This blocks until all existing read and write reference have been released.
     pub async fn into_inner(mut self) -> Result<T, HandleError> {
         let entry = match mem::take(&mut self.state) {
             State::LocalCreated { entry, .. } => entry,
@@ -187,6 +232,8 @@ where
     }
 
     /// Returns a reference to the value of the handle, if it is stored locally.
+    /// 
+    /// This blocks until all existing write reference have been released.
     pub async fn as_ref(&self) -> Result<Ref<T>, HandleError> {
         let entry = match &self.state {
             State::LocalCreated { entry, .. } | State::LocalReceived { entry, .. } => entry.clone(),
@@ -209,6 +256,8 @@ where
     }
 
     /// Returns a mutable reference to the value of the handle, if it is stored locally.
+    /// 
+    /// This blocks until all existing read and write reference have been released.
     pub async fn as_mut(&mut self) -> Result<RefMut<T>, HandleError> {
         let entry = match &self.state {
             State::LocalCreated { entry, .. } | State::LocalReceived { entry, .. } => entry.clone(),
