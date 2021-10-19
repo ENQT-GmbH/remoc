@@ -18,7 +18,7 @@ pub struct RFnProvider {
 
 impl fmt::Debug for RFnProvider {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("RFnProvider").finish_non_exhaustive()
+        f.debug_struct("RFnProvider").finish()
     }
 }
 

@@ -14,7 +14,7 @@ pub struct RFnOnceProvider {
 
 impl fmt::Debug for RFnOnceProvider {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("RFnOnceProvider").finish_non_exhaustive()
+        f.debug_struct("RFnOnceProvider").finish()
     }
 }
 
