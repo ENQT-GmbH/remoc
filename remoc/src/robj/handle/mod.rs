@@ -1,4 +1,20 @@
 //! Remote handle to an object.
+//!
+//! Handles provide the ability to send a shared reference to a local object to
+//! a remote endpoint.
+//! The remote endpoint cannot access the referenced object remotely but it can send back
+//! the handle, which can then be dereferenced locally.
+//!
+//! Handles can be cloned and they are reference counted.
+//! If all handles to the object are dropped, it is dropped automatically.
+//!
+//! ## Usage
+//! 
+//! [Create a handle](Handle::new) to an object and send it to a remote endpoint, for example 
+//! over a channel from the [rch](crate::rch) module.
+//! When you receive a handle from the remote endpoint, use [Handle::as_ref] to access the
+//! object it references.
+//! 
 
 use serde::{Deserialize, Serialize};
 use std::{
@@ -14,7 +30,7 @@ use uuid::Uuid;
 
 use crate::{
     chmux::{AnyBox, AnyEntry},
-    codec::{self},
+    codec,
     rch::{
         base::{PortDeserializer, PortSerializer},
         buffer, mpsc,
@@ -43,6 +59,9 @@ impl fmt::Display for HandleError {
 impl std::error::Error for HandleError {}
 
 /// Provider for a handle.
+///
+/// Dropping the provider causes all corresponding handles to become
+/// invalid and the underlying object to be dropped.
 pub struct Provider {
     keep_tx: Option<tokio::sync::watch::Sender<bool>>,
 }
@@ -143,6 +162,9 @@ where
     Codec: codec::Codec,
 {
     /// Creates a new handle for the value.
+    ///
+    /// There is *no* requirement on `T` to be [remote sendable](crate::RemoteSend), since
+    /// it is never send to a remote endpoint.
     pub fn new(value: T) -> Self {
         let (handle, provider) = Self::provided(value);
         provider.keep();
@@ -151,6 +173,12 @@ where
 
     /// Creates a new handle for the value and returns it together
     /// with its provider.
+    ///
+    /// This allows you to drop the object without relying upon all handles being
+    /// dropped, possibly by a remote endpoint.
+    /// This is especially useful when you connect to untrusted remote endpoints
+    /// that could try to obtain and keep a large number of handles to
+    /// perform a denial of service attack by exhausting your memory.
     pub fn provided(value: T) -> (Self, Provider) {
         let (keep_tx, keep_rx) = tokio::sync::watch::channel(false);
 
