@@ -40,13 +40,13 @@ impl ReadValue for ReadValueObj {
 
 #[tokio::test]
 async fn simple() {
-    use remoc::rtc::ServerRefMut;
+    use remoc::rtc::ServerRef;
 
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<ReadValueClient>().await;
 
     println!("Creating server");
-    let mut obj = ReadValueObj::new(123);
+    let obj = ReadValueObj::new(123);
     let (server, client) = ReadValueServerRef::new(&obj, 1);
 
     println!("Sending client");
@@ -54,7 +54,7 @@ async fn simple() {
 
     let client_task = async move {
         println!("Receiving client");
-        let mut client = b_rx.recv().await.unwrap().unwrap();
+        let client = b_rx.recv().await.unwrap().unwrap();
 
         println!("value: {}", client.value().await.unwrap());
         assert_eq!(client.value().await.unwrap(), 123);
