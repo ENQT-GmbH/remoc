@@ -8,6 +8,17 @@
 //! the maximum amount of memory used per channel.
 //! Setting the buffer size too high must be avoided, since this can lead to
 //! the program running out of memory.
+//!
+//! # Example
+//!
+//! This defines an [MPSC receiver](super::mpsc::Receiver) that creates a receive
+//! buffer of 16 elements locally when it is received from a remote endpoint.
+//!
+//! ```
+//! use remoc::prelude::*;
+//! 
+//! type BufferedRecv = rch::mpsc::Receiver<String, rch::buffer::Custom<16>>;
+//! ```
 
 use serde::{Deserialize, Serialize};
 
