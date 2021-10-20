@@ -12,17 +12,13 @@ echo "Checking crate versions"
 VERSION=$(grep "^version = " remoc/Cargo.toml | cut -d ' ' -f 3 | tr -d \")
 
 echo "Publishing remoc_macro $VERSION"
-pushd remoc_macro
-cargo publish
-popd
+cargo publish --manifest-path remoc_macro/Cargo.toml
 
 # Required for crates.io index update.
 sleep 20
 
 echo "Publishing remoc $VERSION"
-pushd remoc
-cargo publish
-popd
+cargo publish --manifest-path remoc/Cargo.toml
 
 echo "Tagging version in git"
 git tag "v$VERSION"
