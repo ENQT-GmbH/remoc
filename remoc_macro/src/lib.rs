@@ -11,7 +11,6 @@ mod util;
 
 use crate::trait_def::TraitDef;
 
-/// Denotes a trait as remotely callable.
 #[proc_macro_attribute]
 pub fn remote(_attr: proc_macro::TokenStream, input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let trait_def = parse_macro_input!(input as TraitDef);

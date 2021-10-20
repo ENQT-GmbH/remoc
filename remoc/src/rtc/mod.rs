@@ -1,4 +1,198 @@
 //! Remote trait calling.
+//!
+//! This module allows calling of methods on an object located on a remote endpoint via a trait.
+//!
+//! By tagging a trait with the [remote attribute](remote), server and client types
+//! are generated for that trait.
+//! The client type contains an automatically generated implementation of the trait.
+//! Each call is encoded into a request and send to the server.
+//! The server accepts requests from the client and calls the requested trait method on an object
+//! implementing that trait located on the server.
+//! It then transmits the result back to the client.
+//!
+//! # Client type
+//!
+//! Assuimg that the trait is called `Trait`, the client will be called `TraitClient`.
+//!
+//! The client type implements the trait and is [remote sendable](crate::RemoteSend) over
+//! a [remote channel](crate::rch) or any other means to a remote endpoint.
+//! All methods called on the client will be forwarded to the server and executed there.
+//!
+//! If the trait takes the receiver only by reference (`&self`) the client is [clonable](Clone).
+//!
+//! # Server types
+//!
+//! Assuming the trait is called `Trait`, the server names will all start with `TraitServer`.
+//!
+//! Depending on whether the trait takes the receiver by value (`self`), by reference (`&self`) or
+//! by mutable reference (`&mut self`) different server types are generated:
+//!
+//!   * `TraitServer` is always generated,
+//!   * `TraitServerRefMut` and `TraitServerSharedMut` are generated when the receiver is
+//!      *never* taken by value,
+//!   * `TraitServerRef` and `TraitServerShared` are generated when the receiver is
+//!     *never* taken by value and mutable reference.
+//!
+//! The purpose of these server types is as follows:
+//!
+//!   * `TraitServer` implements [Server] and takes the target object by value. It will
+//!     consume the target value when a trait method taking the receiver by value is invoked.
+//!   * `TraitServerRef` implements [ServerRef] and takes a reference to the target value.
+//!   * `TraitServerRefMut` implements [ServerRefMut] and takes a mutable reference to the target value.
+//!   * `TraitServerShared` implements [ServerShared] and takes an [Arc] to the target value.
+//!     It can execute client requests in parallel.
+//!   * `TraitServerSharedMut` implements [ServerSharedMut] and takes an [Arc] to a local
+//!     [RwLock](LocalRwLock) holding the target object.
+//!     It can execute const client requests in parallel and mutable requests sequentially.
+//!
+//! # Usage
+//!
+//! Tag your trait with the [remote attribute](remote).
+//! Call `new()` on a server type to create a server and corresponding client instance for a
+//! target object, which must implement the trait.
+//! Send the client to a remote endpoint and then call `serve()` on the server instance to
+//! start processing requests by the client.
+//!
+//! # Error handling
+//!
+//! Since a remote trait call can fail due to connection problems, the return type
+//! of all trait functions must always be of the [Result] type.
+//! The error type must be able to convert from [CallError] and thus absorb the remote calling error.
+//!
+//! There is no timeout imposed on a remote call, but the underlying [chmux] connection
+//! [pings the remote endpoint](chmux::Cfg::connection_timeout) by default.
+//! If the underlying connection fails, all remote calls will automatically fail.
+//! You can wrap remote calls using [tokio::time::timeout] if you need to use
+//! per-call timeouts.
+//!
+//! # Cancellaton
+//!
+//! If the client drops the future of a call while it is executing or the connection is interrupted
+//! the trait function on the server is automatically cancelled at the next `await` point.
+//! You can apply the `#[no_cancel]` attribute to a method to always run it to completion.
+//! 
+//! # Foreward and backward compatibility
+//! 
+//! All request arguments are packed into an enum case named after the function.
+//! Each argument corresponds to a field with the same name.
+//! Thus it is always safe to add new arguments at the end and apply the `#[serde(default)]` 
+//! attribute to them.
+//! Arguments that are passed by the client but are unknown to the server will be silently discarded.
+//! 
+//! Also, new functions can be added to the trait without breaking backward compatibility.
+//! Calling a non-existent function (for example when the client is newer than the server) will
+//! result in a error, but the server will continue serving.
+//! It is thus safe to just attempt to call a server function to see if it is available.
+//!
+//! # Alternatives
+//!
+//! If you just need to expose a function remotely using [remote functions](crate::rfn) is simpler.
+//!
+//! # Example
+//!
+//! In the following example a trait `Counter` is defined and marked as remotely callable.
+//! It is implemented on the `CounterObj` struct.
+//! The server creates a `CounterObj` and obtains a `CounterServerSharedMut` and `CounterClient` for it.
+//! The `CounterClient` is then sent to the client, which receives it and calls
+//! trait methods on it.
+//!
+//! ```
+//! use std::sync::Arc;
+//! use tokio::sync::RwLock;
+//! use remoc::prelude::*;
+//! use remoc::rtc::CallError;
+//!
+//! // Custom error type that can convert from CallError.
+//! #[derive(Debug, serde::Serialize, serde::Deserialize)]
+//! pub enum IncreaseError {
+//!     Overflow,
+//!     Call(CallError),
+//! }
+//!
+//! impl From<CallError> for IncreaseError {
+//!     fn from(err: CallError) -> Self {
+//!         Self::Call(err)
+//!     }
+//! }
+//!
+//! // Trait defining remote service.
+//! #[remoc::rtc::remote]
+//! pub trait Counter {
+//!     async fn value(&self) -> Result<u32, CallError>;
+//!
+//!     async fn watch(&mut self) -> Result<rch::watch::Receiver<u32>, CallError>;
+//!
+//!     #[no_cancel]
+//!     async fn increase(&mut self, #[serde(default)] by: u32)
+//!         -> Result<(), IncreaseError>;
+//! }
+//!
+//! // Server implementation object.
+//! pub struct CounterObj {
+//!     value: u32,
+//!     watchers: Vec<remoc::rch::watch::Sender<u32>>,
+//! }
+//!
+//! impl CounterObj {
+//!     pub fn new() -> Self {
+//!         Self { value: 0, watchers: Vec::new() }
+//!     }
+//! }
+//!
+//! // Server implementation of trait methods.
+//! #[remoc::rtc::async_trait]
+//! impl Counter for CounterObj {
+//!     async fn value(&self) -> Result<u32, CallError> {
+//!         Ok(self.value)
+//!     }
+//!
+//!     async fn watch(&mut self) -> Result<rch::watch::Receiver<u32>, CallError> {
+//!         let (tx, rx) = rch::watch::channel(self.value);
+//!         self.watchers.push(tx);
+//!         Ok(rx)
+//!     }
+//!
+//!     async fn increase(&mut self, by: u32) -> Result<(), IncreaseError> {
+//!         match self.value.checked_add(by) {
+//!             Some(new_value) => self.value = new_value,
+//!             None => return Err(IncreaseError::Overflow),
+//!         }
+//!
+//!         for watch in &self.watchers {
+//!             let _ = watch.send(self.value);
+//!         }
+//!
+//!         Ok(())
+//!     }
+//! }
+//!
+//! // This would be run on the client.
+//! async fn client(mut rx: rch::base::Receiver<CounterClient>) {
+//!     let mut remote_counter = rx.recv().await.unwrap().unwrap();
+//!     let mut watch_rx = remote_counter.watch().await.unwrap();    
+//!
+//!     assert_eq!(remote_counter.value().await.unwrap(), 0);
+//!
+//!     remote_counter.increase(20).await.unwrap();
+//!     assert_eq!(remote_counter.value().await.unwrap(), 20);
+//!
+//!     remote_counter.increase(45).await.unwrap();
+//!     assert_eq!(remote_counter.value().await.unwrap(), 65);
+//!
+//!     assert_eq!(*watch_rx.borrow().unwrap(), 65);
+//! }
+//!
+//! // This would be run on the server.
+//! async fn server(mut tx: rch::base::Sender<CounterClient>) {
+//!     let mut counter_obj = Arc::new(RwLock::new(CounterObj::new()));
+//!
+//!     let (server, client) = CounterServerSharedMut::new(counter_obj, 1);
+//!     tx.send(client).await.unwrap();
+//!     server.serve(true).await;
+//! }
+//! # tokio_test::block_on(remoc::doctest::client_server(server, client));
+//! ```
+//!
 
 use std::{error::Error, fmt, sync::Arc};
 
@@ -7,51 +201,50 @@ use crate::{
     rch::{base, mpsc, oneshot},
 };
 
-/// Attribute that must be applied on traits and their implementations that
-/// contain async functions.
+/// Attribute that must be applied on all implementations of a trait
+/// marked with the [remote] attribute.
+///
+/// This is a re-export from the [mod@async_trait] crate.
 pub use async_trait::async_trait;
 
-/// Denotes a trait as remotely callable.
+/// Denotes a trait as remotely callable and generate a client and servers for it.
 ///
-/// It adds the provided method `serve` to the trait, which serves the object using
-/// a `chmux::Server`.
-/// All methods in the service trait definition must be async.
-/// The server trait implementation must use `[async_trait::async_trait]` attribute.
+/// See [module-level documentation](self) for details and examples.
 ///
-/// The chmux messages are of type `MultiplexMsg<Content>` where `Content` is
-/// the name of the trait suffixed with `Service`.
+/// This generates the client and server structs for the trait.
+/// If the trait is called `Trait` the client will be called `TraitClient` and
+/// the name of the servers will start with `TraitServer`.
 ///
-/// Additionally a client proxy struct named using the same name suffixed with `Client`
-/// is generated.
-/// It is constructed using the method `bind` from a `chmux::Client`.
+/// # Requirements
+///
+/// Each trait method must be async and have return type `Result<T, E>` where `T` and `E` are
+/// [remote sendable](crate::RemoteSend) and `E` must implemented [From]`<`[CallError]`>`.
+/// All arguments must also be [remote sendable](crate::RemoteSend).
+/// Of course, you can use all remote types from ReMOC in your arguments and return type,
+/// for example [remote channels](crate::rch) and [remote objects](crate::rch).
+///
+/// This uses async_trait, so you must apply the [macro@async_trait] attribute on
+/// all implementation of the trait.
+///
+/// Since the generated code relies on [Tokio](tokio) macros, you must add a dependency
+/// to Tokio in your `Cargo.toml`.
+///
+/// # Generics
+///
+/// The trait may be generic with constraints on the generic arguments.
+/// You will probably need to constrain them on [RemoteSend](crate::RemoteSend).
 ///
 /// # Attributes
-/// If the `#[no_cancel]` attribute is applied on a method, it will run to completion,
-/// even if the client cancels the request by dropping the Future.
 ///
-/// Serde attributes on arguments are moved to the respective field of the request
-/// enum.
+/// If the `#[no_cancel]` attribute is applied on a trait method, it will run to completion,
+/// even if the client cancels the request by dropping the future.
 ///
-/// # Example
-///
-/// ```ignore
-/// pub enum IncreaseError {
-///     Overflow,
-///     Call(CallError),
-/// }
-///
-/// impl From<CallError> for IncreaseError {
-///     fn from(err: CallError) -> Self { Self::Call(err) }
-/// }
-///
-/// #[remote]
-/// pub trait Counter<Codec> {
-///     async fn value(&self) -> Result<u32, CallError>;
-///     async fn watch(&self) -> Result<watch::Receiver<u32, Codec>, CallError>;
-///     #[no_cancel]
-///     async fn increase(&mut self, #[serde(default)] by: u32) -> Result<(), IncreaseError>;
-/// }
-/// ```
+/// All [serde field attributes](https://serde.rs/field-attrs.html) `#[serde(...)]`
+/// are allowed on the arguments of the functions.
+/// They will be transferred to the respective field of the request struct that will
+/// be send to the server when the method is called by the client.
+/// This can be used to customize serialization and provide default for foreward and backward
+/// compatibility.
 ///
 pub use remoc_macro::remote;
 
@@ -222,8 +415,8 @@ pub use tokio::sync::RwLock as LocalRwLock;
 #[doc(hidden)]
 pub use tokio::{select, spawn};
 
-#[doc(hidden)]
 /// Log message that receiving a request failed for proc macro.
+#[doc(hidden)]
 pub fn receiving_request_failed(err: mpsc::RecvError) {
     log::warn!("Receiving request failed: {}", &err)
 }
