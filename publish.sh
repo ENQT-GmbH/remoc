@@ -7,7 +7,7 @@
 set -e
 
 echo "Checking crate versions"
-./check.sh
+./check_version.sh
 
 VERSION=$(grep "^version = " remoc/Cargo.toml | cut -d ' ' -f 3 | tr -d \")
 
