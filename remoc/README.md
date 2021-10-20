@@ -3,6 +3,7 @@
 [![crates.io page](https://img.shields.io/crates/v/remoc)](https://crates.io/crates/remoc)
 [![docs.rs page](https://docs.rs/remoc/badge.svg)](https://docs.rs/remoc)
 [![Apache 2 license](https://img.shields.io/crates/l/remoc)](https://raw.githubusercontent.com/ENQT-GmbH/remoc/master/LICENSE)
+[![codecov](https://codecov.io/gh/ENQT-GmbH/remoc/branch/master/graph/badge.svg?token=UDMOOK0QT8)](https://codecov.io/gh/ENQT-GmbH/remoc)
 
 ReMOC is a [Rust] crate that provides async channels similar to [Tokio]'s, remote function calls and synchronization primitives over a single, arbitrary physical connection.
 Any struct that can be serialized using [Serde] as well as large binary data can be exchanged over a ReMOC channel.
