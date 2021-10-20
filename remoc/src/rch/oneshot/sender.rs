@@ -7,7 +7,7 @@ use crate::{
     RemoteSend,
 };
 
-/// An error occured during sending over an mpsc channel.
+/// An error occurred during sending over an mpsc channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SendError<T> {
     /// The remote end closed the channel.

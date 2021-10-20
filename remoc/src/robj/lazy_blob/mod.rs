@@ -87,7 +87,7 @@ impl fmt::Display for UsizeExceeded {
 
 impl std::error::Error for UsizeExceeded {}
 
-/// An error occured fetching the binary data from the remote endpoint.
+/// An error occurred fetching the binary data from the remote endpoint.
 #[derive(Debug, Clone)]
 pub enum FetchError {
     /// The provider has been dropped.

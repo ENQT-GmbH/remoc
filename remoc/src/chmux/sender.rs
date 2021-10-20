@@ -25,7 +25,7 @@ use super::{
     AnyStorage, Connect, ConnectError, PortAllocator, PortNumber,
 };
 
-/// An error occured during sending of a message.
+/// An error occurred during sending of a message.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SendError {
@@ -66,7 +66,7 @@ impl<T> From<mpsc::error::SendError<T>> for SendError {
     }
 }
 
-/// An error occured during sending of a message.
+/// An error occurred during sending of a message.
 #[derive(Debug)]
 pub enum TrySendError {
     /// Channel queue is full.

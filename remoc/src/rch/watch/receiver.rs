@@ -16,7 +16,7 @@ use crate::{
     RemoteSend,
 };
 
-/// An error occured during receiving over a watch channel.
+/// An error occurred during receiving over a watch channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum RecvError {
     /// Receiving from a remote endpoint failed.
@@ -39,7 +39,7 @@ impl fmt::Display for RecvError {
 
 impl Error for RecvError {}
 
-/// An error occured during waiting for a change on a watch channel.
+/// An error occurred during waiting for a change on a watch channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ChangedError {
     /// The sender has been dropped or the connection has been lost.

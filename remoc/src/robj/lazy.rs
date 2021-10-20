@@ -57,7 +57,7 @@ use crate::{
     RemoteSend,
 };
 
-/// An error occured during fetching a lazily transmitted value.
+/// An error occurred during fetching a lazily transmitted value.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum FetchError {
     /// Provider dropped before getting the value.

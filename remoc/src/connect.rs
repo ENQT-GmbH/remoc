@@ -19,7 +19,7 @@ use crate::{
     RemoteSend,
 };
 
-/// Error occured during establishing a connection over a physical transport.
+/// Error occurred during establishing a connection over a physical transport.
 #[cfg_attr(docsrs, doc(cfg(feature = "rch")))]
 #[derive(Debug, Clone)]
 pub enum ConnectError<TransportSinkError, TransportStreamError> {

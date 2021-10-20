@@ -18,7 +18,7 @@ use crate::{
     RemoteSend,
 };
 
-/// An error occured during sending over a broadcast channel.
+/// An error occurred during sending over a broadcast channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SendError<T> {
     /// All receivers have been dropped.

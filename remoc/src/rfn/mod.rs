@@ -33,7 +33,7 @@
 //! If you return a different type the `call` method will not be available on the wrapper,
 //! but you can still use the `try_call` method, which wraps the result into a [Result] type.
 //!
-//! # Cancellaton
+//! # Cancellation
 //!
 //! If the caller drops the future while it is executing or the connection is interrupted
 //! the remote function is automatically cancelled at the next `await` point.
@@ -62,7 +62,7 @@ use crate::{
     rch::{base, oneshot},
 };
 
-/// An error occured during calling a remote function.
+/// An error occurred during calling a remote function.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum CallError {
     /// Provider was dropped or function panicked.
@@ -147,7 +147,7 @@ macro_rules! arg_stub {
         {
             /// Call the remote function.
             ///
-            /// The [CallError] type must be convertable to the functions error type.
+            /// The [CallError] type must be convertible to the functions error type.
             #[allow(clippy::too_many_arguments)]
             #[inline]
             pub async fn call($( $self_prefix )* self, $( $arg : $arg_type ),*) -> Result<RT, RE> {

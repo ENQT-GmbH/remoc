@@ -12,7 +12,7 @@
 //!
 //! # Client type
 //!
-//! Assuimg that the trait is called `Trait`, the client will be called `TraitClient`.
+//! Assuming that the trait is called `Trait`, the client will be called `TraitClient`.
 //!
 //! The client type implements the trait and is [remote sendable](crate::RemoteSend) over
 //! a [remote channel](crate::rch) or any other means to a remote endpoint.
@@ -65,13 +65,13 @@
 //! You can wrap remote calls using [tokio::time::timeout] if you need to use
 //! per-call timeouts.
 //!
-//! # Cancellaton
+//! # Cancellation
 //!
 //! If the client drops the future of a call while it is executing or the connection is interrupted
 //! the trait function on the server is automatically cancelled at the next `await` point.
 //! You can apply the `#[no_cancel]` attribute to a method to always run it to completion.
 //!
-//! # Foreward and backward compatibility
+//! # Forward and backward compatibility
 //!
 //! All request arguments are packed into an enum case named after the function.
 //! Each argument corresponds to a field with the same name.
@@ -243,7 +243,7 @@ pub use async_trait::async_trait;
 /// are allowed on the arguments of the functions.
 /// They will be transferred to the respective field of the request struct that will
 /// be send to the server when the method is called by the client.
-/// This can be used to customize serialization and provide default for foreward and backward
+/// This can be used to customize serialization and provide default for forward and backward
 /// compatibility.
 ///
 pub use remoc_macro::remote;

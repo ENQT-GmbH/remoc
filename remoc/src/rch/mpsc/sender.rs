@@ -18,7 +18,7 @@ use super::{
 };
 use crate::{chmux, codec, RemoteSend};
 
-/// An error occured during sending over an mpsc channel.
+/// An error occurred during sending over an mpsc channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SendError<T> {
     /// The remote end closed the channel.
@@ -65,7 +65,7 @@ impl<T> From<RemoteSendError> for SendError<T> {
     }
 }
 
-/// An error occured during trying to send over an mpsc channel.
+/// An error occurred during trying to send over an mpsc channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum TrySendError<T> {
     /// The remote end closed the channel.
@@ -292,7 +292,7 @@ where
 
     /// Returns the current capacity of the channel.
     ///
-    /// Zero is returned when the channel has been closed or an error has occured.
+    /// Zero is returned when the channel has been closed or an error has occurred.
     #[inline]
     pub fn capacity(&self) -> usize {
         match self.tx.upgrade() {

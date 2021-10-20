@@ -13,7 +13,7 @@ use crate::{
     RemoteSend,
 };
 
-/// An error occured during locking of an RwLock value for reading or writing.
+/// An error occurred during locking of an RwLock value for reading or writing.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum LockError {
     /// The [owner](super::Owner) has been dropped.
@@ -50,7 +50,7 @@ impl From<oneshot::RecvError> for LockError {
 
 impl Error for LockError {}
 
-/// An error occured during commiting an RwLock value.
+/// An error occurred during committing an RwLock value.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum CommitError {
     /// The [owner](super::Owner) has been dropped.

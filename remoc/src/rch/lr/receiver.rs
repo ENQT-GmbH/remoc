@@ -19,7 +19,7 @@ use crate::{
     codec::{self, DeserializationError},
 };
 
-/// An error that occured during receiving from a remote endpoint.
+/// An error that occurred during receiving from a remote endpoint.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum RecvError {
     /// Receiving data over the chmux channel failed.

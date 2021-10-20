@@ -14,7 +14,7 @@ impl LimitedBytesWriter {
         Self { limit, buf: BytesMut::new(), overflown: false }
     }
 
-    /// Returns the write buffer, if no overflow has occured.
+    /// Returns the write buffer, if no overflow has occurred.
     /// Otherwise None is returned.
     pub fn into_inner(self) -> Option<BytesMut> {
         if self.overflown {

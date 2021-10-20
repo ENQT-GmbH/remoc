@@ -15,7 +15,7 @@ use super::{
     AnyStorage, PortAllocator, Request,
 };
 
-/// An error occured during receiving a data message.
+/// An error occurred during receiving a data message.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum RecvError {
@@ -50,7 +50,7 @@ impl fmt::Display for RecvError {
 
 impl Error for RecvError {}
 
-/// An error occured during receiving a message.
+/// An error occurred during receiving a message.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum RecvAnyError {
@@ -75,7 +75,7 @@ impl fmt::Display for RecvAnyError {
 
 impl Error for RecvAnyError {}
 
-/// An error occured during receiving chunks of a message.
+/// An error occurred during receiving chunks of a message.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum RecvChunkError {

@@ -21,7 +21,7 @@ use super::{
 pub enum ListenerError {
     /// All local ports are in use.
     LocalPortsExhausted,
-    /// A multiplexer error has occured or it has been terminated.
+    /// A multiplexer error has occurred or it has been terminated.
     MultiplexerError,
 }
 

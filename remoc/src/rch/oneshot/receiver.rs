@@ -14,7 +14,7 @@ use crate::{
     RemoteSend,
 };
 
-/// An error occured during receiving over an oneshot channel.
+/// An error occurred during receiving over an oneshot channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum RecvError {
     /// Sender dropped without sending a value.
@@ -50,7 +50,7 @@ impl From<mpsc::RecvError> for RecvError {
 
 impl Error for RecvError {}
 
-/// An error occured during trying to receive over an oneshot channel.
+/// An error occurred during trying to receive over an oneshot channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum TryRecvError {
     /// No value has been received yet.

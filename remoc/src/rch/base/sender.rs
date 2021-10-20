@@ -23,7 +23,7 @@ use crate::{
 
 pub use crate::chmux::Closed;
 
-/// An error that occured during remote sending.
+/// An error that occurred during remote sending.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SendError<T> {
     /// Error kind.
@@ -32,7 +32,7 @@ pub struct SendError<T> {
     pub item: T,
 }
 
-/// Error kind that occured during remote sending.
+/// Error kind that occurred during remote sending.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SendErrorKind {
     /// Serialization of the item failed.

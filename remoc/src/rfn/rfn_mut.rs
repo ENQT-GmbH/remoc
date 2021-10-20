@@ -170,7 +170,7 @@ where
 {
     /// Call the remote function.
     ///
-    /// The [CallError] type must be convertable to the functions error type.
+    /// The [CallError] type must be convertible to the functions error type.
     async fn call_int(&mut self, argument: A) -> Result<RT, RE> {
         Ok(self.try_call_int(argument).await??)
     }

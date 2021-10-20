@@ -18,7 +18,7 @@ use super::{
 };
 use crate::{chmux, codec, RemoteSend};
 
-/// An error occured during receiving over an mpsc channel.
+/// An error occurred during receiving over an mpsc channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum RecvError {
     /// Receiving from a remote endpoint failed.

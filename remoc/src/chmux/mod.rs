@@ -52,7 +52,7 @@ pub enum ChMuxError<SinkError, StreamError> {
     Reset,
     /// No messages where received over the configured connection timeout.
     Timeout,
-    /// A multiplex protocol error occured.
+    /// A multiplex protocol error occurred.
     Protocol(String),
 }
 

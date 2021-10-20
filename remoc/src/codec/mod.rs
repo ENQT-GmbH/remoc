@@ -3,7 +3,7 @@
 //! All codecs in this module are wrappers around the [serde] crates implementing the
 //! data representations.
 //! Thus you should refer to the corresponding crate documentation for information
-//! about limitations and backward as well as foreward compatibility.
+//! about limitations and backward as well as forward compatibility.
 //!
 //! # Crate features
 //!

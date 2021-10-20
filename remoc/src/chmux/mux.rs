@@ -418,7 +418,7 @@ where
         Ok(try_join!(send_task, recv_task)?.1)
     }
 
-    /// Returns true, when muxer task should terminate because no more
+    /// Returns true, when multiplexer task should terminate because no more
     /// requests are possible.
     fn should_terminate(&self) -> bool {
         let mut terminate = true;
@@ -1143,7 +1143,7 @@ where
             // Remote endpoint will send no more connect requests.
             MultiplexMsg::ClientFinish => {
                 if let Some((listen_wait_tx, listen_no_wait_tx)) = &self.listen_tx {
-                    // One additonal slot is reserved in listen queue for sending the client
+                    // One additional slot is reserved in listen queue for sending the client
                     // dropped notification.
                     let mut failed = false;
                     if let Err(mpsc::error::TrySendError::Full(_)) =

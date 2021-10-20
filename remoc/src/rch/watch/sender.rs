@@ -23,7 +23,7 @@ use crate::{
     RemoteSend,
 };
 
-/// An error occured during sending over an mpsc channel.
+/// An error occurred during sending over an mpsc channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SendError {
     /// The remote end closed the channel.
@@ -179,7 +179,7 @@ where
         }
     }
 
-    /// Returns the error that occured during sending to a remote endpoint, if any.
+    /// Returns the error that occurred during sending to a remote endpoint, if any.
     pub fn error(&self) -> Option<SendError> {
         self.update_error();
 
@@ -188,7 +188,7 @@ where
         current_err.clone().map(|err| err.into())
     }
 
-    /// Clears the error that occured during sending to a remote endpoint.
+    /// Clears the error that occurred during sending to a remote endpoint.
     pub fn clear_error(&mut self) {
         self.update_error();
 

@@ -3,10 +3,25 @@
         {
             "languageId": "rust",
             "includeRegExpList": [
-                "CStyleComment"
+                "CStyleComment",
+                "^//!"
             ],
         }
     ],
     "cSpell.words": [
+        "Backchannel",
+        "chmux",
+        "clonable",
+        "deserializable",
+        "Deserialization",
+        "forwardable",
+        "RAII",
+        "remoc",
+        "remotable",
+        "Serde",
+        "struct",
+        "structs",
+        "unbuffered",
+        "untrusted"
     ]
 }
