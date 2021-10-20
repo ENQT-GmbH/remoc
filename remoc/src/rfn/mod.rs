@@ -33,6 +33,11 @@
 //! If you return a different type the `call` method will not be available on the wrapper,
 //! but you can still use the `try_call` method, which wraps the result into a [Result] type.
 //!
+//! # Cancellaton
+//!
+//! If the caller drops the future while it is executing or the connection is interrupted
+//! the remote function is automatically cancelled at the next `await` point.
+//!
 //! # Providers
 //!
 //! Optionally you can use the `provided` method of each wrapper to obtain a
@@ -42,6 +47,11 @@
 //! This is especially useful when you connect to untrusted remote endpoints
 //! that could try to obtain and keep a large number of remote function wrappers to
 //! perform a denial of service attack by exhausting your memory.
+//!
+//! # Alternatives
+//!
+//! If you need to expose several functions remotely that operate on the same object
+//! consider [remote trait calling](crate::rtc) instead.
 //!
 
 use serde::{Deserialize, Serialize};
