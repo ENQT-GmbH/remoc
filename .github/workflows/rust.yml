@@ -18,23 +18,23 @@ jobs:
       - name: Check code formatting
         run: cargo fmt -- --check
       - name: Build
-        run: cargo build --examples --bins --quiet
+        run: cargo build
       - name: Build documentation
         run: cargo doc --no-deps --quiet
       - name: Run tests
         run: cargo test --quiet
       - name: Code analysis
         run: cargo clippy --quiet
-      - name: Test rch feature only
+      - name: Test rch feature only with Bincode codec
         run: cargo test --no-default-features --quiet --features rch --features default-codec-bincode
-      - name: Test rfn feature only
+      - name: Test rfn feature only with CBOR codec
         run: cargo test --no-default-features --quiet --features rfn --features default-codec-cbor
-      - name: Test robj feature only
+      - name: Test robj feature only with JSON codec
         run: cargo test --no-default-features --quiet --features robj --features default-codec-json
-      - name: Test rtc feature only
+      - name: Test rtc feature only with MessagePack codec
         run: cargo test --no-default-features --quiet --features rtc --features default-codec-message-pack
-      - name: Install Cargo Tarpaulin
-        run: cargo install cargo-tarpaulin --locked
+      - name: Install Cargo Tarpaulin for code coverate
+        run: cargo install cargo-tarpaulin --locked --quiet
       - name: Code coverage
         shell: bash
         env:
@@ -42,4 +42,3 @@ jobs:
         run: |
           cargo tarpaulin --out Xml
           bash <(curl -s https://codecov.io/bash)
-
