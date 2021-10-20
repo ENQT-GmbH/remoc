@@ -11,7 +11,7 @@
 //! # Protocol version compatibility
 //! Two endpoints can only communicate if they have the same [protocol version](PROTOCOL_VERSION).
 //! A change in protocol version will be accompanied by an increase of the
-//! major version number of the ReMOC crate.
+//! major version number of the Remoc crate.
 
 use std::{error::Error, fmt};
 
@@ -52,7 +52,7 @@ pub enum ChMuxError<SinkError, StreamError> {
     Reset,
     /// No messages where received over the configured connection timeout.
     Timeout,
-    /// A multiplex protocol error occured.
+    /// A multiplex protocol error occurred.
     Protocol(String),
 }
 

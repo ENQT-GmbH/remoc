@@ -21,7 +21,7 @@ use super::{
     sender::Sender,
 };
 
-/// An error occured during connecting to a remote service.
+/// An error occurred during connecting to a remote service.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ConnectError {
@@ -33,7 +33,7 @@ pub enum ConnectError {
     TooManyPendingConnectionRequests,
     /// Connection has been rejected by server.
     Rejected,
-    /// A multiplexer error has occured or it has been terminated.
+    /// A multiplexer error has occurred or it has been terminated.
     ChMux,
 }
 

@@ -47,7 +47,7 @@ impl AssignedCredits {
         if self.port >= credits {
             self.port -= credits;
         } else {
-            panic!("unsufficient AssignedCredits")
+            panic!("insufficient AssignedCredits")
         }
     }
 }

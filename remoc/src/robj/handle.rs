@@ -103,7 +103,7 @@ pub enum HandleError {
 impl fmt::Display for HandleError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            HandleError::Unknown => write!(f, "unknown, taked or non-local handle"),
+            HandleError::Unknown => write!(f, "unknown, taken or non-local handle"),
             HandleError::MismatchedType(ty) => write!(f, "mismatched handle type: {}", ty),
         }
     }
@@ -121,7 +121,7 @@ pub struct Provider {
 
 impl fmt::Debug for Provider {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Provider").finish_non_exhaustive()
+        f.debug_struct("Provider").finish()
     }
 }
 

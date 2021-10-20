@@ -18,7 +18,7 @@ use crate::{
     RemoteSend,
 };
 
-/// An error occured during sending over a broadcast channel.
+/// An error occurred during sending over a broadcast channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SendError<T> {
     /// All receivers have been dropped.
@@ -80,7 +80,7 @@ struct SenderInner<T, Codec> {
 
 impl<T, Codec> fmt::Debug for Sender<T, Codec> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Sender").finish_non_exhaustive()
+        f.debug_struct("Sender").finish()
     }
 }
 
@@ -144,7 +144,7 @@ where
             match last_err {
                 Some(err) => match err.try_into() {
                     Ok(err) => Err(err),
-                    Err(_) => unreachable!("unconvertable error"),
+                    Err(_) => unreachable!("error must be convertible"),
                 },
                 None => Err(SendError::Closed(value)),
             }

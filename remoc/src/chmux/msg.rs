@@ -92,7 +92,7 @@ pub enum MultiplexMsg {
         /// Number of credits in bytes.
         credits: u32,
     },
-    /// No more data will be sent to specifed remote port.
+    /// No more data will be sent to specified remote port.
     SendFinish {
         /// Port of side that receives this message.
         port: u32,

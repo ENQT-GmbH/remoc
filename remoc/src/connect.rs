@@ -19,7 +19,7 @@ use crate::{
     RemoteSend,
 };
 
-/// Error occured during establishing a connection over a physical transport.
+/// Error occurred during establishing a connection over a physical transport.
 #[cfg_attr(docsrs, doc(cfg(feature = "rch")))]
 #[derive(Debug, Clone)]
 pub enum ConnectError<TransportSinkError, TransportStreamError> {
@@ -70,10 +70,41 @@ impl<TransportSinkError, TransportStreamError> From<base::ConnectError>
 ///
 /// You must poll the returned [Connect] future or spawn it onto a task for the connection to work.
 ///
+/// # Physical transport
+///
+/// All functionality in Remoc requires that a connection over a physical
+/// transport is established.
+/// The underlying transport can either be of packet type (implementing [Sink] and [Stream])
+/// or a socket-like object (implementing [AsyncRead] and [AsyncWrite]).
+/// In both cases it must be ordered and reliable.
+/// That means that all packets must arrive in the order they have been sent
+/// and no packets must be lost.
+/// The maximum packet size can be limited, see [the configuration](crate::Cfg) for that.
+///
+/// [TCP] is an example of an underlying transport that is suitable.
+/// But there are many more candidates, for example, [UNIX domain sockets],
+/// [pipes between processes], [serial links], [Bluetooth L2CAP streams], etc.
+///
+/// The [connect functions](Connect) are used to establish a
+/// [base channel connection](crate::rch::base) over a physical transport.
+/// Then, additional channels can be opened by sending either the sender or receiver
+/// half of them over the established base channel or another connected channel.
+/// See the examples in the [remote channel module](crate::rch) for details.
+///
+/// [Sink]: futures::Sink
+/// [Stream]: futures::Stream
+/// [AsyncRead]: tokio::io::AsyncRead
+/// [AsyncWrite]: tokio::io::AsyncWrite
+/// [TCP]: https://docs.rs/tokio/1.12.0/tokio/net/struct.TcpStream.html
+/// [UNIX domain sockets]: https://docs.rs/tokio/1.12.0/tokio/net/struct.UnixStream.html
+/// [pipes between processes]: https://docs.rs/tokio/1.12.0/tokio/process/struct.Child.html
+/// [serial links]: https://docs.rs/tokio-serial/5.4.1/tokio_serial/
+/// [Bluetooth L2CAP streams]: https://docs.rs/bluer/0.10.4/bluer/l2cap/struct.Stream.html
+///
 /// # Example
 ///
 /// In the following example the server listens on TCP port 9875 and the client connects to it.
-/// Then both ends establish a ReMOC connection using [Connect::io] over the TCP connection.
+/// Then both ends establish a Remoc connection using [Connect::io] over the TCP connection.
 /// The connection dispatchers are spawned onto new tasks and the `client` and `server` functions
 /// are called with the established [base channel](crate::rch::base).
 ///
@@ -99,9 +130,9 @@ impl<TransportSinkError, TransportStreamError> From<base::ConnectError>
 ///     let socket = TcpStream::connect((Ipv4Addr::LOCALHOST, 9875)).await.unwrap();
 ///     let (socket_rx, socket_tx) = socket.into_split();
 ///
-///     // Establish ReMOC connection over TCP.
+///     // Establish Remoc connection over TCP.
 ///     let (conn, tx, rx) =
-///         remoc::Connect::io(Default::default(), socket_rx, socket_tx).await.unwrap();
+///         remoc::Connect::io(remoc::Cfg::default(), socket_rx, socket_tx).await.unwrap();
 ///     tokio::spawn(conn);
 ///
 ///     // Run client.
@@ -115,9 +146,9 @@ impl<TransportSinkError, TransportStreamError> From<base::ConnectError>
 ///     let (socket, _) = listener.accept().await.unwrap();
 ///     let (socket_rx, socket_tx) = socket.into_split();
 ///
-///     // Establish ReMOC connection over TCP.
+///     // Establish Remoc connection over TCP.
 ///     let (conn, tx, rx) =
-///         remoc::Connect::io(Default::default(), socket_rx, socket_tx).await.unwrap();
+///         remoc::Connect::io(remoc::Cfg::default(), socket_rx, socket_tx).await.unwrap();
 ///     tokio::spawn(conn);
 ///
 ///     // Run server.

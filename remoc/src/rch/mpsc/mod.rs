@@ -55,7 +55,7 @@ pub use distributor::{DistributedReceiverHandle, Distributor};
 pub use receiver::{Receiver, RecvError};
 pub use sender::{Permit, SendError, Sender, TrySendError};
 
-/// Creates a bounded channel for communicating between asynchronous tasks with backpressure.
+/// Creates a bounded channel for communicating between asynchronous tasks with back pressure.
 ///
 /// The sender and receiver may be sent to remote endpoints via channels.
 pub fn channel<T, Codec>(local_buffer: usize) -> (Sender<T, Codec>, Receiver<T, Codec>)

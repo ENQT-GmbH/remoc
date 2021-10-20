@@ -3,10 +3,36 @@
         {
             "languageId": "rust",
             "includeRegExpList": [
-                "CStyleComment"
+                "CStyleComment",
+                "string",
+                "^//!"
             ],
         }
     ],
     "cSpell.words": [
+        "bidir",
+        "Bincode",
+        "BTreeMap",
+        "CBOR",
+        "chmux",
+        "clonable",
+        "codecov",
+        "deserializable",
+        "deserialization",
+        "doctest",
+        "ENQT",
+        "forwardable",
+        "MPSC",
+        "MSRV",
+        "oneshot",
+        "RAII",
+        "remoc",
+        "remotable",
+        "robj",
+        "Serde",
+        "struct",
+        "structs",
+        "unbuffered",
+        "untrusted"
     ]
 }

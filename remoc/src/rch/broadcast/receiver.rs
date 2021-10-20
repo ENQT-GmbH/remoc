@@ -12,7 +12,7 @@ use super::{
 };
 use crate::{chmux, codec, RemoteSend};
 
-/// An error occured during receiving over a broadcast channel.
+/// An error occurred during receiving over a broadcast channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum RecvError {
     /// There are no more active senders implying no further messages will ever be sent.
@@ -65,7 +65,7 @@ impl From<mpsc::RecvError> for RecvError {
 
 impl Error for RecvError {}
 
-/// An error occured during trying to receive over a broadcast channel.
+/// An error occurred during trying to receive over a broadcast channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum TryRecvError {
     /// The channel is currently empty. There are still active sender, so data may yet become available.
@@ -121,7 +121,7 @@ pub struct Receiver<T, Codec = codec::Default, Buffer = buffer::Default> {
 
 impl<T, Codec, Buffer> fmt::Debug for Receiver<T, Codec, Buffer> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Receiver").finish_non_exhaustive()
+        f.debug_struct("Receiver").finish()
     }
 }
 

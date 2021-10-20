@@ -1,14 +1,16 @@
 [package]
 name = "remoc"
-version = "0.8.0-pre6"
+version = "0.8.0-pre8"
 authors = ["Sebastian Urban <surban@surban.net>", "ENQT GmbH <su@enqt.de>"]
 readme = "README.md"
 repository = "https://github.com/ENQT-GmbH/remoc/"
 edition = "2018"
-description = "Remote multiplexed objects and channels"
+rust-version = "1.51"
+description = "🦑 Remote multiplexed objects and channels that make remote interactions seamless."
 keywords = ["remote", "channel", "rpc", "stream", "multiplexer"]
 categories = ["asynchronous", "network-programming"]
 license = "Apache-2.0"
+
 
 [features]
 default = ["full", "default-codec-json"]
@@ -40,7 +42,7 @@ codec-message-pack = ["rmp-serde"]
 default-codec-message-pack = ["codec-message-pack"]
 
 [dependencies]
-remoc_macro = { version = "=0.8.0-pre6", path = "../remoc_macro", optional = true }
+remoc_macro = { version = "=0.8.0-pre8", path = "../remoc_macro", optional = true }
 
 futures = "0.3"
 tokio = { version = "1.11", features = ["macros", "rt", "sync", "time"] }

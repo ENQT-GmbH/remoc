@@ -17,7 +17,7 @@ use crate::{
     codec::{self, DeserializationError},
 };
 
-/// An error that occured during receiving from a remote endpoint.
+/// An error that occurred during receiving from a remote endpoint.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum RecvError {
     /// Receiving data over the chmux channel failed.
@@ -286,7 +286,7 @@ where
                 }
             }
 
-            // Connnect received ports.
+            // Connect received ports.
             let pds = self.port_deser.as_mut().unwrap();
             if !pds.expected.is_empty() {
                 // Set port limit.
@@ -310,7 +310,7 @@ where
                     }
                 };
 
-                // Call port callbacks from received objects, ignoring superflous requests for
+                // Call port callbacks from received objects, ignoring superfluous requests for
                 // forward compatibility.
                 for request in requests {
                     if let Some((local_port, callback)) = pds.expected.remove(&request.remote_port()) {

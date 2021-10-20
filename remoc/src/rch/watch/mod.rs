@@ -60,7 +60,7 @@ mod sender;
 pub use receiver::{Receiver, RecvError};
 pub use sender::{SendError, Sender};
 
-/// Length of queuing for storing errors that occured during remote send.
+/// Length of queuing for storing errors that occurred during remote send.
 const ERROR_QUEUE: usize = 16;
 
 /// Returns a reference to the inner value.

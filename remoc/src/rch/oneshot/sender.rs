@@ -7,7 +7,7 @@ use crate::{
     RemoteSend,
 };
 
-/// An error occured during sending over an mpsc channel.
+/// An error occurred during sending over an mpsc channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SendError<T> {
     /// The remote end closed the channel.
@@ -51,7 +51,7 @@ pub struct Sender<T, Codec = codec::Default>(pub(crate) mpsc::Sender<T, Codec, b
 
 impl<T, Codec> fmt::Debug for Sender<T, Codec> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Sender").finish_non_exhaustive()
+        f.debug_struct("Sender").finish()
     }
 }
 

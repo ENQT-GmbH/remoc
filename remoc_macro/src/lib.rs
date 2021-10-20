@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-//! Procedural macros for ReMOC.
+//! Procedural macros for Remoc.
 
 use quote::quote;
 use syn::parse_macro_input;

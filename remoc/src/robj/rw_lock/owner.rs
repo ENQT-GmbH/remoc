@@ -24,7 +24,7 @@ pub struct Owner<T, Codec = codec::Default> {
 
 impl<T, Codec> fmt::Debug for Owner<T, Codec> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Owner").finish_non_exhaustive()
+        f.debug_struct("Owner").finish()
     }
 }
 

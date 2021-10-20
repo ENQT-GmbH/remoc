@@ -18,7 +18,7 @@ use super::{
 };
 use crate::{chmux, codec, RemoteSend};
 
-/// An error occured during sending over an mpsc channel.
+/// An error occurred during sending over an mpsc channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SendError<T> {
     /// The remote end closed the channel.
@@ -65,7 +65,7 @@ impl<T> From<RemoteSendError> for SendError<T> {
     }
 }
 
-/// An error occured during trying to send over an mpsc channel.
+/// An error occurred during trying to send over an mpsc channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum TrySendError<T> {
     /// The remote end closed the channel.
@@ -149,7 +149,7 @@ pub struct Sender<T, Codec = codec::Default, Buffer = buffer::Default> {
 
 impl<T, Codec, Buffer> fmt::Debug for Sender<T, Codec, Buffer> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Sender").finish_non_exhaustive()
+        f.debug_struct("Sender").finish()
     }
 }
 
@@ -292,7 +292,7 @@ where
 
     /// Returns the current capacity of the channel.
     ///
-    /// Zero is returned when the channel has been closed or an error has occured.
+    /// Zero is returned when the channel has been closed or an error has occurred.
     #[inline]
     pub fn capacity(&self) -> usize {
         match self.tx.upgrade() {
@@ -502,7 +502,7 @@ where
                             tokio::select! {
                                 biased;
 
-                                // Backchannel message from remote endpoint.
+                                // Back channel message from remote endpoint.
                                 backchannel_msg = raw_rx.recv(), if backchannel_active => {
                                     match backchannel_msg {
                                         Ok(Some(mut msg)) if msg.remaining() >= 1 => {

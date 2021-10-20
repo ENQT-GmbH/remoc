@@ -3,7 +3,7 @@
 //! All codecs in this module are wrappers around the [serde] crates implementing the
 //! data representations.
 //! Thus you should refer to the corresponding crate documentation for information
-//! about limitations and backward as well as foreward compatibility.
+//! about limitations and backward as well as forward compatibility.
 //!
 //! # Crate features
 //!
@@ -16,7 +16,7 @@
 //! `default-codec-json`.
 //! Only one default codec feature must be enabled, otherwise a compile error will occur.
 //! The default codec should only be selected by an application and not a library crate
-//! that uses ReMOC.
+//! that uses Remoc.
 //! Otherwise a conflict between multiple libraries that depend upon different default
 //! codecs will occur.
 //!
@@ -30,7 +30,7 @@
 //! By default all codecs are enabled and the default codec is JSON, i.e. the `default-codec-json`
 //! crate feature is enabled.
 //! Thus to change the default codec, you must specify `default-features = false` when
-//! referencing ReMOC in your `Cargo.toml`.
+//! referencing Remoc in your `Cargo.toml`.
 //!
 
 use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize};

@@ -25,7 +25,7 @@ use super::{
     AnyStorage, Connect, ConnectError, PortAllocator, PortNumber,
 };
 
-/// An error occured during sending of a message.
+/// An error occurred during sending of a message.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SendError {
@@ -66,7 +66,7 @@ impl<T> From<mpsc::error::SendError<T>> for SendError {
     }
 }
 
-/// An error occured during sending of a message.
+/// An error occurred during sending of a message.
 #[derive(Debug)]
 pub enum TrySendError {
     /// Channel queue is full.
@@ -162,7 +162,7 @@ impl fmt::Debug for Sender {
             .field("chunk_size", &self.chunk_size)
             .field("max_data_size", &self.max_data_size)
             .field("is_closed", &self.is_closed())
-            .finish_non_exhaustive()
+            .finish()
     }
 }
 
@@ -521,7 +521,7 @@ impl SenderSink {
                 self.send_fut = Some(Self::send(sender, data).boxed());
                 Ok(())
             }
-            None => panic!("start_send afer sink has beed closed"),
+            None => panic!("start_send after sink has beed closed"),
         }
     }
 

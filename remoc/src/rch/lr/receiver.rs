@@ -19,7 +19,7 @@ use crate::{
     codec::{self, DeserializationError},
 };
 
-/// An error that occured during receiving from a remote endpoint.
+/// An error that occurred during receiving from a remote endpoint.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum RecvError {
     /// Receiving data over the chmux channel failed.
@@ -76,7 +76,7 @@ pub struct Receiver<T, Codec = codec::Default> {
 
 impl<T, Codec> fmt::Debug for Receiver<T, Codec> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Receiver").finish_non_exhaustive()
+        f.debug_struct("Receiver").finish()
     }
 }
 

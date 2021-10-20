@@ -23,7 +23,7 @@ use crate::{
     RemoteSend,
 };
 
-/// An error occured during sending over an mpsc channel.
+/// An error occurred during sending over an mpsc channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SendError {
     /// The remote end closed the channel.
@@ -80,7 +80,7 @@ pub struct Sender<T, Codec = codec::Default> {
 
 impl<T, Codec> fmt::Debug for Sender<T, Codec> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Sender").finish_non_exhaustive()
+        f.debug_struct("Sender").finish()
     }
 }
 
@@ -179,7 +179,7 @@ where
         }
     }
 
-    /// Returns the error that occured during sending to a remote endpoint, if any.
+    /// Returns the error that occurred during sending to a remote endpoint, if any.
     pub fn error(&self) -> Option<SendError> {
         self.update_error();
 
@@ -188,7 +188,7 @@ where
         current_err.clone().map(|err| err.into())
     }
 
-    /// Clears the error that occured during sending to a remote endpoint.
+    /// Clears the error that occurred during sending to a remote endpoint.
     pub fn clear_error(&mut self) {
         self.update_error();
 
@@ -200,8 +200,8 @@ where
 
 impl<T, Codec> Drop for Sender<T, Codec> {
     fn drop(&mut self) {
-        if let Some(succesor_tx) = self.successor_tx.lock().unwrap().take() {
-            let _ = succesor_tx.send(self.inner.take().unwrap());
+        if let Some(successor_tx) = self.successor_tx.lock().unwrap().take() {
+            let _ = successor_tx.send(self.inner.take().unwrap());
         }
     }
 }
@@ -323,7 +323,7 @@ where
                     tokio::select! {
                         biased;
 
-                        // Backchannel message from remote endpoint.
+                        // Back channel message from remote endpoint.
                         backchannel_msg = raw_rx.recv() => {
                             match backchannel_msg {
                                 Ok(Some(mut msg)) if msg.remaining() >= 1 => {

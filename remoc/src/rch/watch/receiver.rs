@@ -16,7 +16,7 @@ use crate::{
     RemoteSend,
 };
 
-/// An error occured during receiving over a watch channel.
+/// An error occurred during receiving over a watch channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum RecvError {
     /// Receiving from a remote endpoint failed.
@@ -39,7 +39,7 @@ impl fmt::Display for RecvError {
 
 impl Error for RecvError {}
 
-/// An error occured during waiting for a change on a watch channel.
+/// An error occurred during waiting for a change on a watch channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ChangedError {
     /// The sender has been dropped or the connection has been lost.
@@ -76,7 +76,7 @@ pub struct Receiver<T, Codec = codec::Default> {
 
 impl<T, Codec> fmt::Debug for Receiver<T, Codec> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Receiver").finish_non_exhaustive()
+        f.debug_struct("Receiver").finish()
     }
 }
 
@@ -167,7 +167,7 @@ where
                     tokio::select! {
                         biased;
 
-                        // Backchannel message from remote endpoint.
+                        // Back channel message from remote endpoint.
                         backchannel_msg = raw_rx.recv(), if backchannel_active => {
                             match backchannel_msg {
                                 Ok(Some(mut msg)) if msg.remaining() >= 1 => {
