@@ -233,6 +233,7 @@ where
     }
 
     /// Sends a value over this channel.
+    #[inline]
     pub async fn send(&self, value: T) -> Result<(), SendError<T>> {
         if let Some(err) = self.remote_send_err_rx.borrow().as_ref() {
             return Err(err.clone().into());
@@ -250,6 +251,7 @@ where
     }
 
     /// Attempts to immediately send a message over this channel.
+    #[inline]
     pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
         if let Some(err) = self.remote_send_err_rx.borrow().as_ref() {
             return Err(err.clone().into());
@@ -271,6 +273,7 @@ where
 
     /// Wait for channel capacity, returning an owned permit.
     /// Once capacity to send one message is available, it is reserved for the caller.
+    #[inline]
     pub async fn reserve(&self) -> Result<Permit<T>, SendError<()>> {
         if let Some(err) = self.remote_send_err_rx.borrow().as_ref() {
             return Err(err.clone().into());
@@ -289,7 +292,8 @@ where
 
     /// Returns the current capacity of the channel.
     ///
-    /// Zero is returned when the channel has been closed or an occur has occured.
+    /// Zero is returned when the channel has been closed or an error has occured.
+    #[inline]
     pub fn capacity(&self) -> usize {
         match self.tx.upgrade() {
             Some(tx) => tx.capacity(),
@@ -298,6 +302,7 @@ where
     }
 
     /// Completes when the receiver has been closed or dropped.
+    #[inline]
     pub async fn closed(&self) {
         let mut closed = self.closed_rx.clone();
         while !*closed.borrow() {
@@ -308,6 +313,7 @@ where
     }
 
     /// Returns whether the receiver has been closed or dropped.
+    #[inline]
     pub fn is_closed(&self) -> bool {
         *self.closed_rx.borrow()
     }
@@ -349,6 +355,7 @@ where
     T: Send,
 {
     /// Sends a value using the reserved capacity.
+    #[inline]
     pub fn send(self, value: T) {
         self.0.send(Ok(value));
     }
@@ -367,6 +374,7 @@ where
     Buffer: buffer::Size,
 {
     /// Serializes this sender for sending over a chmux channel.
+    #[inline]
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -453,6 +461,7 @@ where
     Buffer: buffer::Size,
 {
     /// Deserializes this sender after it has been received over a chmux channel.
+    #[inline]
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,

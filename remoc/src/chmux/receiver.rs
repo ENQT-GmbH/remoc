@@ -251,7 +251,7 @@ pub enum Received {
     /// Data was received that exceeds the receive buffer size.
     ///
     /// Use [Receiver::recv_chunk] to stream the data in chunks.
-    BigData,
+    Chunks,
     /// Port open requests.
     Requests(Vec<Request>),
 }
@@ -373,11 +373,12 @@ impl Receiver {
     /// Waits for data to become available.
     /// Received port open requests are silently rejected.
     /// The size of the received data is limited by [max_data_size](Self::max_data_size).
+    #[inline]
     pub async fn recv(&mut self) -> Result<Option<DataBuf>, RecvError> {
         loop {
             match self.recv_any().await? {
                 Some(Received::Data(data)) => break Ok(Some(data)),
-                Some(Received::BigData) => break Err(RecvError::ExceedsMaxDataSize(self.max_data_size)),
+                Some(Received::Chunks) => break Err(RecvError::ExceedsMaxDataSize(self.max_data_size)),
                 Some(Received::Requests(_)) => (),
                 None => break Ok(None),
             }
@@ -386,11 +387,12 @@ impl Receiver {
 
     /// Receives chunks of data over the channel.
     ///
-    /// This should be called when [recv_any](Self::recv_any) returns [Received::BigData]
+    /// This should be called when [recv_any](Self::recv_any) returns [Received::Chunks]
     /// to obtain the received data chunk by chunk.
     /// [None] is returned after the last chunk of a message.
     ///
     /// This is unlimited in size.
+    #[inline]
     pub async fn recv_chunk(&mut self) -> Result<Option<Bytes>, RecvChunkError> {
         if self.finished {
             return Ok(None);
@@ -462,6 +464,7 @@ impl Receiver {
     }
 
     /// Receives data or ports over the channel.
+    #[inline]
     pub async fn recv_any(&mut self) -> Result<Option<Received>, RecvError> {
         if self.finished {
             return Ok(None);
@@ -496,7 +499,7 @@ impl Receiver {
                                 data_buf.bufs.push_back(buf);
                                 self.receiving =
                                     Receiving::Chunks { chunks: data_buf.bufs, completed: data.last };
-                                return Ok(Some(Received::BigData));
+                                return Ok(Some(Received::Chunks));
                             }
                         }
                     }
@@ -539,6 +542,7 @@ impl Receiver {
 
     /// Closes the sender at the remote endpoint, preventing it from sending new data.
     /// Already sent message will still be received.
+    #[inline]
     pub async fn close(&mut self) {
         if !self.closed {
             let _ = self.tx.send(PortEvt::ReceiverClosed { local_port: self.local_port }).await;

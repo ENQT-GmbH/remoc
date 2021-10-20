@@ -57,7 +57,7 @@ impl Serialize for Sender {
                                     return;
                                 }
                             }
-                            Ok(Some(Received::BigData)) => {
+                            Ok(Some(Received::Chunks)) => {
                                 let mut chunk_tx = bin_tx.send_chunks();
                                 loop {
                                     match bin_fw_rx.recv_chunk().await {

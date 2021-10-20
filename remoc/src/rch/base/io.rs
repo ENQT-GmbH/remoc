@@ -31,6 +31,7 @@ impl LimitedBytesWriter {
 }
 
 impl io::Write for LimitedBytesWriter {
+    #[inline]
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         if self.buf.len() + buf.len() <= self.limit && !self.overflown {
             self.buf.extend_from_slice(buf);
@@ -41,6 +42,7 @@ impl io::Write for LimitedBytesWriter {
         }
     }
 
+    #[inline]
     fn flush(&mut self) -> std::io::Result<()> {
         Ok(())
     }
@@ -69,6 +71,7 @@ impl ChannelBytesWriter {
 }
 
 impl io::Write for ChannelBytesWriter {
+    #[inline]
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         match self.tx.blocking_send(buf.into()) {
             Ok(()) => {
@@ -79,6 +82,7 @@ impl io::Write for ChannelBytesWriter {
         }
     }
 
+    #[inline]
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
     }
@@ -101,6 +105,7 @@ impl ChannelBytesReader {
 }
 
 impl io::Read for ChannelBytesReader {
+    #[inline]
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         while self.buf.is_empty() {
             if self.failed {

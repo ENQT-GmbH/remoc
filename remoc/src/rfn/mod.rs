@@ -132,6 +132,7 @@ macro_rules! arg_stub {
 
             /// Try to call the remote function.
             #[allow(clippy::too_many_arguments)]
+            #[inline]
             pub async fn try_call( $( $self_prefix )* self, $( $arg : $arg_type ),* ) -> Result<R, CallError> {
                 self.try_call_int(( $($arg ,)* )).await
             }
@@ -148,6 +149,7 @@ macro_rules! arg_stub {
             ///
             /// The [CallError] type must be convertable to the functions error type.
             #[allow(clippy::too_many_arguments)]
+            #[inline]
             pub async fn call($( $self_prefix )* self, $( $arg : $arg_type ),*) -> Result<RT, RE> {
                 self.call_int(( $($arg ,)* )).await
             }

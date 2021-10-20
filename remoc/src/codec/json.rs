@@ -13,6 +13,7 @@ use super::{Codec, DeserializationError, SerializationError};
 pub struct Json;
 
 impl Codec for Json {
+    #[inline]
     fn serialize<Writer, Item>(writer: Writer, item: &Item) -> Result<(), super::SerializationError>
     where
         Writer: std::io::Write,
@@ -21,6 +22,7 @@ impl Codec for Json {
         serde_json::to_writer(writer, item).map_err(SerializationError::new)
     }
 
+    #[inline]
     fn deserialize<Reader, Item>(reader: Reader) -> Result<Item, super::DeserializationError>
     where
         Reader: std::io::Read,
