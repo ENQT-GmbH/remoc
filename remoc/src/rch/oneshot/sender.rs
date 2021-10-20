@@ -61,16 +61,19 @@ where
     Codec: codec::Codec,
 {
     /// Sends a value over this channel.
+    #[inline]
     pub fn send(self, value: T) -> Result<(), SendError<T>> {
         self.0.try_send(value).map_err(|err| err.into())
     }
 
     /// Completes when the receiver has been closed or dropped.
+    #[inline]
     pub async fn closed(&self) {
         self.0.closed().await
     }
 
     /// Returns whether the receiver has been closed or dropped.
+    #[inline]
     pub fn is_closed(&self) -> bool {
         self.0.is_closed()
     }

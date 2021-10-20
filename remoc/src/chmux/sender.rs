@@ -229,6 +229,7 @@ impl Sender {
     ///
     /// # Cancel safety
     /// If this function is cancelled before completion, the remote endpoint will receive no data.
+    #[inline]
     pub async fn send(&mut self, mut data: Bytes) -> Result<(), SendError> {
         if data.is_empty() {
             let mut credits = self.credits.request(1, 1).await?;
@@ -266,6 +267,7 @@ impl Sender {
     }
 
     /// Streams a message by sending individual chunks.
+    #[inline]
     pub fn send_chunks(&mut self) -> ChunkSender<'_> {
         ChunkSender { sender: self, credits: AssignedCredits::default(), first: true }
     }
@@ -275,6 +277,7 @@ impl Sender {
     /// Does not wait until send space becomes available.
     /// The maximum size of data sendable by this function is limited by
     /// the total receive buffer size.
+    #[inline]
     pub fn try_send(&mut self, data: &Bytes) -> Result<(), TrySendError> {
         let mut data = data.clone();
 
@@ -319,6 +322,7 @@ impl Sender {
     ///
     /// The receiver limits the number of ports sendable per call, see
     /// [Receiver::max_ports](super::Receiver::max_ports).
+    #[inline]
     pub async fn connect(&mut self, ports: Vec<PortNumber>, wait: bool) -> Result<Vec<Connect>, SendError> {
         let mut ports_response = Vec::new();
         let mut sent_txs = Vec::new();
@@ -381,11 +385,13 @@ impl Sender {
     }
 
     /// True, once the remote endpoint has closed its receiver.
+    #[inline]
     pub fn is_closed(&self) -> bool {
         self.hangup_recved.upgrade().map(|hr| hr.load(Ordering::SeqCst)).unwrap_or_default()
     }
 
     /// Returns a future that will resolve when the remote endpoint closes its receiver.
+    #[inline]
     pub fn closed(&self) -> Closed {
         Closed::new(&self.hangup_notify)
     }
@@ -467,6 +473,7 @@ impl<'a> ChunkSender<'a> {
     /// The boundaries of chunks within a message may change during transmission,
     /// thus there is no guarantee that [Receiver::recv_chunk](super::Receiver::recv_chunk)
     /// will return the same chunks as sent.
+    #[inline]
     pub async fn send(mut self, chunk: Bytes) -> Result<ChunkSender<'a>, SendError> {
         self.send_int(chunk, false).await?;
         Ok(self)
@@ -476,11 +483,13 @@ impl<'a> ChunkSender<'a> {
     ///
     /// This saves one multiplexer message compared to calling [send](Self::send)
     /// followed by [finish](Self::finish).
+    #[inline]
     pub async fn send_final(mut self, chunk: Bytes) -> Result<(), SendError> {
         self.send_int(chunk, true).await
     }
 
     /// Finishes the message.
+    #[inline]
     pub async fn finish(mut self) -> Result<(), SendError> {
         self.send_int(Bytes::new(), true).await
     }

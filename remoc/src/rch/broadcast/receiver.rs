@@ -135,6 +135,7 @@ where
     }
 
     /// Receives the next value for this receiver.
+    #[inline]
     pub async fn recv(&mut self) -> Result<T, RecvError> {
         match self.rx.recv().await {
             Ok(Some(BroadcastMsg::Value(value))) => Ok(value),
@@ -144,7 +145,8 @@ where
         }
     }
 
-    /// Attempts to return a pending value on this receiver without awaiting.    
+    /// Attempts to return a pending value on this receiver without awaiting.
+    #[inline]
     pub fn try_recv(&mut self) -> Result<T, TryRecvError> {
         let waker = noop_waker();
         let mut cx = Context::from_waker(&waker);

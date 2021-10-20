@@ -109,11 +109,13 @@ where
     Codec: codec::Codec,
 {
     /// Prevents the associated sender from sending a value.
+    #[inline]
     pub fn close(&mut self) {
         self.0.close()
     }
 
     /// Attempts to receive a value.
+    #[inline]
     pub fn try_recv(&mut self) -> Result<T, TryRecvError> {
         let waker = noop_waker();
         let mut cx = Context::from_waker(&waker);
@@ -134,6 +136,7 @@ where
 {
     type Output = Result<T, RecvError>;
 
+    #[inline]
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         match ready!(Pin::into_inner(self).0.poll_recv(cx)) {
             Ok(Some(v)) => Poll::Ready(Ok(v)),

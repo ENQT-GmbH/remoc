@@ -124,6 +124,7 @@ where
     }
 
     /// Sends a value over this channel.
+    #[inline]
     pub fn send(&self, value: T) -> Result<(), SendError> {
         match self.inner.as_ref().unwrap().tx.send(Ok(value)) {
             Ok(()) => Ok(()),
@@ -135,6 +136,7 @@ where
     }
 
     /// Returns a reference to the most recently sent value.
+    #[inline]
     pub fn borrow(&self) -> Result<Ref<'_, T>, RecvError> {
         let ref_res = self.inner.as_ref().unwrap().tx.borrow();
         match &*ref_res {
@@ -144,11 +146,13 @@ where
     }
 
     /// Completes when all receivers have been dropped.
+    #[inline]
     pub async fn closed(&self) {
         self.inner.as_ref().unwrap().tx.closed().await
     }
 
     /// Returns whether all receivers have been dropped.
+    #[inline]
     pub fn is_closed(&self) -> bool {
         self.inner.as_ref().unwrap().tx.is_closed()
     }
@@ -208,6 +212,7 @@ where
     Codec: codec::Codec,
 {
     /// Serializes this sender for sending over a chmux channel.
+    #[inline]
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -285,6 +290,7 @@ where
     Codec: codec::Codec,
 {
     /// Deserializes this sender after it has been received over a chmux channel.
+    #[inline]
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,

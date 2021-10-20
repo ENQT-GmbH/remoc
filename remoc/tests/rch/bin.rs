@@ -27,7 +27,7 @@ async fn loopback() {
                     println!("Echoing data of length {}", data.remaining());
                     tx2.send(data.into()).await.unwrap();
                 }
-                Some(Received::BigData) => {
+                Some(Received::Chunks) => {
                     println!("Echoing big data stream");
                     let mut i = 0;
                     let mut cs = tx2.send_chunks();

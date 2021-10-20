@@ -90,6 +90,7 @@ impl<T, Codec, Buffer> Receiver<T, Codec, Buffer> {
     }
 
     /// Receives the next value for this receiver.
+    #[inline]
     pub async fn recv(&mut self) -> Result<Option<T>, RecvError> {
         match self.inner.as_mut().unwrap().rx.recv().await {
             Some(Ok(value_opt)) => Ok(Some(value_opt)),
@@ -99,6 +100,7 @@ impl<T, Codec, Buffer> Receiver<T, Codec, Buffer> {
     }
 
     /// Polls to receive the next message on this channel.
+    #[inline]
     pub fn poll_recv(&mut self, cx: &mut Context<'_>) -> Poll<Result<Option<T>, RecvError>> {
         match ready!(self.inner.as_mut().unwrap().rx.poll_recv(cx)) {
             Some(Ok(value_opt)) => Poll::Ready(Ok(Some(value_opt))),
@@ -108,6 +110,7 @@ impl<T, Codec, Buffer> Receiver<T, Codec, Buffer> {
     }
 
     /// Closes the receiving half of a channel without dropping it.
+    #[inline]
     pub fn close(&mut self) {
         let _ = self.inner.as_mut().unwrap().closed_tx.send(true);
     }
@@ -170,6 +173,7 @@ where
     Buffer: buffer::Size,
 {
     /// Serializes this receiver for sending over a chmux channel.
+    #[inline]
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -252,6 +256,7 @@ where
     Buffer: buffer::Size,
 {
     /// Deserializes the receiver after it has been received over a chmux channel.
+    #[inline]
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
