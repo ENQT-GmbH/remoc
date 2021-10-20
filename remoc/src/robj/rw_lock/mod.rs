@@ -29,6 +29,54 @@
 //! If you require to broadcast value to multiple endpoints that just require read
 //! access, a [watch channel](crate::rch::watch) might be a simpler and better option.
 //!
+//! # Example
+//!
+//! In the following example the server creates a lock owner and obtains a
+//! read/write lock from it that is sent to the client.
+//! The client obtains a read guard and verifies the data.
+//! Then it obtains a write guard and changes the data.
+//! Afterwards it obtains a new read guard and verifies that the changes have
+//! been performed.
+//!
+//! ```
+//! use remoc::prelude::*;
+//! use remoc::robj::rw_lock::{Owner, RwLock};
+//!
+//! #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+//! struct Data {
+//!     field1: u32,
+//!     field2: String,
+//! }
+//!
+//! // This would be run on the client.
+//! async fn client(mut rx: rch::base::Receiver<RwLock<Data>>) {
+//!     let mut rw_lock = rx.recv().await.unwrap().unwrap();
+//!     
+//!     let read = rw_lock.read().await.unwrap();
+//!     assert_eq!(read.field1, 123);
+//!     assert_eq!(read.field2, "data");
+//!     drop(read);
+//!
+//!     let mut write = rw_lock.write().await.unwrap();
+//!     write.field1 = 222;
+//!     write.commit().await.unwrap();
+//!
+//!     let read = rw_lock.read().await.unwrap();
+//!     assert_eq!(read.field1, 222);
+//! }
+//!
+//! // This would be run on the server.
+//! async fn server(mut tx: rch::base::Sender<RwLock<Data>>) {
+//!     let data = Data { field1: 123, field2: "data".to_string() };
+//!     let owner = Owner::new(data);
+//!     tx.send(owner.rw_lock()).await.unwrap();
+//!
+//!     // The owner must be kept alive until the client is done with the lock.
+//!     tx.closed().await;
+//! }
+//! # tokio_test::block_on(remoc::doctest::client_server(server, client));
+//! ```
+//!
 
 mod msg;
 mod owner;

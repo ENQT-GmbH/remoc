@@ -14,6 +14,47 @@
 //! A [LazyBlob] can be forwarded over multiple remote endpoints.
 //! The size of the binary data is limited by [usize::MAX].
 //!
+//! # Security
+//!
+//! When dealing with untrusted clients, check the size of the binary data using
+//! [LazyBlob::len] before requesting it to avoid denial of service attacks by
+//! memory exhaustion.
+//!
+//! # Example
+//!
+//! In the following example the client sends a message to the server.
+//! The value of the field `binary` is not initially transmitted, only its length.
+//! The server checks the length and then retrieves the binary data.
+//!
+//! ```
+//! use remoc::prelude::*;
+//! use remoc::robj::lazy_blob::LazyBlob;
+//!
+//! #[derive(Debug, serde::Serialize, serde::Deserialize)]
+//! struct Msg {
+//!     data: u32,
+//!     binary: LazyBlob,
+//! }
+//!
+//! // This would be run on the client.
+//! async fn client(mut tx: rch::base::Sender<Msg>) {
+//!     let binary = vec![64; 1_000_000];
+//!     let msg = Msg { data: 123, binary: LazyBlob::new(binary.into()) };
+//!     tx.send(msg).await.unwrap();
+//! }
+//!
+//! // This would be run on the server.
+//! async fn server(mut rx: rch::base::Receiver<Msg>) {
+//!     let msg = rx.recv().await.unwrap().unwrap();
+//!     assert_eq!(msg.data, 123);
+//!     assert_eq!(msg.binary.len().unwrap(), 1_000_000);
+//!
+//!     let binary = msg.binary.get().await.unwrap();
+//!     assert_eq!(Vec::from(binary), vec![64; 1_000_000]);
+//! }
+//! # tokio_test::block_on(remoc::doctest::client_server(client, server));
+//! ```
+//!
 
 use bytes::Bytes;
 use futures::{

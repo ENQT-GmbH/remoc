@@ -48,6 +48,33 @@ impl Drop for RFnProvider {
 /// For each invocation a new async task is spawned.
 ///
 /// The function can take between zero and ten arguments.
+///
+/// # Example
+///
+/// In the following example the server sends a remote function that adds
+/// two numbers to the client.
+/// The client receives the remote function and calls it two times.
+///
+/// ```
+/// use remoc::prelude::*;
+///
+/// type AddRFn = rfn::RFn<(u32, u32), Result<u32, rfn::CallError>>;
+///
+/// // This would be run on the client.
+/// async fn client(mut rx: rch::base::Receiver<AddRFn>) {
+///     let rfn = rx.recv().await.unwrap().unwrap();
+///     assert_eq!(rfn.call(3, 5).await.unwrap(), 8);
+///     assert_eq!(rfn.call(2, 10).await.unwrap(), 12);
+/// }
+///
+/// // This would be run on the server.
+/// async fn server(mut tx: rch::base::Sender<AddRFn>) {
+///     let func = |x, y| async move { Ok(x + y) };
+///     let rfn = rfn::RFn::new_2(func);
+///     tx.send(rfn).await.unwrap();
+/// }
+/// # tokio_test::block_on(remoc::doctest::client_server(server, client));
+/// ```
 #[derive(Serialize, Deserialize)]
 #[serde(bound(serialize = "A: RemoteSend, R: RemoteSend, Codec: codec::Codec"))]
 #[serde(bound(deserialize = "A: RemoteSend, R: RemoteSend, Codec: codec::Codec"))]

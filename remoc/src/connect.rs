@@ -13,7 +13,7 @@ use tokio::io::{AsyncRead, AsyncWrite, BufReader, BufWriter};
 use tokio_util::codec::LengthDelimitedCodec;
 
 use crate::{
-    chmux::{self, ChMux, ChMuxError},
+    chmux::{ChMux, ChMuxError},
     codec,
     rch::base,
     RemoteSend,
@@ -23,7 +23,7 @@ use crate::{
 #[cfg_attr(docsrs, doc(cfg(feature = "rch")))]
 #[derive(Debug, Clone)]
 pub enum ConnectError<TransportSinkError, TransportStreamError> {
-    /// Establishing [chmux] connection failed.
+    /// Establishing [chmux](crate::chmux) connection failed.
     ChMux(ChMuxError<TransportSinkError, TransportStreamError>),
     /// Opening initial [remote](crate::rch::base) channel failed.
     RemoteConnect(base::ConnectError),
@@ -149,7 +149,7 @@ impl<'transport, TransportSinkError, TransportStreamError>
     /// Establishes a connection over a framed transport (a [sink](Sink) and a [stream](Stream) of binary data) and
     /// returns a remote [sender](base::Sender) and [receiver](base::Receiver).
     ///
-    /// This establishes a [chmux] connection over the transport and opens a remote channel.
+    /// This establishes a [chmux](crate::chmux) connection over the transport and opens a remote channel.
     ///
     /// You must poll the returned [Connect] future or spawn it for the connection to work.
     ///
@@ -194,7 +194,7 @@ impl<'transport> Connect<'transport, io::Error, io::Error> {
     /// Establishes a connection over an IO transport (an [AsyncRead] and [AsyncWrite]) and
     /// returns a remote [sender](base::Sender) and [receiver](base::Receiver).
     ///
-    /// A [chmux] connection is established over the transport and a remote channel is opened.
+    /// A [chmux](crate::chmux) connection is established over the transport and a remote channel is opened.
     /// This prepends a length header to each chmux packet for transportation over the unframed connection.
     ///
     /// This method performs no buffering of read and writes and thus may exhibit suboptimal
@@ -236,7 +236,7 @@ impl<'transport> Connect<'transport, io::Error, io::Error> {
     /// Establishes a buffered connection over an IO transport (an [AsyncRead] and [AsyncWrite]) and
     /// returns a remote [sender](base::Sender) and [receiver](base::Receiver).
     ///
-    /// A [chmux] connection is established over the transport and a remote channel is opened.
+    /// A [chmux](crate::chmux) connection is established over the transport and a remote channel is opened.
     /// This prepends a length header to each chmux packet for transportation over the unframed connection.
     ///
     /// This method performs internal buffering of reads and writes.
