@@ -70,15 +70,15 @@
 //! If the client drops the future of a call while it is executing or the connection is interrupted
 //! the trait function on the server is automatically cancelled at the next `await` point.
 //! You can apply the `#[no_cancel]` attribute to a method to always run it to completion.
-//! 
+//!
 //! # Foreward and backward compatibility
-//! 
+//!
 //! All request arguments are packed into an enum case named after the function.
 //! Each argument corresponds to a field with the same name.
-//! Thus it is always safe to add new arguments at the end and apply the `#[serde(default)]` 
+//! Thus it is always safe to add new arguments at the end and apply the `#[serde(default)]`
 //! attribute to them.
 //! Arguments that are passed by the client but are unknown to the server will be silently discarded.
-//! 
+//!
 //! Also, new functions can be added to the trait without breaking backward compatibility.
 //! Calling a non-existent function (for example when the client is newer than the server) will
 //! result in a error, but the server will continue serving.
