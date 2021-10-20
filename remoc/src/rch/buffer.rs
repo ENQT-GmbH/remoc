@@ -16,7 +16,7 @@
 //!
 //! ```
 //! use remoc::prelude::*;
-//! 
+//!
 //! type BufferedRecv = rch::mpsc::Receiver<String, rch::buffer::Custom<16>>;
 //! ```
 
