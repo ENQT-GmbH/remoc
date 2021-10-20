@@ -33,3 +33,13 @@ jobs:
         run: cargo test --no-default-features --quiet --features robj --features default-codec-json
       - name: Test rtc feature only
         run: cargo test --no-default-features --quiet --features rtc --features default-codec-message-pack
+      - name: Install Cargo Tarpaulin
+        run: cargo install cargo-tarpaulin --locked
+      - name: Code coverage
+        shell: bash
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+        run: |
+          cargo tarpaulin --out Xml
+          bash <(curl -s https://codecov.io/bash)
+
