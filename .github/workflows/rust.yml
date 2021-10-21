@@ -35,7 +35,11 @@ jobs:
         run: cargo test --no-default-features --quiet --features robj --features default-codec-json
       - name: Test rtc feature only with MessagePack codec
         run: cargo test --no-default-features --quiet --features rtc --features default-codec-message-pack
-      - name: Install Cargo Tarpaulin for code coverate
+      - name: Test build with MSRV 1.51
+        run: |
+          rustup install 1.51
+          cargo +1.51 test
+      - name: Install Cargo Tarpaulin for code coverage
         run: cargo install cargo-tarpaulin --locked --quiet
       - name: Code coverage
         shell: bash
