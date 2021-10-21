@@ -11,19 +11,23 @@
 //! Since the keys are of non-string type `Vec<u8>` [serde_json] would not be able to
 //! serialize this without the attribute.
 //!
-//! ```
-//! use std::collections::HashMap;
-//! use serde::{Serialize, Deserialize};
-//!
-//! #[derive(Serialize, Deserialize, Default)]
-//! pub struct TestStruct {
-//!     #[serde(with = "remoc::codec::map::hashmap")]
-//!     hashmap: HashMap<Vec<u8>, String>,
-//! }
-//!
-//! serde_json::to_string(&TestStruct::default()).unwrap();
-//! ```
-//!
+#![cfg_attr(
+    feature = "codec-serde",
+    doc = r##"
+```
+use std::collections::HashMap;
+use serde::{Serialize, Deserialize};
+
+#[derive(Serialize, Deserialize, Default)]
+pub struct TestStruct {
+    #[serde(with = "remoc::codec::map::hashmap")]
+    hashmap: HashMap<Vec<u8>, String>,
+}
+
+serde_json::to_string(&TestStruct::default()).unwrap();
+```
+"##
+)]
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::{collections::HashMap, hash::Hash};

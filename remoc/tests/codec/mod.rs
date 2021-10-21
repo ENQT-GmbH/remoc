@@ -1,5 +1,5 @@
-use remoc::{codec, RemoteSend};
-use serde::{Deserialize, Serialize};
+use remoc::codec;
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashMap},
     fmt,
@@ -63,9 +63,10 @@ impl Default for TestStructWithAttr {
     }
 }
 
+#[allow(dead_code)]
 fn roundtrip<T, Codec>()
 where
-    T: Default + RemoteSend + fmt::Debug + Eq,
+    T: Default + Serialize + DeserializeOwned + fmt::Debug + Eq,
     Codec: codec::Codec,
 {
     let data: T = Default::default();
