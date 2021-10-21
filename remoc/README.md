@@ -1,13 +1,15 @@
 # Remoc 🦑 — remote multiplexed objects and channels
 
 Remoc makes remote interaction between Rust programs seamless and smooth.
-Over a single underlying transport, it provides: 
+Over a single underlying transport, it provides:
 
   * multiple channels of different types like MPSC, oneshot, watch, etc.,
   * remote synchronization primitives,
   * calling of remote functions and trait methods on a remote object (RPC).
 
-Remoc is written in [100% safe Rust], builds upon [Tokio], works with any type and data format supported by [Serde] and does not depend on any particular transport type.
+Remoc is written in [100% safe Rust], builds upon [Tokio], works with any type
+and data format supported by [Serde] and does not depend on any particular
+transport type.
 
 [100% safe Rust]: https://www.rust-lang.org/
 [Tokio]: https://tokio.rs
@@ -21,32 +23,46 @@ Remoc is written in [100% safe Rust], builds upon [Tokio], works with any type a
 
 ## Introduction
 
-A common pattern in Rust programs is to use channels to communicate between threads and async tasks.
-Setting up a channel is done in a single line and it largely avoids the need for shared state and the associated complexity.
-Remoc extends this programming model to distributed systems by providing channels that work seamlessly over remote connections.
+A common pattern in Rust programs is to use channels to communicate between
+threads and async tasks.
+Setting up a channel is done in a single line and it largely avoids the need
+for shared state and the associated complexity.
+Remoc extends this programming model to distributed systems by providing
+channels that work seamlessly over remote connections.
 
-For that it uses Serde to serialize and deserialize data as it gets transmitted over an underlying transport,
-which might be a TCP network connection, a WebSocket, UNIX pipe, or even a serial link.
-Opening a new channel is straightforward, just send the sender or receiver half of the new channel over an existing channel, 
-like you would do between local threads and tasks.
-All channels are multiplexed over the same remote connection, with data being transmitted in chunks to avoid one channel
-blocking another if a large message is transmitted.
+For that it uses Serde to serialize and deserialize data as it gets transmitted
+over an underlying transport,
+which might be a TCP network connection, a WebSocket, UNIX pipe, or even a
+serial link.
 
-Building upon its remote channels, Remoc allows calling of remote functions and closures.
-Furthermore, a trait can be made remote callable with automatically generated client and server implementations, resembling
-a classical remote procedure calling (RPC) model.
+Opening a new channel is straightforward, just send the sender or receiver half
+of the new channel over an existing channel, like you would do between local
+threads and tasks.
+All channels are multiplexed over the same remote connection, with data being
+transmitted in chunks to avoid one channel blocking another if a large message
+is transmitted.
+
+Building upon its remote channels, Remoc allows calling of remote functions and
+closures.
+Furthermore, a trait can be made remotely callable with automatically generated
+client and server implementations, resembling a classical remote procedure
+calling (RPC) model.
 
 
 ## Forward and backward compatibility
 
-Distributed systems often require that endpoints running different software versions interact.
-By utilizing a self-describing data format like JSON for encoding of your data for transport, you can ensure a high level of
-backward and forward compatibility.
+Distributed systems often require that endpoints running different software
+versions interact.
+By utilizing a self-describing data format like JSON for encoding of your data
+for transport, you can ensure a high level of backward and forward compatibility.
 
-It is always possible to add new fields to enums and struct and utilize the `#[serde(default)]` attribute to provide
-default values for that field if it was sent by an older client that has no knowledge of it.
-Likewise additional, unknown fields are silently ignored when received, allowing you to extend the data format
-without disturbing legacy endpoints.
+It is always possible to add new fields to enums and struct and utilize the
+`#[serde(default)]` attribute to provide default values for that field if it
+was sent by an older client that has no knowledge of it.
+Likewise additional, unknown fields are silently ignored when received,
+allowing you to extend the data format without disturbing legacy endpoints.
+
+Check the documentation of the employed data format for details.
 
 
 ## Installation
@@ -62,7 +78,8 @@ Add the following line to your Cargo.toml:
 Most functionality of Remoc is gated by crate features.
 The following features are available:
 
-  * `serde` enables the `codec` module and implements serialize and deserialize for all configuration and error types.
+  * `serde` enables the `codec` module and implements serialize and
+    deserialize for all configuration and error types.
   * `rch` enables remote channels provided by the `rch` module.
   * `rfn` enables remote function calling provided by the `rfn` module.
   * `robj` enables remote object utilities provided by the `robj` module.
@@ -75,10 +92,12 @@ The following features enable data formats for transmission:
   * `codec-json` provides the JSON format.
   * `codec-message-pack` provides the MessagePack format.
 
-The feature `default-codec-*` selects the respective codec as default. 
-At most one of this must be selected and this should only be used by applications, not libraries.
+The feature `default-codec-*` selects the respective codec as default.
+At most one of this must be selected and this should only be used by
+applications, not libraries.
 
-The meta-feature `full` enables all features and codecs from above, but selects no default codec.
+The meta-feature `full` enables all features and codecs from above, but
+selects no default codec.
 
 By default all features are enabled and the JSON codec is used as default.
 
@@ -90,11 +109,119 @@ The minimum supported Rust version (MSRV) is 1.51.
 
 ## Example
 
-TODO
+In the following example the server listens on TCP port 9870 and the client connects to it.
+Then both ends establish a Remoc connection using [Connect::io] over the TCP connection.
+The connection dispatchers are spawned onto new tasks and the `client()` and `server()` functions
+are called with the established [base channel](crate::rch::base).
+Then, the client creates a new [remote MPSC channel](crate::rch::mpsc) and sends it inside
+a count request to the server.
+The server receives the count request and counts on the provided channel.
+The client receives each counted number over the new channel.
+
+```rust
+use std::net::Ipv4Addr;
+use tokio::net::{TcpStream, TcpListener};
+use remoc::prelude::*;
+
+#[tokio::main]
+async fn main() {
+    // For demonstration we run both client and server in
+    // the same process. In real life connect_client() and
+    // connect_server() would run on different machines.
+    futures::join!(connect_client(), connect_server());
+}
+
+// This would be run on the client.
+// It establishes a Remoc connection over TCP to the server.
+async fn connect_client() {
+    // Wait for server to be ready.
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+    // Establish TCP connection.
+    let socket =
+        TcpStream::connect((Ipv4Addr::LOCALHOST, 9870)).await.unwrap();
+    let (socket_rx, socket_tx) = socket.into_split();
+
+    // Establish Remoc connection over TCP.
+    // The connection is always bidirectional, but we can just drop
+    // the unneeded receiver.
+    let (conn, tx, _rx): (_, _, rch::base::Receiver<()>) =
+        remoc::Connect::io(remoc::Cfg::default(), socket_rx, socket_tx)
+        .await.unwrap();
+    tokio::spawn(conn);
+
+    // Run client.
+    client(tx).await;
+}
+
+// This would be run on the server.
+// It accepts a Remoc connection over TCP from the client.
+async fn connect_server() {
+    // Listen for incoming TCP connection.
+    let listener =
+        TcpListener::bind((Ipv4Addr::LOCALHOST, 9870)).await.unwrap();
+    let (socket, _) = listener.accept().await.unwrap();
+    let (socket_rx, socket_tx) = socket.into_split();
+
+    // Establish Remoc connection over TCP.
+    // The connection is always bidirectional, but we can just drop
+    // the unneeded sender.
+    let (conn, _tx, rx): (_, rch::base::Sender<()>, _) =
+        remoc::Connect::io(remoc::Cfg::default(), socket_rx, socket_tx)
+        .await.unwrap();
+    tokio::spawn(conn);
+
+    // Run server.
+    server(rx).await;
+}
+
+// User-defined data structures needs to implement Serialize
+// and Deserialize.
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+struct CountReq {
+    up_to: u32,
+    // Most Remoc types like channels can be included in serializable
+    // data structures for transmission to remote endpoints.
+    seq_tx: rch::mpsc::Sender<u32>,
+}
+
+// This would be run on the client.
+// It sends a count request to the server and receives each number
+// as it is counted over a newly established MPSC channel.
+async fn client(mut tx: rch::base::Sender<CountReq>) {
+    // By sending seq_tx over an existing remote channel, a new remote
+    // channel is automatically created and connected to the server.
+    // This all happens inside the existing TCP connection.
+    let (seq_tx, mut seq_rx) = rch::mpsc::channel(1);
+    tx.send(CountReq { up_to: 4, seq_tx }).await.unwrap();
+
+    // Receive counted numbers over new channel.
+    assert_eq!(seq_rx.recv().await.unwrap(), Some(0));
+    assert_eq!(seq_rx.recv().await.unwrap(), Some(1));
+    assert_eq!(seq_rx.recv().await.unwrap(), Some(2));
+    assert_eq!(seq_rx.recv().await.unwrap(), Some(3));
+    assert_eq!(seq_rx.recv().await.unwrap(), None);
+}
+
+// This would be run on the server.
+// It receives a count request from the client and sends each number
+// as it is counted over the MPSC channel sender provided by the client.
+async fn server(mut rx: rch::base::Receiver<CountReq>) {
+    // Receive count request and channel sender to use for counting.
+    while let Some(CountReq { up_to, seq_tx }) = rx.recv().await.unwrap() {
+        for i in 0..up_to {
+            // Send each counted number over provided channel.
+            seq_tx.send(i).await.unwrap();
+        }
+    }
+}
+```
+
 
 ## Sponsors
 
-Development of Remoc is partially sponsored by [ENQT GmbH](https://enqt.de/).
+Development of Remoc is partially sponsored by
+[ENQT GmbH](https://enqt.de/).
 
 [![ENQT Logo](https://raw.githubusercontent.com/ENQT-GmbH/remoc/master/.misc/ENQT.png)](https://enqt.de/)
 
@@ -107,5 +234,5 @@ Remoc is licensed under the [Apache 2.0 license].
 ### Contribution
 
 Unless you explicitly state otherwise, any contribution intentionally submitted
-for inclusion in Remoc by you, shall be licensed as Apache 2.0, without any additional
-terms or conditions.
+for inclusion in Remoc by you, shall be licensed as Apache 2.0, without any
+additional terms or conditions.
