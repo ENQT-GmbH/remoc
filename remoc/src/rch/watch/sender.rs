@@ -200,8 +200,8 @@ where
 
 impl<T, Codec> Drop for Sender<T, Codec> {
     fn drop(&mut self) {
-        if let Some(succesor_tx) = self.successor_tx.lock().unwrap().take() {
-            let _ = succesor_tx.send(self.inner.take().unwrap());
+        if let Some(successor_tx) = self.successor_tx.lock().unwrap().take() {
+            let _ = successor_tx.send(self.inner.take().unwrap());
         }
     }
 }

@@ -25,7 +25,7 @@ async fn simple() {
     match remote_handle.as_ref().await {
         Ok(_) => panic!("remote deref succeeded"),
         Err(HandleError::Unknown) => (),
-        Err(err) => panic!("wrong remote deref errror: {}", err),
+        Err(err) => panic!("wrong remote deref error: {}", err),
     }
 
     println!("Sending handle back");
@@ -41,7 +41,7 @@ async fn simple() {
     match other_type_handle.as_ref().await {
         Ok(_) => panic!("mismatched type deref succeeded"),
         Err(HandleError::MismatchedType(t)) => println!("wrong type: {}", t),
-        Err(err) => panic!("wrong mismatched type deref errror: {}", err),
+        Err(err) => panic!("wrong mismatched type deref error: {}", err),
     }
 
     println!("Changing handle type back to original");

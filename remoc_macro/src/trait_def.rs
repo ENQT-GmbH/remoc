@@ -18,7 +18,7 @@ use crate::{
 pub struct TraitDef {
     /// Trait attributes.
     attrs: Vec<Attribute>,
-    /// Trait visibily.
+    /// Trait visibility.
     vis: Visibility,
     /// Name.
     ident: Ident,

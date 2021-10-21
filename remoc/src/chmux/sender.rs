@@ -521,7 +521,7 @@ impl SenderSink {
                 self.send_fut = Some(Self::send(sender, data).boxed());
                 Ok(())
             }
-            None => panic!("start_send afer sink has beed closed"),
+            None => panic!("start_send after sink has beed closed"),
         }
     }
 

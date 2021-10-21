@@ -59,7 +59,7 @@ async fn simple() {
     println!("Making write request");
     let mut write1 = rw_lock1.write().await.unwrap();
     *write1 = new_value.clone();
-    println!("Commiting");
+    println!("Committing");
     write1.commit().await.unwrap();
 
     let read1 = rw_lock1.read().await.unwrap();
