@@ -162,7 +162,7 @@ impl fmt::Debug for Sender {
             .field("chunk_size", &self.chunk_size)
             .field("max_data_size", &self.max_data_size)
             .field("is_closed", &self.is_closed())
-            .finish_non_exhaustive()
+            .finish()
     }
 }
 

@@ -14,13 +14,13 @@
 //! ```
 //! use std::collections::HashMap;
 //! use serde::{Serialize, Deserialize};
-//! 
+//!
 //! #[derive(Serialize, Deserialize, Default)]
 //! pub struct TestStruct {
 //!     #[serde(with = "remoc::codec::map::hashmap")]
 //!     hashmap: HashMap<Vec<u8>, String>,
 //! }
-//! 
+//!
 //! serde_json::to_string(&TestStruct::default()).unwrap();
 //! ```
 //!

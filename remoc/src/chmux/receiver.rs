@@ -144,7 +144,7 @@ pub struct DataBuf {
 
 impl fmt::Debug for DataBuf {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("DataBuf").field("remaining", &self.remaining).finish_non_exhaustive()
+        f.debug_struct("DataBuf").field("remaining", &self.remaining).finish()
     }
 }
 
@@ -295,7 +295,7 @@ impl fmt::Debug for Receiver {
             .field("max_ports", &self.max_ports)
             .field("closed", &self.closed)
             .field("finished", &self.finished)
-            .finish_non_exhaustive()
+            .finish()
     }
 }
 

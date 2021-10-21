@@ -24,7 +24,7 @@ pub struct Sender {
 
 impl fmt::Debug for Sender {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Sender").finish_non_exhaustive()
+        f.debug_struct("Sender").finish()
     }
 }
 

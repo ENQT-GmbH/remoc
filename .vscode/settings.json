@@ -22,6 +22,8 @@
         "doctest",
         "ENQT",
         "forwardable",
+        "MPSC",
+        "MSRV",
         "oneshot",
         "RAII",
         "remoc",

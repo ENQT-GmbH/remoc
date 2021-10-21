@@ -112,7 +112,7 @@ impl<T, Codec> Clone for ReadLock<T, Codec> {
 
 impl<T, Codec> fmt::Debug for ReadLock<T, Codec> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("ReadLock").finish_non_exhaustive()
+        f.debug_struct("ReadLock").finish()
     }
 }
 
@@ -271,7 +271,7 @@ impl<T, Codec> Clone for RwLock<T, Codec> {
 
 impl<T, Codec> fmt::Debug for RwLock<T, Codec> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("RwLock").finish_non_exhaustive()
+        f.debug_struct("RwLock").finish()
     }
 }
 

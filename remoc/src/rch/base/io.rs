@@ -38,7 +38,7 @@ impl io::Write for LimitedBytesWriter {
             Ok(buf.len())
         } else {
             self.overflown = true;
-            Err(io::Error::new(io::ErrorKind::OutOfMemory, "limit reached"))
+            Err(io::Error::new(io::ErrorKind::BrokenPipe, "limit reached"))
         }
     }
 

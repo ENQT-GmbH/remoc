@@ -6,7 +6,7 @@
 //!
 //! # Physical transport
 //!
-//! All functionality in this crate requires that a connection over a physical
+//! All functionality in Remoc requires that a connection over a physical
 //! transport is established.
 //! The underlying transport can either be of packet type (implementing [Sink] and [Stream])
 //! or a socket-like object (implementing [AsyncRead] and [AsyncWrite]).
@@ -37,7 +37,7 @@
 //!
 //! # Crate features
 //!
-//! The modules of this crate are gated by crate features, as shown below.
+//! The modules of Remoc are gated by crate features, as shown below.
 //! For ease of use all features are enabled by default.
 //! See the [codec module](codec) documentation on how to select a default codec.
 //! The `full` feature enables all functionality but does not include a default codec.

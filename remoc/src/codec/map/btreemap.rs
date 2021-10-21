@@ -14,13 +14,13 @@
 //! ```
 //! use std::collections::BTreeMap;
 //! use serde::{Serialize, Deserialize};
-//! 
+//!
 //! #[derive(Serialize, Deserialize, Default)]
 //! pub struct TestStruct {
 //!     #[serde(with = "remoc::codec::map::btreemap")]
 //!     btreemap: BTreeMap<Vec<u8>, String>,
 //! }
-//! 
+//!
 //! serde_json::to_string(&TestStruct::default()).unwrap();
 //! ```
 //!

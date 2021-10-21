@@ -248,7 +248,7 @@ impl<TransportSink, TransportStream> fmt::Debug for ChMux<TransportSink, Transpo
             .field("remote_cfg", &self.remote_cfg)
             .field("local_protocol_version", &PROTOCOL_VERSION)
             .field("remote_protocol_version", &self.remote_protocol_version)
-            .finish_non_exhaustive()
+            .finish()
     }
 }
 

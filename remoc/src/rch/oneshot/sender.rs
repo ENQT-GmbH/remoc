@@ -51,7 +51,7 @@ pub struct Sender<T, Codec = codec::Default>(pub(crate) mpsc::Sender<T, Codec, b
 
 impl<T, Codec> fmt::Debug for Sender<T, Codec> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Sender").finish_non_exhaustive()
+        f.debug_struct("Sender").finish()
     }
 }
 

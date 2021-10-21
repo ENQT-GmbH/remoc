@@ -121,7 +121,7 @@ pub struct Provider {
 
 impl fmt::Debug for Provider {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Provider").finish_non_exhaustive()
+        f.debug_struct("Provider").finish()
     }
 }
 

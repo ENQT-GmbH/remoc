@@ -128,7 +128,7 @@ pub struct Provider {
 
 impl fmt::Debug for Provider {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Provider").finish_non_exhaustive()
+        f.debug_struct("Provider").finish()
     }
 }
 
@@ -172,7 +172,7 @@ pub struct LazyBlob<Codec = codec::Default> {
 
 impl<Codec> fmt::Debug for LazyBlob<Codec> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("LazyBlob").field("len", &self.len).finish_non_exhaustive()
+        f.debug_struct("LazyBlob").field("len", &self.len).finish()
     }
 }
 

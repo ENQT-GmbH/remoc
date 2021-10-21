@@ -121,7 +121,7 @@ pub struct Receiver<T, Codec = codec::Default, Buffer = buffer::Default> {
 
 impl<T, Codec, Buffer> fmt::Debug for Receiver<T, Codec, Buffer> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Receiver").finish_non_exhaustive()
+        f.debug_struct("Receiver").finish()
     }
 }
 
