@@ -144,7 +144,7 @@ where
             match last_err {
                 Some(err) => match err.try_into() {
                     Ok(err) => Err(err),
-                    Err(_) => unreachable!("unconvertable error"),
+                    Err(_) => unreachable!("error must be convertible"),
                 },
                 None => Err(SendError::Closed(value)),
             }

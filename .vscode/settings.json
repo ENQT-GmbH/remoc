@@ -4,20 +4,28 @@
             "languageId": "rust",
             "includeRegExpList": [
                 "CStyleComment",
+                "string",
                 "^//!"
             ],
         }
     ],
     "cSpell.words": [
         "Backchannel",
+        "bidir",
+        "Bincode",
+        "BTreeMap",
+        "CBOR",
         "chmux",
         "clonable",
         "deserializable",
         "Deserialization",
+        "doctest",
         "forwardable",
+        "oneshot",
         "RAII",
         "remoc",
         "remotable",
+        "robj",
         "Serde",
         "struct",
         "structs",

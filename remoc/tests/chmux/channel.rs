@@ -136,7 +136,7 @@ async fn basic() {
 
     drop(a_server);
 
-    println!("Waiting for muxes");
+    println!("Waiting for multiplexers");
     a_mux_done_rx.await.unwrap();
     b_mux_done_rx.await.unwrap();
 }
@@ -239,7 +239,7 @@ async fn hangup() {
 
     drop(a_server);
 
-    println!("Waiting for muxes");
+    println!("Waiting for multiplexers");
     a_mux_done_rx.await.unwrap();
     b_mux_done_rx.await.unwrap();
 }
