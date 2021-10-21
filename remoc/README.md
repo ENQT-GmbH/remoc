@@ -21,7 +21,7 @@ Any struct that can be serialized using [Serde] as well as large binary data can
 
 Development of Remoc is partially sponsored by [ENQT GmbH](https://enqt.de/).
 
-[![ENQT Logo](https://github.com/ENQT-GmbH/remoc/blob/master/.misc/ENQT.png)](https://enqt.de/)
+[![ENQT Logo](https://raw.githubusercontent.com/ENQT-GmbH/remoc/master/.misc/ENQT.png)](https://enqt.de/)
 
 
 ## License
