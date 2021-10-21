@@ -502,7 +502,7 @@ where
                             tokio::select! {
                                 biased;
 
-                                // Backchannel message from remote endpoint.
+                                // Back channel message from remote endpoint.
                                 backchannel_msg = raw_rx.recv(), if backchannel_active => {
                                     match backchannel_msg {
                                         Ok(Some(mut msg)) if msg.remaining() >= 1 => {

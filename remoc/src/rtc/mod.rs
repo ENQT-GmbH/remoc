@@ -220,7 +220,7 @@ pub use async_trait::async_trait;
 /// Each trait method must be async and have return type `Result<T, E>` where `T` and `E` are
 /// [remote sendable](crate::RemoteSend) and `E` must implemented [From]`<`[CallError]`>`.
 /// All arguments must also be [remote sendable](crate::RemoteSend).
-/// Of course, you can use all remote types from ReMOC in your arguments and return type,
+/// Of course, you can use all remote types from Remoc in your arguments and return type,
 /// for example [remote channels](crate::rch) and [remote objects](crate::rch).
 ///
 /// This uses async_trait, so you must apply the [macro@async_trait] attribute on

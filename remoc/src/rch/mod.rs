@@ -115,10 +115,10 @@ impl fmt::Display for ConnectError {
 
 impl Error for ConnectError {}
 
-/// Backchannel message that receiver has been closed.
+/// Back channel message that receiver has been closed.
 pub(crate) const BACKCHANNEL_MSG_CLOSE: u8 = 0x01;
 
-/// Backchannel message that error has occurred.
+/// Back channel message that error has occurred.
 pub(crate) const BACKCHANNEL_MSG_ERROR: u8 = 0x02;
 
 /// Remote sending error.

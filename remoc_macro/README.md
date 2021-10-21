@@ -1,5 +1,5 @@
-This crate contains procedural macros for use with [ReMOC].
+This crate contains procedural macros for use with [Remoc].
 
 It is pulled it automatically when needed and should not be used directly.
 
-[ReMOC]: https://crates.io/crates/remoc
+[Remoc]: https://crates.io/crates/remoc

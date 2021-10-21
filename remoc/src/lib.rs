@@ -2,7 +2,7 @@
 #![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-//! ReMOC 🦑 — Remote multiplexed objects and channels
+//! Remoc 🦑 — Remote multiplexed objects and channels
 //!
 //! # Physical transport
 //!

@@ -73,7 +73,7 @@ impl<TransportSinkError, TransportStreamError> From<base::ConnectError>
 /// # Example
 ///
 /// In the following example the server listens on TCP port 9875 and the client connects to it.
-/// Then both ends establish a ReMOC connection using [Connect::io] over the TCP connection.
+/// Then both ends establish a Remoc connection using [Connect::io] over the TCP connection.
 /// The connection dispatchers are spawned onto new tasks and the `client` and `server` functions
 /// are called with the established [base channel](crate::rch::base).
 ///
@@ -99,7 +99,7 @@ impl<TransportSinkError, TransportStreamError> From<base::ConnectError>
 ///     let socket = TcpStream::connect((Ipv4Addr::LOCALHOST, 9875)).await.unwrap();
 ///     let (socket_rx, socket_tx) = socket.into_split();
 ///
-///     // Establish ReMOC connection over TCP.
+///     // Establish Remoc connection over TCP.
 ///     let (conn, tx, rx) =
 ///         remoc::Connect::io(Default::default(), socket_rx, socket_tx).await.unwrap();
 ///     tokio::spawn(conn);
@@ -115,7 +115,7 @@ impl<TransportSinkError, TransportStreamError> From<base::ConnectError>
 ///     let (socket, _) = listener.accept().await.unwrap();
 ///     let (socket_rx, socket_tx) = socket.into_split();
 ///
-///     // Establish ReMOC connection over TCP.
+///     // Establish Remoc connection over TCP.
 ///     let (conn, tx, rx) =
 ///         remoc::Connect::io(Default::default(), socket_rx, socket_tx).await.unwrap();
 ///     tokio::spawn(conn);
