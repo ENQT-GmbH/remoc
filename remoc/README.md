@@ -42,6 +42,7 @@ a classical remote procedure calling (RPC) model.
 Distributed systems often require that endpoints running different software versions interact.
 By utilizing a self-describing data format like JSON for encoding of your data for transport, you can ensure a high level of
 backward and forward compatibility.
+
 It is always possible to add new fields to enums and struct and utilize the `#[serde(default)]` attribute to provide
 default values for that field if it was sent by an older client that has no knowledge of it.
 Likewise additional, unknown fields are silently ignored when received, allowing you to extend the data format

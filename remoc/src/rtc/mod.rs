@@ -116,7 +116,7 @@
 //! }
 //!
 //! // Trait defining remote service.
-//! #[remoc::rtc::remote]
+//! #[rtc::remote]
 //! pub trait Counter {
 //!     async fn value(&self) -> Result<u32, CallError>;
 //!
@@ -130,7 +130,7 @@
 //! // Server implementation object.
 //! pub struct CounterObj {
 //!     value: u32,
-//!     watchers: Vec<remoc::rch::watch::Sender<u32>>,
+//!     watchers: Vec<rch::watch::Sender<u32>>,
 //! }
 //!
 //! impl CounterObj {
@@ -140,7 +140,7 @@
 //! }
 //!
 //! // Server implementation of trait methods.
-//! #[remoc::rtc::async_trait]
+//! #[rtc::async_trait]
 //! impl Counter for CounterObj {
 //!     async fn value(&self) -> Result<u32, CallError> {
 //!         Ok(self.value)

@@ -2,46 +2,119 @@
 #![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
-//! Remoc 🦑 — Remote multiplexed objects and channels
-//!
-//! # Physical transport
-//!
-//! All functionality in Remoc requires that a connection over a physical
-//! transport is established.
-//! The underlying transport can either be of packet type (implementing [Sink] and [Stream])
-//! or a socket-like object (implementing [AsyncRead] and [AsyncWrite]).
-//! In both cases it must be ordered and reliable.
-//! That means that all packets must arrive in the order they have been sent
-//! and no packets must be lost.
-//! The maximum packet size can be limited, see [the configuration](Cfg) for that.
-//!
-//! [TCP] is an example of an underlying transport that is suitable.
-//! But there are many more candidates, for example, [UNIX domain sockets],
-//! [pipes between processes], [serial links], [Bluetooth L2CAP streams], etc.
-//!
-//! The [connect functions](Connect) are used to establish a
-//! [base channel connection](rch::base) over a physical transport.
-//! Then, additional channels can be opened by sending either the sender or receiver
-//! half of them over the established base channel or another connected channel.
-//! See the examples in the [remote channel module](rch) for details.
-//!
-//! [Sink]: futures::Sink
-//! [Stream]: futures::Stream
-//! [AsyncRead]: tokio::io::AsyncRead
-//! [AsyncWrite]: tokio::io::AsyncWrite
-//! [TCP]: https://docs.rs/tokio/1.12.0/tokio/net/struct.TcpStream.html
-//! [UNIX domain sockets]: https://docs.rs/tokio/1.12.0/tokio/net/struct.UnixStream.html
-//! [pipes between processes]: https://docs.rs/tokio/1.12.0/tokio/process/struct.Child.html
-//! [serial links]: https://docs.rs/tokio-serial/5.4.1/tokio_serial/
-//! [Bluetooth L2CAP streams]: https://docs.rs/bluer/0.10.4/bluer/l2cap/struct.Stream.html
+//! Remoc 🦑 — remote multiplexed objects and channels
 //!
 //! # Crate features
 //!
-//! The modules of Remoc are gated by crate features, as shown below.
+//! The modules of Remoc are gated by crate features, as shown in the reference below.
 //! For ease of use all features are enabled by default.
 //! See the [codec module](codec) documentation on how to select a default codec.
-//! The `full` feature enables all functionality but does not include a default codec.
 //!
+//! # Example
+//!
+//! In the following example the server listens on TCP port 9870 and the client connects to it.
+//! Then both ends establish a Remoc connection using [Connect::io] over the TCP connection.
+//! The connection dispatchers are spawned onto new tasks and the `client()` and `server()` functions
+//! are called with the established [base channel](crate::rch::base).
+//!
+//! Then, the client creates a new [remote MPSC channel](crate::rch::mpsc) and sends it inside
+//! a count request to the server.
+//! The server receives the count request and counts on the provided channel.
+//! The client receives each counted number over the new channel.
+//!
+//! ```
+//! use std::net::Ipv4Addr;
+//! use tokio::net::{TcpStream, TcpListener};
+//! use remoc::prelude::*;
+//!
+//! #[tokio::main]
+//! async fn main() {
+//!     // For demonstration we run both client and server in
+//!     // the same process. In real life connect_client() and
+//!     // connect_server() would run on different machines.
+//!     futures::join!(connect_client(), connect_server());
+//! }
+//!
+//! // This would be run on the client.
+//! // It establishes a Remoc connection over TCP to the server.
+//! async fn connect_client() {
+//!     // Wait for server to be ready.
+//!     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+//!
+//!     // Establish TCP connection.
+//!     let socket = TcpStream::connect((Ipv4Addr::LOCALHOST, 9870)).await.unwrap();
+//!     let (socket_rx, socket_tx) = socket.into_split();
+//!
+//!     // Establish Remoc connection over TCP.
+//!     // The connection is always bidirectional, but we can just drop
+//!     // the unneeded receiver.
+//!     let (conn, tx, _rx): (_, _, rch::base::Receiver<()>) =
+//!         remoc::Connect::io(remoc::Cfg::default(), socket_rx, socket_tx).await.unwrap();
+//!     tokio::spawn(conn);
+//!
+//!     // Run client.
+//!     client(tx).await;
+//! }
+//!
+//! // This would be run on the server.
+//! // It accepts a Remoc connection over TCP from the client.
+//! async fn connect_server() {
+//!     // Listen for incoming TCP connection.
+//!     let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 9870)).await.unwrap();
+//!     let (socket, _) = listener.accept().await.unwrap();
+//!     let (socket_rx, socket_tx) = socket.into_split();
+//!
+//!     // Establish Remoc connection over TCP.
+//!     // The connection is always bidirectional, but we can just drop
+//!     // the unneeded sender.
+//!     let (conn, _tx, rx): (_, rch::base::Sender<()>, _) =
+//!         remoc::Connect::io(remoc::Cfg::default(), socket_rx, socket_tx).await.unwrap();
+//!     tokio::spawn(conn);
+//!
+//!     // Run server.
+//!     server(rx).await;
+//! }
+//!
+//! // User-defined data structures needs to implement Serialize and Deserialize.
+//! #[derive(Debug, serde::Serialize, serde::Deserialize)]
+//! struct CountReq {
+//!     up_to: u32,
+//!     // Most Remoc types like channels can be included in serializable
+//!     // data structures for transmission to remote endpoints.
+//!     seq_tx: rch::mpsc::Sender<u32>,
+//! }
+//!
+//! // This would be run on the client.
+//! // It sends a count request to the server and receives each number
+//! // as it is counted over a newly established MPSC channel.
+//! async fn client(mut tx: rch::base::Sender<CountReq>) {
+//!     // By sending seq_tx over an existing remote channel, a new remote
+//!     // channel is automatically created and connected to the server.
+//!     // This all happens inside the existing TCP connection.
+//!     let (seq_tx, mut seq_rx) = rch::mpsc::channel(1);
+//!     tx.send(CountReq { up_to: 4, seq_tx }).await.unwrap();
+//!
+//!     // Receive counted numbers over new channel.
+//!     assert_eq!(seq_rx.recv().await.unwrap(), Some(0));
+//!     assert_eq!(seq_rx.recv().await.unwrap(), Some(1));
+//!     assert_eq!(seq_rx.recv().await.unwrap(), Some(2));
+//!     assert_eq!(seq_rx.recv().await.unwrap(), Some(3));
+//!     assert_eq!(seq_rx.recv().await.unwrap(), None);
+//! }
+//!
+//! // This would be run on the server.
+//! // It receives a count request from the client and sends each number
+//! // as it is counted over the MPSC channel sender provided by the client.
+//! async fn server(mut rx: rch::base::Receiver<CountReq>) {
+//!     // Receive count request together with channel sender to use for counting.
+//!     while let Some(CountReq { up_to, seq_tx }) = rx.recv().await.unwrap() {
+//!         for i in 0..up_to {
+//!             // Send each counted number over provided channel.
+//!             seq_tx.send(i).await.unwrap();
+//!         }
+//!     }
+//! }
+//! ```
 
 pub mod prelude;
 
