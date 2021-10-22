@@ -12,7 +12,7 @@
 //! serialize this without the attribute.
 //!
 #![cfg_attr(
-    feature = "codec-serde",
+    feature = "codec-json",
     doc = r##"
 ```
 use std::collections::HashMap;
