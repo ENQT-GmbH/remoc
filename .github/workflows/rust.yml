@@ -23,24 +23,31 @@ jobs:
         run: cargo build
       - name: Build documentation
         run: cargo doc --no-deps --quiet
-      - name: Run tests
-        run: cargo test --quiet
       - name: Code analysis
         run: cargo clippy --quiet
-      - name: Test rch feature only with Bincode codec
-        run: cargo test --no-default-features --quiet --features rch --features default-codec-bincode
-      - name: Test rfn feature only with CBOR codec
-        run: cargo test --no-default-features --quiet --features rfn --features default-codec-cbor
-      - name: Test robj feature only with JSON codec
+      - name: Run tests with JSON (default) codec
+        run: cargo test --quiet
+      - name: Run tests with Bincode codec
+        run: cargo test --no-default-features --quiet --features full --features default-codec-bincode
+      - name: Run tests with CBOR codec
+        run: cargo test --no-default-features --quiet --features full --features default-codec-cbor
+      - name: Run tests with MessagePack codec
+        run: cargo test --no-default-features --quiet --features full --features default-codec-message-pack
+      - name: Test rch feature only
+        run: cargo test --no-default-features --quiet --features rch --features default-codec-json
+      - name: Test rfn feature only
+        run: cargo test --no-default-features --quiet --features rfn --features default-codec-json
+      - name: Test robj feature only
         run: cargo test --no-default-features --quiet --features robj --features default-codec-json
-      - name: Test rtc feature only with MessagePack codec
-        run: cargo test --no-default-features --quiet --features rtc --features default-codec-message-pack
-      - name: Test build with MSRV 1.51
+      - name: Test rtc feature only
+        run: cargo test --no-default-features --quiet --features rtc --features default-codec-json
+      - name: Test with MSRV 1.51
         run: |
           rustup install 1.51
-          cargo +1.51 test
+          cargo +1.51 test --quiet
       - name: Install Cargo Tarpaulin for code coverage
         run: cargo install cargo-tarpaulin --locked --quiet
+        continue-on-error: true
       - name: Code coverage
         shell: bash
         env:
@@ -48,3 +55,4 @@ jobs:
         run: |
           cargo tarpaulin --out Xml
           bash <(curl -s https://codecov.io/bash)
+        continue-on-error: true
