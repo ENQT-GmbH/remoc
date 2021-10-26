@@ -77,6 +77,8 @@ The following features are available:
   * `robj` enables remote object utilities provided by the `robj` module.
   * `rtc` enables remote trait calling provided by the `rtc` module.
 
+The meta-feature `full` enables all features from above but no codecs.
+
 The following features enable data formats for transmission:
 
   * `codec-bincode` provides the Bincode format.
@@ -87,9 +89,6 @@ The following features enable data formats for transmission:
 The feature `default-codec-*` selects the respective codec as default.
 At most one of this must be selected and this should only be used by
 applications, not libraries.
-
-The meta-feature `full` enables all features and codecs from above, but
-selects no default codec.
 
 By default all features are enabled and the JSON codec is used as default.
 

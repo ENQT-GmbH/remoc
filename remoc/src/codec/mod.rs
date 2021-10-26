@@ -22,12 +22,12 @@
 //!
 //! The following features select the default codec.
 //!
-//!   * `default-codec-bincode` -- enables and selects [Bincode] as the default codec
-//!   * `default-codec-cbor` -- enables and selects [Cbor] as the default codec
-//!   * `default-codec-json` -- enables and selects [Json] as the default codec
-//!   * `default-codec-message-pack` -- enables selects [MessagePack] as the default codec
+//!   * `default-codec-bincode` -- enables and selects Bincode as the default codec
+//!   * `default-codec-cbor` -- enables and selects CBOR as the default codec
+//!   * `default-codec-json` -- enables and selects JSON as the default codec
+//!   * `default-codec-message-pack` -- enables selects MessagePack as the default codec
 //!
-//! By default all codecs are enabled and the default codec is JSON, i.e. the `default-codec-json`
+//! By default the JSON codec is enabled and the default, i.e. the `default-codec-json`
 //! crate feature is enabled.
 //! Thus to change the default codec, you must specify `default-features = false` when
 //! referencing Remoc in your `Cargo.toml`.
@@ -166,7 +166,7 @@ mod bincode;
 #[cfg(feature = "codec-bincode")]
 pub use self::bincode::Bincode;
 #[cfg(feature = "default-codec-bincode")]
-/// Default codec is Bincode.
+#[doc(no_inline)]
 pub use self::bincode::Bincode as Default;
 
 #[cfg(feature = "codec-cbor")]
@@ -174,7 +174,7 @@ mod cbor;
 #[cfg(feature = "codec-cbor")]
 pub use cbor::Cbor;
 #[cfg(feature = "default-codec-cbor")]
-/// Default codec is CBOR.
+#[doc(no_inline)]
 pub use cbor::Cbor as Default;
 
 #[cfg(feature = "codec-json")]
@@ -182,7 +182,7 @@ mod json;
 #[cfg(feature = "codec-json")]
 pub use json::Json;
 #[cfg(feature = "default-codec-json")]
-/// Default codec is JSON.
+#[doc(no_inline)]
 pub use json::Json as Default;
 
 #[cfg(feature = "codec-message-pack")]
@@ -190,7 +190,7 @@ mod message_pack;
 #[cfg(feature = "codec-message-pack")]
 pub use message_pack::MessagePack;
 #[cfg(feature = "default-codec-message-pack")]
-/// Default codec is MessagePack.
+#[doc(no_inline)]
 pub use message_pack::MessagePack as Default;
 
 /// Default codec is not set and cannot be used.

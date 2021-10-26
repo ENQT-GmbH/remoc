@@ -14,18 +14,7 @@ license = "Apache-2.0"
 
 [features]
 default = ["full", "default-codec-json"]
-full = [
-    "serde",
-    "rch",
-    "rfn",
-    "robj",
-    "rtc",
-    "default-codec-json",
-    "codec-bincode",
-    "codec-cbor",
-    "codec-json",
-    "codec-message-pack",
-]
+full = ["serde", "rch", "rfn", "robj", "rtc"]
 rch = ["serde", "tokio-util", "tokio/io-util"]
 rfn = ["rch"]
 robj = ["rch"]
@@ -46,7 +35,7 @@ remoc_macro = { version = "=0.8.0", path = "../remoc_macro", optional = true }
 
 futures = "0.3"
 tokio = { version = "1.11", features = ["macros", "rt", "sync", "time"] }
-tokio-util = { version = "0.6", features = ["codec"], optional = true}
+tokio-util = { version = "0.6", features = ["codec"], optional = true }
 rand = "0.8"
 log = "0.4"
 bytes = "1"
