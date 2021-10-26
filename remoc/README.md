@@ -101,11 +101,11 @@ The minimum supported Rust version (MSRV) is 1.51.
 ## Example
 
 In the following example the server listens on TCP port 9870 and the client connects to it.
-Then both ends establish a Remoc connection using [Connect::io] over the TCP connection.
+Then both ends establish a Remoc connection using `Connect::io()` over the TCP connection.
 The connection dispatchers are spawned onto new tasks and the `client()` and `server()` functions
-are called with the established [base channel](crate::rch::base).
-Then, the client creates a new [remote MPSC channel](crate::rch::mpsc) and sends it inside
-a count request to the server.
+are called with the established base channel.
+Then, the client creates a new remote MPSC channel and sends it inside a count request to the 
+server.
 The server receives the count request and counts on the provided channel.
 The client receives each counted number over the new channel.
 
