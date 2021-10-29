@@ -271,6 +271,16 @@ where
         }
     }
 
+    /// Blocking send to call outside of asynchronous contexts.
+    ///
+    /// # Panics
+    /// This function panics if called within an asynchronous execution context.
+    #[inline]
+    pub fn blocking_send(&self, value: T) -> Result<(), SendError<T>> {
+        let rt = tokio::runtime::Builder::new_current_thread().build().unwrap();
+        rt.block_on(self.send(value))
+    }
+
     /// Wait for channel capacity, returning an owned permit.
     /// Once capacity to send one message is available, it is reserved for the caller.
     #[inline]

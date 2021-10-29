@@ -109,6 +109,16 @@ impl<T, Codec, Buffer> Receiver<T, Codec, Buffer> {
         }
     }
 
+    /// Blocking receive to call outside of asynchronous contexts.
+    ///
+    /// # Panics
+    /// This function panics if called within an asynchronous execution context.
+    #[inline]
+    pub fn blocking_recv(&mut self) -> Result<Option<T>, RecvError> {
+        let rt = tokio::runtime::Builder::new_current_thread().build().unwrap();
+        rt.block_on(self.recv())
+    }
+
     /// Closes the receiving half of a channel without dropping it.
     #[inline]
     pub fn close(&mut self) {
