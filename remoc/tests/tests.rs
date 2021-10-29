@@ -30,7 +30,13 @@ mod rtc;
 static INIT: Once = Once::new();
 
 pub fn init() {
-    INIT.call_once(env_logger::init);
+    INIT.call_once(|| {
+        use tracing_subscriber::{fmt::format::FmtSpan, EnvFilter};
+        tracing_subscriber::fmt::fmt()
+            .with_env_filter(EnvFilter::from_default_env())
+            .with_span_events(FmtSpan::NEW)
+            .init();
+    });
 }
 
 #[macro_export]

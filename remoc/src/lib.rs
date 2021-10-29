@@ -86,6 +86,12 @@
 //! For ease of use all features are enabled by default.
 //! See the [codec module](codec) documentation on how to select a default codec.
 //!
+//! # Tracing
+//!
+//! Remoc uses the [Tracing crate](tracing) for logging of events.
+//! Setting the log level to `DEBUG` logs multiplexer lifetime events and messages as they are being processed.
+//! Setting the log level to `TRACE` logs multiplexer messages as they are being sent and received.
+//!
 //! # Example
 //!
 //! In the following example the server listens on TCP port 9870 and the client connects to it.

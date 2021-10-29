@@ -176,6 +176,7 @@ enum SendCmd {
 }
 
 /// Message with optionally associated data.
+#[derive(Debug)]
 struct TransportMsg {
     /// Message.
     msg: MultiplexMsg,
@@ -266,6 +267,7 @@ where
     ///
     /// # Panics
     /// Panics if specified configuration does not obey limits documented in [Cfg].
+    #[tracing::instrument(level = "debug", skip_all, fields(chmux))]
     pub async fn new(
         cfg: Cfg, mut transport_sink: TransportSink, mut transport_stream: TransportStream,
     ) -> Result<(Self, Client, Listener), ChMuxError<TransportSinkError, TransportStreamError>> {
@@ -277,10 +279,10 @@ where
             Some(trace_id) => trace_id,
             None => generate_trace_id(),
         };
+        tracing::Span::current().record("chmux", &trace_id.as_str());
 
         // Say hello to remote endpoint and exchange configurations.
-        log::trace!("{}: exchanging hello", &trace_id);
-        let fut = Self::exchange_hello(&trace_id, &cfg, &mut transport_sink, &mut transport_stream);
+        let fut = Self::exchange_hello(&cfg, &mut transport_sink, &mut transport_stream);
         let (remote_protocol_version, remote_cfg) = match cfg.connection_timeout {
             Some(dur) => timeout(dur, fut).await.map_err(|_| ChMuxError::Timeout)??,
             None => fut.await?,
@@ -327,19 +329,17 @@ where
         );
         let listener = Listener::new(listen_wait_rx, listen_no_wait_rx, port_allocator, terminate_tx);
 
-        log::trace!("{}: multiplexer created", &multiplexer.trace_id);
         Ok((multiplexer, client, listener))
     }
 
     /// Feed transport message to sink and log it.
+    #[tracing::instrument(level="trace", skip_all, fields(msg=?msg.msg, data=?msg.data))]
     async fn feed_msg(
-        trace_id: &str, msg: TransportMsg, sink: &mut TransportSink,
+        msg: TransportMsg, sink: &mut TransportSink,
     ) -> Result<(), ChMuxError<TransportSinkError, TransportStreamError>> {
-        log::trace!("{} ==> {:?}", trace_id, &msg.msg);
         sink.feed(msg.msg.to_vec().into()).await.map_err(ChMuxError::SinkError)?;
 
         if let Some(data) = msg.data {
-            log::trace!("{} ==> [{} bytes data]", trace_id, data.len());
             sink.feed(data).await.map_err(ChMuxError::SinkError)?;
         }
 
@@ -347,16 +347,15 @@ where
     }
 
     /// Flush sink and log it.
-    async fn flush(
-        trace_id: &str, sink: &mut TransportSink,
-    ) -> Result<(), ChMuxError<TransportSinkError, TransportStreamError>> {
-        log::trace!("{} ==> [flush]", trace_id);
+    #[tracing::instrument(level = "trace", skip_all)]
+    async fn flush(sink: &mut TransportSink) -> Result<(), ChMuxError<TransportSinkError, TransportStreamError>> {
         sink.flush().await.map_err(ChMuxError::SinkError)
     }
 
     /// Receive message and log it.
+    #[tracing::instrument(level = "trace", skip_all, fields(msg, data))]
     async fn recv_msg(
-        trace_id: &str, stream: &mut TransportStream,
+        stream: &mut TransportStream,
     ) -> Result<TransportMsg, ChMuxError<TransportSinkError, TransportStreamError>> {
         let msg_data = match stream.next().await {
             Some(Ok(msg_data)) => msg_data,
@@ -365,14 +364,10 @@ where
         };
 
         let msg = MultiplexMsg::from_slice(&msg_data)?;
-        log::trace!("{} <== {:?}", trace_id, &msg);
 
         let data = if let MultiplexMsg::Data { .. } = &msg {
             match stream.next().await {
-                Some(Ok(data)) => {
-                    log::trace!("{} <== [{} bytes data]", trace_id, data.len());
-                    Some(data)
-                }
+                Some(Ok(data)) => Some(data),
                 Some(Err(err)) => return Err(ChMuxError::StreamError(err)),
                 None => return Err(ChMuxError::StreamClosed),
             }
@@ -380,31 +375,36 @@ where
             None
         };
 
+        tracing::Span::current().record("msg", &tracing::field::debug(&msg));
+        if let Some(data) = &data {
+            tracing::Span::current().record("data", &tracing::field::debug(&data));
+        }
+
         Ok(TransportMsg { msg, data })
     }
 
     /// Exchange Hello message with remote endpoint.
+    #[tracing::instrument(level = "debug", skip_all)]
     async fn exchange_hello(
-        trace_id: &str, cfg: &Cfg, sink: &mut TransportSink, stream: &mut TransportStream,
+        cfg: &Cfg, sink: &mut TransportSink, stream: &mut TransportStream,
     ) -> Result<(u8, ExchangedCfg), ChMuxError<TransportSinkError, TransportStreamError>> {
         // Say hello to remote endpoint and send our configuration.
         let send_task = async {
-            Self::feed_msg(trace_id, TransportMsg::new(MultiplexMsg::Reset), sink).await?;
-            Self::flush(trace_id, sink).await?;
+            Self::feed_msg(TransportMsg::new(MultiplexMsg::Reset), sink).await?;
+            Self::flush(sink).await?;
             Self::feed_msg(
-                trace_id,
                 TransportMsg::new(MultiplexMsg::Hello { version: PROTOCOL_VERSION, cfg: cfg.into() }),
                 sink,
             )
             .await?;
-            Self::flush(trace_id, sink).await?;
+            Self::flush(sink).await?;
             Ok(())
         };
 
         // Receive hello and configuration from remote endpoint.
         let recv_task = async {
             loop {
-                match Self::recv_msg(trace_id, stream).await {
+                match Self::recv_msg(stream).await {
                     Ok(TransportMsg { msg: MultiplexMsg::Hello { version, cfg }, .. }) => {
                         break Ok((version, cfg))
                     }
@@ -436,18 +436,17 @@ where
         // possibly even with still connected ports.
         terminate |= self.goodbye_received;
 
+        if terminate {
+            tracing::debug!("should terminate");
+        }
+
         terminate
     }
 
     /// Create port in port registry and return associated sender and receiver.
+    #[tracing::instrument(level = "debug")]
     fn create_port(&mut self, local_port: PortNumber, remote_port: u32) -> (Sender, Receiver) {
         let local_port_num = *local_port;
-        log::trace!(
-            "{}: created port {} connected to remote port {}",
-            &self.trace_id,
-            &local_port_num,
-            remote_port
-        );
 
         let sender_tx = self.channel_tx.clone();
         let (sender_credit_provider, sender_credit_user) = credit_send_pair(self.remote_cfg.port_receive_buffer);
@@ -539,7 +538,7 @@ where
         }
 
         if free {
-            log::trace!("{}: freed port {}", &self.trace_id, &local_port);
+            tracing::debug!(local_port, "freed port");
             self.ports.remove(&local_port);
         }
     }
@@ -548,8 +547,7 @@ where
     ///
     /// Automatically sends pings if no data is to be transmitted.
     async fn send_task(
-        trace_id: &str, mut sink: &mut TransportSink, ping_interval: Option<Duration>,
-        mut rx: mpsc::Receiver<SendCmd>,
+        mut sink: &mut TransportSink, ping_interval: Option<Duration>, mut rx: mpsc::Receiver<SendCmd>,
     ) -> Result<(), ChMuxError<TransportSinkError, TransportStreamError>> {
         async fn get_next_ping(ping_interval: Option<Duration>) {
             match ping_interval {
@@ -570,21 +568,21 @@ where
                     match cmd_opt {
                         Some(SendCmd::Send (msg)) => {
                             let is_goodbye = matches!(&msg, TransportMsg {msg: MultiplexMsg::Goodbye, ..});
-                            Self::feed_msg(trace_id, msg, sink).await?;
+                            Self::feed_msg(msg, sink).await?;
                             if is_goodbye {
                                 break;
                             }
 
                             next_ping = get_next_ping(ping_interval).fuse().boxed();
                         }
-                        Some(SendCmd::Flush) => Self::flush(trace_id, sink).await?,
+                        Some(SendCmd::Flush) => Self::flush(sink).await?,
                         None => break,
                     }
                 }
 
                 () = &mut next_ping => {
-                    Self::feed_msg(trace_id, TransportMsg::new(MultiplexMsg::Ping), sink).await?;
-                    Self::flush(trace_id, sink).await?;
+                    Self::feed_msg(TransportMsg::new(MultiplexMsg::Ping), sink).await?;
+                    Self::flush(sink).await?;
                     next_ping = get_next_ping(ping_interval).fuse().boxed();
                 }
             }
@@ -592,7 +590,7 @@ where
 
         // Flushing may fail after Goodbye message has been sent, because the remote
         // endpoint may immediately close the connection.
-        let _ = Self::flush(trace_id, sink).await;
+        let _ = Self::flush(sink).await;
 
         Ok(())
     }
@@ -601,8 +599,7 @@ where
     ///
     /// Watches the connection timeout.
     async fn recv_task(
-        trace_id: &str, stream: &mut TransportStream, connection_timeout: Option<Duration>,
-        tx: mpsc::Sender<TransportMsg>,
+        stream: &mut TransportStream, connection_timeout: Option<Duration>, tx: mpsc::Sender<TransportMsg>,
     ) -> Result<(), ChMuxError<TransportSinkError, TransportStreamError>> {
         async fn get_connection_timeout(connection_timeout: Option<Duration>) {
             match connection_timeout {
@@ -616,7 +613,7 @@ where
             tokio::select! {
                 biased;
 
-                msg = Self::recv_msg(trace_id, stream) => {
+                msg = Self::recv_msg(stream) => {
                     let msg = msg?;
                     let is_goodbye = matches!(&msg, TransportMsg {msg: MultiplexMsg::Goodbye, ..});
                     tx_permit.send(msg);
@@ -638,28 +635,21 @@ where
     ///
     /// The dispatcher terminates when the client, server and all channels have been dropped or
     /// the transport is closed.
+    #[tracing::instrument(level = "debug", skip_all, fields(chmux=self.trace_id.as_str()))]
     pub async fn run(mut self) -> Result<(), ChMuxError<TransportSinkError, TransportStreamError>> {
-        let trace_id = self.trace_id.clone();
         let mut transport_sink = self.transport_sink.take().unwrap();
         let mut transport_stream = self.transport_stream.take().unwrap();
 
-        log::trace!("{}: multiplexer run", &trace_id);
-
         // Create send over transport task.
         let (send_tx, send_rx) = mpsc::channel(1);
-        let send_task = Self::send_task(
-            &trace_id,
-            &mut transport_sink,
-            self.remote_cfg.connection_timeout.map(|d| d / 2),
-            send_rx,
-        )
-        .fuse();
+        let send_task =
+            Self::send_task(&mut transport_sink, self.remote_cfg.connection_timeout.map(|d| d / 2), send_rx)
+                .fuse();
         pin_mut!(send_task);
 
         // Create receive over transport task.
         let (recv_tx, mut recv_rx) = mpsc::channel(1);
-        let recv_task =
-            Self::recv_task(&trace_id, &mut transport_stream, self.local_cfg.connection_timeout, recv_tx).fuse();
+        let recv_task = Self::recv_task(&mut transport_stream, self.local_cfg.connection_timeout, recv_tx).fuse();
         pin_mut!(recv_task);
 
         // Setup channels.
@@ -728,10 +718,10 @@ where
 
             tokio::select! {
                 // Local send request.
-                Some((permit, event)) = send_prep_task => self.handle_event(&trace_id, permit, event).await?,
+                Some((permit, event)) = send_prep_task => self.handle_event(permit, event).await?,
 
                 // Received message from remote endpoint.
-                Some(msg) = recv_rx.recv() => self.handle_received_msg(&trace_id, msg).await?,
+                Some(msg) = recv_rx.recv() => self.handle_received_msg(msg).await?,
 
                 // Send task ended.
                 res = &mut send_task => {
@@ -746,19 +736,18 @@ where
             }
         }
 
-        log::trace!("{}: multiplexer normal exit", &trace_id);
         Ok(())
     }
 
     /// Handle local event that results in sending a message to the remote endpoint.
+    #[tracing::instrument(level = "debug", skip_all, fields(event=?event))]
     async fn handle_event(
-        &mut self, trace_id: &str, permit: Permit<'_, SendCmd>, event: GlobalEvt,
+        &mut self, permit: Permit<'_, SendCmd>, event: GlobalEvt,
     ) -> Result<(), ChMuxError<TransportSinkError, TransportStreamError>> {
-        log::trace!("{}: processing event {:?}", trace_id, &event);
-
-        fn send_msg(permit: Permit<'_, SendCmd>, msg: MultiplexMsg) {
+        let send_msg = |permit: Permit<'_, SendCmd>, msg: MultiplexMsg| {
+            tracing::debug!(op="send", msg=?msg);
             permit.send(SendCmd::Send(TransportMsg::new(msg)))
-        }
+        };
 
         match event {
             // Process local connect request.
@@ -792,10 +781,9 @@ where
 
             // Send data from port.
             GlobalEvt::Port(PortEvt::SendData { remote_port, data, first, last }) => {
-                permit.send(SendCmd::Send(TransportMsg::with_data(
-                    MultiplexMsg::Data { port: remote_port, first, last },
-                    data,
-                )));
+                let msg = MultiplexMsg::Data { port: remote_port, first, last };
+                tracing::debug!(op="send", msg=?msg, data=?&data);
+                permit.send(SendCmd::Send(TransportMsg::with_data(msg, data)));
             }
 
             // Send ports from port.
@@ -896,11 +884,11 @@ where
     }
 
     /// Handle message received from remote endpoint.
+    #[tracing::instrument(level = "debug", skip_all, fields(msg=?received_msg.msg, data=?received_msg.data))]
     async fn handle_received_msg(
-        &mut self, _trace_id: &str, received_msg: TransportMsg,
+        &mut self, received_msg: TransportMsg,
     ) -> Result<(), ChMuxError<TransportSinkError, TransportStreamError>> {
         let TransportMsg { msg, data } = received_msg;
-        // log::trace!("{}: processing received message {:?}", trace_id, &msg);
 
         match msg {
             // Connection reset by remote endpoint.
@@ -1080,8 +1068,6 @@ where
                 }) = self.ports.get_mut(&port)
                 {
                     if !remote_receiver_closed.load(Ordering::SeqCst) {
-                        log::trace!("disable credits provider");
-
                         // Disable credits provider.
                         sender_credit_provider.close(true);
 
@@ -1089,7 +1075,6 @@ where
                         remote_receiver_closed.store(true, Ordering::SeqCst);
                         let notifies = remote_receiver_closed_notify.lock().unwrap().take().unwrap();
                         for tx in notifies {
-                            log::trace!("sending close notify");
                             let _ = tx.send(());
                         }
 

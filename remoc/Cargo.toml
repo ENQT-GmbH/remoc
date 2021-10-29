@@ -37,7 +37,7 @@ futures = "0.3"
 tokio = { version = "1.11", features = ["macros", "rt", "sync", "time"] }
 tokio-util = { version = "0.6", features = ["codec"], optional = true }
 rand = "0.8"
-log = "0.4"
+tracing = "0.1.29"
 bytes = "1"
 byteorder = "1.4"
 lazy_static = "1.4"
@@ -61,7 +61,7 @@ tokio = { version = "1.11", features = [
 ] }
 tokio-util = { version = "0.6", features = ["codec"] }
 tokio-test = "0.4"
-env_logger = "0.9"
+tracing-subscriber = "0.2"
 
 
 [package.metadata.docs.rs]

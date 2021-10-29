@@ -418,5 +418,5 @@ pub use tokio::{select, spawn};
 /// Log message that receiving a request failed for proc macro.
 #[doc(hidden)]
 pub fn receiving_request_failed(err: mpsc::RecvError) {
-    log::warn!("Receiving request failed: {}", &err)
+    tracing::warn!(err = ?err, "receiving RTC request failed")
 }
