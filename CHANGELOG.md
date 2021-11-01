@@ -4,6 +4,15 @@ All notable changes to Remoc will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## 0.9.0 - 2021-11-01
+### Added
+- `is_final()` on channel error types
+### Changed
+- terminate providers and RTC servers when a final receive error occurs
+### Removed
+- `chmux::Cfg::trace_id` because using tracing spans makes it redundant
+
 ## 0.8.2 - 2021-10-29
 ### Added
 - blocking send and receive functions for rch::mpsc

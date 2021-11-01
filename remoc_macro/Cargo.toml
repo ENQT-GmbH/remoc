@@ -1,6 +1,6 @@
 [package]
 name = "remoc_macro"
-version = "0.8.2"
+version = "0.9.0"
 authors = ["Sebastian Urban <surban@surban.net>", "ENQT GmbH <su@enqt.de>"]
 readme = "README.md"
 repository = "https://github.com/ENQT-GmbH/remoc/"
