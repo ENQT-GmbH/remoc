@@ -316,6 +316,7 @@ impl TraitDef {
                                 req.dispatch(&mut target).await;
                             },
                             Ok(None) => return Some(target),
+                            Err(err) if err.is_final() => return Some(target),
                             Err(err) => ::remoc::rtc::receiving_request_failed(err),
                         }
                     }
@@ -376,6 +377,7 @@ impl TraitDef {
                             },
                             Ok(Some(_)) => (),
                             Ok(None) => break,
+                            Err(err) if err.is_final() => break,
                             Err(err) => ::remoc::rtc::receiving_request_failed(err),
                         }
                     }
@@ -439,6 +441,7 @@ impl TraitDef {
                             },
                             Ok(Some(_)) => (),
                             Ok(None) => break,
+                            Err(err) if err.is_final() => break,
                             Err(err) => ::remoc::rtc::receiving_request_failed(err),
                         }
                     }
@@ -506,6 +509,7 @@ impl TraitDef {
                             },
                             Ok(Some(_)) => (),
                             Ok(None) => break,
+                            Err(err) if err.is_final() => break,
                             Err(err) => ::remoc::rtc::receiving_request_failed(err),
                         }
                     }
@@ -578,6 +582,7 @@ impl TraitDef {
                             },
                             Ok(Some(_)) => (),
                             Ok(None) => break,
+                            Err(err) if err.is_final() => break,
                             Err(err) => ::remoc::rtc::receiving_request_failed(err),
                         }
                     }
