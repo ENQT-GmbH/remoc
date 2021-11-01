@@ -61,7 +61,7 @@ where
     async fn owner_task(
         value: &mut T, mut read_req_rx: mpsc::Receiver<ReadRequest<T, Codec>, Codec, buffer::Custom<1>>,
         mut write_req_rx: mpsc::Receiver<WriteRequest<T, Codec>, Codec, buffer::Custom<1>>,
-    ) -> T {
+    ) {
         let (dropped_tx, dropped_rx) = mpsc::channel(1);
         let mut dropped_tx = dropped_tx.set_buffer();
         let mut dropped_rx = dropped_rx.set_buffer::<buffer::Custom<1>>();
@@ -73,10 +73,11 @@ where
 
                 // Write value request.
                 res = write_req_rx.recv() => {
-                    let WriteRequest {value_tx, new_value_rx, confirm_tx} = if let Ok(Some(req)) = res {
-                        req
-                    } else {
-                        continue;
+                    let WriteRequest {value_tx, new_value_rx, confirm_tx} = match res {
+                        Ok(Some(req)) => req,
+                        Ok(None) => break,
+                        Err(err) if err.is_final() => break,
+                        Err(_) => continue,
                     };
 
                     // Invalidate current value.
@@ -116,10 +117,11 @@ where
 
                 // Read value request.
                 res = read_req_rx.recv() => {
-                    let ReadRequest {value_tx} = if let Ok(Some(req)) = res {
-                        req
-                    } else {
-                        continue;
+                    let ReadRequest {value_tx} = match res {
+                        Ok(Some(req)) => req,
+                        Ok(None) => break,
+                        Err(err) if err.is_final() => break,
+                        Err(_) => continue,
                     };
 
                     // Send current value together with invalidation channels.

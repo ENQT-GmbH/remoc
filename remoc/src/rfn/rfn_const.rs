@@ -149,6 +149,7 @@ where
                                 });
                             }
                             Ok(None) => break,
+                            Err(err) if err.is_final() => break,
                             Err(_) => (),
                         }
                     }
