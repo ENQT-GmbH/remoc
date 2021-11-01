@@ -100,6 +100,8 @@ impl<T, Codec, Buffer> Receiver<T, Codec, Buffer> {
     }
 
     /// Receives the next value for this receiver.
+    ///
+    /// This function returns `Ok(None)` when the channel sender has been dropped.
     #[inline]
     pub async fn recv(&mut self) -> Result<Option<T>, RecvError> {
         match self.inner.as_mut().unwrap().rx.recv().await {
@@ -110,6 +112,8 @@ impl<T, Codec, Buffer> Receiver<T, Codec, Buffer> {
     }
 
     /// Polls to receive the next message on this channel.
+    ///
+    /// This function returns `Poll::Ready(Ok(None))` when the channel sender has been dropped.
     #[inline]
     pub fn poll_recv(&mut self, cx: &mut Context<'_>) -> Poll<Result<Option<T>, RecvError>> {
         match ready!(self.inner.as_mut().unwrap().rx.poll_recv(cx)) {
@@ -120,6 +124,8 @@ impl<T, Codec, Buffer> Receiver<T, Codec, Buffer> {
     }
 
     /// Blocking receive to call outside of asynchronous contexts.
+    ///
+    /// This function returns `Ok(None)` when the channel sender has been dropped.
     ///
     /// # Panics
     /// This function panics if called within an asynchronous execution context.

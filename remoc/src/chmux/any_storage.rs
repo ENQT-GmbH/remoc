@@ -38,10 +38,6 @@ impl AnyStorage {
     }
 
     /// Insert a new entry into the storage and return its key.
-    ///
-    /// # Panics
-    /// Panics when a duplicate UUID is generated and inserted into the storage.
-    /// The probability of this is happening is extremely low.
     pub fn insert(&self, entry: AnyEntry) -> Uuid {
         let mut entries = self.entries.lock().unwrap();
         loop {

@@ -32,7 +32,7 @@
 //!
 //! # Example
 //!
-//! In the following example the server creates sends a handle and sends it to the client.
+//! In the following example the server creates a handle and sends it to the client.
 //! The client tries to dereference a handle but receives an error because the handle
 //! was not created locally.
 //! The client then sends back the handle to the server.
