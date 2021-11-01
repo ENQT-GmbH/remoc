@@ -10,11 +10,7 @@ use super::{
     },
     Ref, ERROR_QUEUE,
 };
-use crate::{
-    chmux,
-    codec::{self},
-    RemoteSend,
-};
+use crate::{chmux, codec, RemoteSend};
 
 /// An error occurred during receiving over a watch channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -38,6 +34,16 @@ impl fmt::Display for RecvError {
 }
 
 impl Error for RecvError {}
+
+impl RecvError {
+    /// Returns whether the error is final, i.e. no further receive operation can succeed.
+    pub fn is_final(&self) -> bool {
+        match self {
+            Self::RemoteReceive(err) => err.is_final(),
+            Self::RemoteConnect(_) | Self::RemoteListen(_) => true,
+        }
+    }
+}
 
 /// An error occurred during waiting for a change on a watch channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]

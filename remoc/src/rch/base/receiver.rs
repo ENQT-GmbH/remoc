@@ -56,6 +56,16 @@ impl fmt::Display for RecvError {
 
 impl Error for RecvError {}
 
+impl RecvError {
+    /// Returns whether the error is final, i.e. no further receive operation can succeed.
+    pub fn is_final(&self) -> bool {
+        match self {
+            Self::Receive(err) => err.is_final(),
+            Self::Deserialize(_) | Self::MissingPorts(_) => false,
+        }
+    }
+}
+
 /// Gathers ports sent from the remote endpoint during deserialization.
 pub struct PortDeserializer {
     allocator: chmux::PortAllocator,

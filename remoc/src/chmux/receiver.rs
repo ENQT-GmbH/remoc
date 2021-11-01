@@ -32,6 +32,11 @@ impl RecvError {
     pub fn is_terminated(&self) -> bool {
         matches!(self, Self::ChMux)
     }
+
+    /// Returns whether the error is final, i.e. no further receive operation can succeed.
+    pub fn is_final(&self) -> bool {
+        self.is_terminated()
+    }
 }
 
 impl fmt::Display for RecvError {

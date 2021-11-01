@@ -41,6 +41,16 @@ impl fmt::Display for RecvError {
 
 impl Error for RecvError {}
 
+impl RecvError {
+    /// Returns whether the error is final, i.e. no further receive operation can succeed.
+    pub fn is_final(&self) -> bool {
+        match self {
+            Self::RemoteReceive(err) => err.is_final(),
+            Self::RemoteConnect(_) | Self::RemoteListen(_) => true,
+        }
+    }
+}
+
 /// Receive values from the associated [Sender](super::Sender),
 /// which may be located on a remote endpoint.
 ///

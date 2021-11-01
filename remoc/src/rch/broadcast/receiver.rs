@@ -39,6 +39,15 @@ impl RecvError {
     pub fn is_lagged(&self) -> bool {
         matches!(self, Self::Lagged)
     }
+
+    /// Returns whether the error is final, i.e. no further receive operation can succeed.
+    pub fn is_final(&self) -> bool {
+        match self {
+            Self::RemoteReceive(err) => err.is_final(),
+            Self::Closed | Self::RemoteConnect(_) | Self::RemoteListen(_) => true,
+            Self::Lagged => false,
+        }
+    }
 }
 
 impl fmt::Display for RecvError {

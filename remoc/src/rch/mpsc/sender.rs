@@ -38,6 +38,14 @@ impl<T> SendError<T> {
     pub fn is_closed(&self) -> bool {
         matches!(self, Self::Closed(_))
     }
+
+    /// Returns whether the error is final, i.e. no further send operation can succeed.
+    pub fn is_final(&self) -> bool {
+        match self {
+            Self::RemoteSend(err) => err.is_final(),
+            Self::Closed(_) | Self::RemoteConnect(_) | Self::RemoteListen(_) | Self::RemoteForward => true,
+        }
+    }
 }
 
 impl<T> fmt::Display for SendError<T> {
@@ -81,6 +89,22 @@ pub enum TrySendError<T> {
     RemoteListen(chmux::ListenerError),
     /// Forwarding at a remote endpoint to another remote endpoint failed.
     RemoteForward,
+}
+
+impl<T> TrySendError<T> {
+    /// True, if the remote endpoint closed the channel.
+    pub fn is_closed(&self) -> bool {
+        matches!(self, Self::Closed(_))
+    }
+
+    /// Returns whether the error is final, i.e. no further send operation can succeed.
+    pub fn is_final(&self) -> bool {
+        match self {
+            Self::RemoteSend(err) => err.is_final(),
+            Self::Full(_) => false,
+            Self::Closed(_) | Self::RemoteConnect(_) | Self::RemoteListen(_) | Self::RemoteForward => true,
+        }
+    }
 }
 
 impl<T> fmt::Display for TrySendError<T> {

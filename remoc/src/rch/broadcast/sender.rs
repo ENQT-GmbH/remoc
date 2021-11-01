@@ -12,11 +12,7 @@ use super::{
     super::{base, buffer, mpsc},
     BroadcastMsg, Receiver,
 };
-use crate::{
-    chmux,
-    codec::{self},
-    RemoteSend,
-};
+use crate::{chmux, codec, RemoteSend};
 
 /// An error occurred during sending over a broadcast channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -57,6 +53,16 @@ impl<T, R> TryFrom<mpsc::TrySendError<T>> for SendError<R> {
             mpsc::TrySendError::RemoteListen(err) => Ok(Self::RemoteListen(err)),
             mpsc::TrySendError::RemoteForward => Ok(Self::RemoteForward),
             other => Err(other),
+        }
+    }
+}
+
+impl<T> SendError<T> {
+    /// Returns whether the error is final, i.e. no further send operation can succeed.
+    pub fn is_final(&self) -> bool {
+        match self {
+            Self::RemoteSend(err) => err.is_final(),
+            Self::Closed(_) | Self::RemoteConnect(_) | Self::RemoteListen(_) | Self::RemoteForward => true,
         }
     }
 }

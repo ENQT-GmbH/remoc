@@ -53,6 +53,15 @@ impl<T> SendError<T> {
             _ => false,
         }
     }
+
+    /// Returns whether the error is final, i.e. no further send operation can succeed.
+    pub fn is_final(&self) -> bool {
+        match &self.kind {
+            SendErrorKind::Serialize(_) => false,
+            SendErrorKind::Send(err) => err.is_final(),
+            SendErrorKind::Connect(_) => true,
+        }
+    }
 }
 
 impl fmt::Display for SendErrorKind {

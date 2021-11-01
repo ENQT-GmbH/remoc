@@ -17,11 +17,7 @@ use super::{
     receiver::RecvError,
     Receiver, Ref, ERROR_QUEUE,
 };
-use crate::{
-    chmux,
-    codec::{self},
-    RemoteSend,
-};
+use crate::{chmux, codec, RemoteSend};
 
 /// An error occurred during sending over an mpsc channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -42,6 +38,14 @@ impl SendError {
     /// True, if all receivers have been dropped.
     pub fn is_closed(&self) -> bool {
         matches!(self, Self::Closed)
+    }
+
+    /// Returns whether the error is final, i.e. no further send operation can succeed.
+    pub fn is_final(&self) -> bool {
+        match self {
+            Self::RemoteSend(err) => err.is_final(),
+            Self::Closed | Self::RemoteConnect(_) | Self::RemoteListen(_) | Self::RemoteForward => true,
+        }
     }
 }
 

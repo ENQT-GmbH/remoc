@@ -43,6 +43,11 @@ impl SendError {
     pub fn is_closed(&self) -> bool {
         matches!(self, Self::Closed { .. })
     }
+
+    /// Returns whether the error is final, i.e. no further send operation can succeed.
+    pub fn is_final(&self) -> bool {
+        true
+    }
 }
 
 impl fmt::Display for SendError {
@@ -75,6 +80,24 @@ pub enum TrySendError {
     Full,
     /// Send error.
     Send(SendError),
+}
+
+impl TrySendError {
+    /// True, if the remote endpoint closed the channel.
+    pub fn is_closed(&self) -> bool {
+        match self {
+            Self::Full => false,
+            Self::Send(err) => err.is_closed(),
+        }
+    }
+
+    /// Returns whether the error is final, i.e. no further send operation can succeed.
+    pub fn is_final(&self) -> bool {
+        match self {
+            Self::Full => false,
+            Self::Send(err) => err.is_final(),
+        }
+    }
 }
 
 impl fmt::Display for TrySendError {

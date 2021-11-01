@@ -21,6 +21,11 @@ impl<T> SendError<T> {
     pub fn is_closed(&self) -> bool {
         matches!(self, Self::Closed(_))
     }
+
+    /// Returns whether the error is final, i.e. no further send operation can succeed.
+    pub fn is_final(&self) -> bool {
+        true
+    }
 }
 
 impl<T> fmt::Display for SendError<T> {

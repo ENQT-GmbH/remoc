@@ -65,6 +65,17 @@ impl fmt::Display for RecvError {
 
 impl Error for RecvError {}
 
+impl RecvError {
+    /// Returns whether the error is final, i.e. no further receive operation can succeed.
+    pub fn is_final(&self) -> bool {
+        match self {
+            Self::Receive(err) => err.is_final(),
+            Self::Connect(_) => true,
+            Self::Deserialize(_) | Self::MissingPorts(_) => false,
+        }
+    }
+}
+
 /// The receiver part of a local/remote channel.
 pub struct Receiver<T, Codec = codec::Default> {
     pub(super) receiver: Option<Result<base::Receiver<T, Codec>, ConnectError>>,

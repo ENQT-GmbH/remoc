@@ -41,6 +41,24 @@ pub enum SendErrorKind {
     Send(chmux::SendError),
 }
 
+impl SendErrorKind {
+    /// Returns true, if error it due to channel being closed.
+    pub fn is_closed(&self) -> bool {
+        match self {
+            Self::Send(err) => err.is_closed(),
+            _ => false,
+        }
+    }
+
+    /// Returns whether the error is final, i.e. no further send operation can succeed.
+    pub fn is_final(&self) -> bool {
+        match self {
+            Self::Serialize(_) => false,
+            Self::Send(err) => err.is_final(),
+        }
+    }
+}
+
 impl<T> SendError<T> {
     pub(crate) fn new(kind: SendErrorKind, item: T) -> Self {
         Self { kind, item }
@@ -48,10 +66,12 @@ impl<T> SendError<T> {
 
     /// Returns true, if error it due to channel being closed.
     pub fn is_closed(&self) -> bool {
-        match &self.kind {
-            SendErrorKind::Send(err) => err.is_closed(),
-            _ => false,
-        }
+        self.kind.is_closed()
+    }
+
+    /// Returns whether the error is final, i.e. no further send operation can succeed.
+    pub fn is_final(&self) -> bool {
+        self.kind.is_final()
     }
 }
 
