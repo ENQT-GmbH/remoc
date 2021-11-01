@@ -21,8 +21,6 @@ pub enum PortsExhausted {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Cfg {
-    /// Identifier for trace logging.
-    pub trace_id: Option<String>,
     /// Time after which connection is closed when no data is.
     ///
     /// Pings are send automatically when this is enabled and no data is transmitted.
@@ -40,13 +38,15 @@ pub struct Cfg {
     pub ports_exhausted: PortsExhausted,
     /// Maximum size of received data per message in bytes.
     ///
-    /// [Receiver::recv_chunk](super::Receiver::recv_chunk) is not affected by this limit.
+    /// [Receiver::recv_chunk](super::Receiver::recv_chunk) and [remote channels](crate::rch)
+    /// are not affected by this limit.
     /// This can be configured on a per-receiver basis.
     ///
     /// By default this is 64 kB.
     pub max_data_size: usize,
     /// Maximum port requests received per message.
     ///
+    /// [Remote channels](crate::rch)  are not affected by this limit.
     /// This can be configured on a per-receiver basis.
     ///
     /// By default this is 128.
@@ -83,7 +83,6 @@ pub struct Cfg {
 impl Default for Cfg {
     fn default() -> Self {
         Self {
-            trace_id: None,
             connection_timeout: Some(Duration::from_secs(60)),
             max_ports: 16384,
             ports_exhausted: PortsExhausted::Wait(Some(Duration::from_secs(60))),

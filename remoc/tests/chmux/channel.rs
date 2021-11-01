@@ -3,10 +3,11 @@ use futures::{channel::oneshot, future::try_join, stream::StreamExt};
 use remoc::chmux;
 use std::time::Duration;
 use tokio::time::sleep;
+use tracing::Instrument;
 
 use crate::loop_transport;
 
-fn cfg(trace_id: &str) -> chmux::Cfg {
+fn cfg() -> chmux::Cfg {
     chmux::Cfg {
         connection_timeout: Some(Duration::from_secs(1)),
         max_ports: 20,
@@ -17,12 +18,11 @@ fn cfg(trace_id: &str) -> chmux::Cfg {
         receive_buffer: 4,
         shared_send_queue: 3,
         connect_queue: 2,
-        trace_id: Some(trace_id.to_string()),
         ..Default::default()
     }
 }
 
-fn cfg2(trace_id: &str) -> chmux::Cfg {
+fn cfg2() -> chmux::Cfg {
     chmux::Cfg {
         connection_timeout: Some(Duration::from_secs(1)),
         max_ports: 20,
@@ -33,7 +33,6 @@ fn cfg2(trace_id: &str) -> chmux::Cfg {
         receive_buffer: 4,
         shared_send_queue: 1,
         connect_queue: 1,
-        trace_id: Some(trace_id.to_string()),
         ..Default::default()
     }
 }
@@ -45,24 +44,28 @@ async fn basic() {
     println!("Connecting...");
     loop_transport!(0, a_tx, a_rx, b_tx, b_rx);
     let ((a_mux, a_client, a_server), (b_mux, b_client, mut b_server)) =
-        try_join(chmux::ChMux::new(cfg("a_mux"), a_tx, a_rx), chmux::ChMux::new(cfg2("b_mux"), b_tx, b_rx))
-            .await
-            .unwrap();
+        try_join(chmux::ChMux::new(cfg(), a_tx, a_rx), chmux::ChMux::new(cfg2(), b_tx, b_rx)).await.unwrap();
     println!("Connected: a_mux={:?}, b_mux={:?}", &a_mux, &b_mux);
 
     let (a_mux_done_tx, a_mux_done_rx) = oneshot::channel();
-    tokio::spawn(async move {
-        println!("A mux run");
-        a_mux.run().await.expect("a_mux");
-        let _ = a_mux_done_tx.send(());
-    });
+    tokio::spawn(
+        async move {
+            println!("A mux run");
+            a_mux.run().await.expect("a_mux");
+            let _ = a_mux_done_tx.send(());
+        }
+        .instrument(tracing::info_span!("A mux")),
+    );
 
     let (b_mux_done_tx, b_mux_done_rx) = oneshot::channel();
-    tokio::spawn(async move {
-        println!("B mux run");
-        b_mux.run().await.expect("b_mux");
-        let _ = b_mux_done_tx.send(());
-    });
+    tokio::spawn(
+        async move {
+            println!("B mux run");
+            b_mux.run().await.expect("b_mux");
+            let _ = b_mux_done_tx.send(());
+        }
+        .instrument(tracing::info_span!("B mux")),
+    );
 
     const N_MSG: usize = 500;
 
@@ -148,24 +151,28 @@ async fn hangup() {
     println!("Connecting...");
     loop_transport!(0, a_tx, a_rx, b_tx, b_rx);
     let ((a_mux, a_client, a_server), (b_mux, b_client, mut b_server)) =
-        try_join(chmux::ChMux::new(cfg("a_mux"), a_tx, a_rx), chmux::ChMux::new(cfg2("b_mux"), b_tx, b_rx))
-            .await
-            .unwrap();
+        try_join(chmux::ChMux::new(cfg(), a_tx, a_rx), chmux::ChMux::new(cfg2(), b_tx, b_rx)).await.unwrap();
     println!("Connected: a_mux={:?}, b_mux={:?}", &a_mux, &b_mux);
 
     let (a_mux_done_tx, a_mux_done_rx) = oneshot::channel();
-    tokio::spawn(async move {
-        println!("A mux start");
-        a_mux.run().await.unwrap();
-        let _ = a_mux_done_tx.send(());
-    });
+    tokio::spawn(
+        async move {
+            println!("A mux start");
+            a_mux.run().await.unwrap();
+            let _ = a_mux_done_tx.send(());
+        }
+        .instrument(tracing::info_span!("A mux")),
+    );
 
     let (b_mux_done_tx, b_mux_done_rx) = oneshot::channel();
-    tokio::spawn(async move {
-        println!("B mux start");
-        b_mux.run().await.unwrap();
-        let _ = b_mux_done_tx.send(());
-    });
+    tokio::spawn(
+        async move {
+            println!("B mux start");
+            b_mux.run().await.unwrap();
+            let _ = b_mux_done_tx.send(());
+        }
+        .instrument(tracing::info_span!("B mux")),
+    );
 
     let (server_done_tx, server_done_rx) = oneshot::channel();
     tokio::spawn(async move {

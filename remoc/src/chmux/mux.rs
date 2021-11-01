@@ -5,7 +5,6 @@ use futures::{
     stream::{Stream, StreamExt},
     Future, FutureExt,
 };
-use lazy_static::lazy_static;
 use std::{
     collections::HashMap,
     convert::TryFrom,
@@ -15,7 +14,7 @@ use std::{
     mem::size_of,
     pin::Pin,
     sync::{
-        atomic::{AtomicBool, AtomicU16, Ordering},
+        atomic::{AtomicBool, Ordering},
         Arc,
     },
     task::{Context, Poll},
@@ -201,8 +200,6 @@ impl TransportMsg {
 /// Channel multiplexer.
 #[must_use = "You must call run() on the ChMux object for the connection to work."]
 pub struct ChMux<TransportSink, TransportStream> {
-    /// Trace id.
-    trace_id: String,
     /// Our configuration.
     local_cfg: Cfg,
     /// Remote configuration.
@@ -244,7 +241,6 @@ pub struct ChMux<TransportSink, TransportStream> {
 impl<TransportSink, TransportStream> fmt::Debug for ChMux<TransportSink, TransportStream> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("ChMux")
-            .field("trace_id", &self.trace_id)
             .field("local_cfg", &self.local_cfg)
             .field("remote_cfg", &self.remote_cfg)
             .field("local_protocol_version", &PROTOCOL_VERSION)
@@ -267,19 +263,12 @@ where
     ///
     /// # Panics
     /// Panics if specified configuration does not obey limits documented in [Cfg].
-    #[tracing::instrument(level = "debug", skip_all, fields(chmux))]
+    #[tracing::instrument(level = "debug", skip_all, fields(cfg))]
     pub async fn new(
         cfg: Cfg, mut transport_sink: TransportSink, mut transport_stream: TransportStream,
     ) -> Result<(Self, Client, Listener), ChMuxError<TransportSinkError, TransportStreamError>> {
         // Check configuration.
         cfg.check();
-
-        // Get trace id.
-        let trace_id = match cfg.trace_id.clone() {
-            Some(trace_id) => trace_id,
-            None => generate_trace_id(),
-        };
-        tracing::Span::current().record("chmux", &trace_id.as_str());
 
         // Say hello to remote endpoint and exchange configurations.
         let fut = Self::exchange_hello(&cfg, &mut transport_sink, &mut transport_stream);
@@ -299,7 +288,6 @@ where
         let port_allocator = PortAllocator::new(cfg.max_ports);
         let remote_listener_dropped = Arc::new(AtomicBool::new(false));
         let multiplexer = ChMux {
-            trace_id,
             remote_protocol_version,
             local_cfg: cfg,
             remote_cfg: remote_cfg.clone(),
@@ -635,7 +623,7 @@ where
     ///
     /// The dispatcher terminates when the client, server and all channels have been dropped or
     /// the transport is closed.
-    #[tracing::instrument(level = "debug", skip_all, fields(chmux=self.trace_id.as_str()))]
+    #[tracing::instrument(level = "debug", skip_all)]
     pub async fn run(mut self) -> Result<(), ChMuxError<TransportSinkError, TransportStreamError>> {
         let mut transport_sink = self.transport_sink.take().unwrap();
         let mut transport_stream = self.transport_stream.take().unwrap();
@@ -1194,14 +1182,4 @@ where
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         Pin::into_inner(self).sink.poll_ready_unpin(cx)
     }
-}
-
-/// Generate trace id.
-fn generate_trace_id() -> String {
-    lazy_static! {
-        static ref ID: AtomicU16 = AtomicU16::new(0);
-    }
-
-    let id = ID.fetch_add(1, Ordering::SeqCst);
-    format!("{:04x}", id)
 }
