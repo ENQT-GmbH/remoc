@@ -263,7 +263,7 @@ where
     ///
     /// # Panics
     /// Panics if specified configuration does not obey limits documented in [Cfg].
-    #[tracing::instrument(level = "debug", skip_all, fields(cfg))]
+    #[tracing::instrument(level = "trace", skip_all, fields(cfg))]
     pub async fn new(
         cfg: Cfg, mut transport_sink: TransportSink, mut transport_stream: TransportStream,
     ) -> Result<(Self, Client, Listener), ChMuxError<TransportSinkError, TransportStreamError>> {
@@ -321,7 +321,7 @@ where
     }
 
     /// Feed transport message to sink and log it.
-    #[tracing::instrument(level="trace", skip_all, fields(msg=?msg.msg, data=?msg.data))]
+    #[tracing::instrument(level = "trace", skip_all, fields(msg=?msg.msg, data=?msg.data))]
     async fn feed_msg(
         msg: TransportMsg, sink: &mut TransportSink,
     ) -> Result<(), ChMuxError<TransportSinkError, TransportStreamError>> {
@@ -372,7 +372,7 @@ where
     }
 
     /// Exchange Hello message with remote endpoint.
-    #[tracing::instrument(level = "debug", skip_all)]
+    #[tracing::instrument(level = "trace", skip_all)]
     async fn exchange_hello(
         cfg: &Cfg, sink: &mut TransportSink, stream: &mut TransportStream,
     ) -> Result<(u8, ExchangedCfg), ChMuxError<TransportSinkError, TransportStreamError>> {
@@ -425,14 +425,14 @@ where
         terminate |= self.goodbye_received;
 
         if terminate {
-            tracing::debug!("should terminate");
+            tracing::trace!("should terminate");
         }
 
         terminate
     }
 
     /// Create port in port registry and return associated sender and receiver.
-    #[tracing::instrument(level = "debug")]
+    #[tracing::instrument(level = "trace")]
     fn create_port(&mut self, local_port: PortNumber, remote_port: u32) -> (Sender, Receiver) {
         let local_port_num = *local_port;
 
@@ -526,7 +526,7 @@ where
         }
 
         if free {
-            tracing::debug!(local_port, "freed port");
+            tracing::trace!(local_port, "freed port");
             self.ports.remove(&local_port);
         }
     }
@@ -623,7 +623,7 @@ where
     ///
     /// The dispatcher terminates when the client, server and all channels have been dropped or
     /// the transport is closed.
-    #[tracing::instrument(level = "debug", skip_all)]
+    #[tracing::instrument(level = "trace", skip_all)]
     pub async fn run(mut self) -> Result<(), ChMuxError<TransportSinkError, TransportStreamError>> {
         let mut transport_sink = self.transport_sink.take().unwrap();
         let mut transport_stream = self.transport_stream.take().unwrap();
@@ -728,12 +728,12 @@ where
     }
 
     /// Handle local event that results in sending a message to the remote endpoint.
-    #[tracing::instrument(level = "debug", skip_all, fields(event=?event))]
+    #[tracing::instrument(level = "trace", skip_all, fields(event=?event))]
     async fn handle_event(
         &mut self, permit: Permit<'_, SendCmd>, event: GlobalEvt,
     ) -> Result<(), ChMuxError<TransportSinkError, TransportStreamError>> {
         let send_msg = |permit: Permit<'_, SendCmd>, msg: MultiplexMsg| {
-            tracing::debug!(op="send", msg=?msg);
+            tracing::trace!(op="send", msg=?msg);
             permit.send(SendCmd::Send(TransportMsg::new(msg)))
         };
 
@@ -770,7 +770,7 @@ where
             // Send data from port.
             GlobalEvt::Port(PortEvt::SendData { remote_port, data, first, last }) => {
                 let msg = MultiplexMsg::Data { port: remote_port, first, last };
-                tracing::debug!(op="send", msg=?msg, data=?&data);
+                tracing::trace!(op="send", msg=?msg, data=?&data);
                 permit.send(SendCmd::Send(TransportMsg::with_data(msg, data)));
             }
 
@@ -872,7 +872,7 @@ where
     }
 
     /// Handle message received from remote endpoint.
-    #[tracing::instrument(level = "debug", skip_all, fields(msg=?received_msg.msg, data=?received_msg.data))]
+    #[tracing::instrument(level = "trace", skip_all, fields(msg=?received_msg.msg, data=?received_msg.data))]
     async fn handle_received_msg(
         &mut self, received_msg: TransportMsg,
     ) -> Result<(), ChMuxError<TransportSinkError, TransportStreamError>> {
