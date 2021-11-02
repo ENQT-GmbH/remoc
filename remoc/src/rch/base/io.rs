@@ -120,7 +120,7 @@ impl io::Read for ChannelBytesReader {
         }
 
         let len = buf.len().min(self.buf.len());
-        buf.copy_from_slice(&self.buf[..len]);
+        buf[..len].copy_from_slice(&self.buf[..len]);
         self.buf.advance(len);
         Ok(len)
     }
