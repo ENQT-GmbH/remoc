@@ -7,6 +7,7 @@ use std::{
     fmt,
     io::BufWriter,
     marker::PhantomData,
+    panic,
     rc::{Rc, Weak},
     sync::{Arc, Mutex},
 };
@@ -234,7 +235,10 @@ where
         match result {
             Ok(Ok((ps, written))) => Ok((item, ps, written)),
             Ok(Err(err)) => Err((err, item)),
-            Err(err) => Err((SerializationError::new(err), item)),
+            Err(err) => match err.try_into_panic() {
+                Ok(payload) => panic::resume_unwind(payload),
+                Err(err) => return Err((SerializationError::new(err), item)),
+            },
         }
     }
 

@@ -46,7 +46,7 @@ pub type ArcError = Arc<dyn Error + Send + Sync + 'static>;
 
 /// An error consisting of a string message.
 #[derive(Debug, Clone)]
-struct ErrorMsg(pub String);
+pub(crate) struct ErrorMsg(pub String);
 
 impl fmt::Display for ErrorMsg {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

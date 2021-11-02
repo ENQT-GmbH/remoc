@@ -7,6 +7,7 @@ use std::{
     error::Error,
     fmt,
     marker::PhantomData,
+    panic,
     rc::{Rc, Weak},
 };
 use tokio::task::{self, JoinHandle};
@@ -289,7 +290,12 @@ where
                             }
                             Err(err) => {
                                 self.data = DataSource::None;
-                                return Err(RecvError::Deserialize(DeserializationError::new(err)));
+                                match err.try_into_panic() {
+                                    Ok(payload) => panic::resume_unwind(payload),
+                                    Err(err) => {
+                                        return Err(RecvError::Deserialize(DeserializationError::new(err)))
+                                    }
+                                }
                             }
                         }
                     }
