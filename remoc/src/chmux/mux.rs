@@ -432,7 +432,7 @@ where
     }
 
     /// Create port in port registry and return associated sender and receiver.
-    #[tracing::instrument(level = "trace")]
+    #[tracing::instrument(level = "trace", skip(self))]
     fn create_port(&mut self, local_port: PortNumber, remote_port: u32) -> (Sender, Receiver) {
         let local_port_num = *local_port;
 
