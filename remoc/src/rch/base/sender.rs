@@ -292,7 +292,7 @@ where
                 );
 
                 let mut sc = self.sender.send_chunks();
-                let send_task = async {
+                let send_task = async move {
                     while let Some(chunk) = rx.recv().await {
                         sc = sc.send(chunk.freeze()).await?;
                     }
@@ -311,10 +311,14 @@ where
 
                         (item, ps)
                     }
-                    (Ok((item, _, _)), Err(err)) => {
+                    (Ok((item, _, _)) | Err((_, item)), Err(err)) => {
+                        // When sending fails, the serialization task will either finish
+                        // or fail due to rx being dropped.
                         return Err(SendError::new(SendErrorKind::Send(err), item));
                     }
                     (Err((err, item)), _) => {
+                        // When serialization fails, the send task will finish successfully
+                        // since the rx stream will end normally.
                         return Err(SendError::new(SendErrorKind::Serialize(err), item));
                     }
                 }
