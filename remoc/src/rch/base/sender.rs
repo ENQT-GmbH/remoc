@@ -311,7 +311,7 @@ where
 
                         (item, ps)
                     }
-                    (Ok((item, _, _)) | Err((_, item)), Err(err)) => {
+                    (Ok((item, _, _)), Err(err)) | (Err((_, item)), Err(err)) => {
                         // When sending fails, the serialization task will either finish
                         // or fail due to rx being dropped.
                         return Err(SendError::new(SendErrorKind::Send(err), item));
