@@ -6,7 +6,7 @@ use futures::{
     Future, FutureExt,
 };
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     convert::TryFrom,
     error::Error,
     fmt,
@@ -214,6 +214,8 @@ pub struct ChMux<TransportSink, TransportStream> {
     port_allocator: PortAllocator,
     /// Open local ports.
     ports: HashMap<PortNumber, PortState>,
+    /// Outstanding requests by the remote endpoint for connecting ports.
+    outstanding_remote_port_requests: HashSet<u32>,
     /// Sender from channels to event loop.
     channel_tx: mpsc::Sender<PortEvt>,
     /// Channel receiver of event loop.
@@ -295,6 +297,7 @@ where
             listen_tx: Some((listen_wait_tx, listen_no_wait_tx)),
             port_allocator: port_allocator.clone(),
             ports: HashMap::new(),
+            outstanding_remote_port_requests: HashSet::new(),
             channel_tx,
             channel_rx: Some(channel_rx),
             terminate_rx: Some(terminate_rx),
@@ -417,6 +420,8 @@ where
         terminate &= self.all_clients_dropped || self.remote_listener_dropped.load(Ordering::SeqCst);
         // Ensures that local listener or all remote clients are dropped.
         terminate &= self.listen_tx.is_none() || self.remote_client_dropped;
+        // No remote port requests are outstanding.
+        terminate &= self.outstanding_remote_port_requests.is_empty();
         // If goodbye has been sent, we request connection termination,
         // possibly even with still connected ports.
         terminate |= self.goodbye_sent;
@@ -753,6 +758,9 @@ where
 
             // Remote connect request was accepted by local listener.
             GlobalEvt::Port(PortEvt::Accepted { local_port, remote_port, port_tx }) => {
+                if !self.outstanding_remote_port_requests.remove(&remote_port) {
+                    panic!("Accepted non-outstanding remote port {} request", remote_port);
+                }
                 let local_port_num = *local_port;
                 send_msg(
                     permit,
@@ -764,6 +772,9 @@ where
 
             // Remote connect request was rejected by local listener.
             GlobalEvt::Port(PortEvt::Rejected { remote_port, no_ports }) => {
+                if !self.outstanding_remote_port_requests.remove(&remote_port) {
+                    panic!("Rejected non-outstanding remote port {} request", remote_port);
+                }
                 send_msg(permit, MultiplexMsg::Rejected { client_port: remote_port, no_ports });
             }
 
@@ -896,6 +907,12 @@ where
 
             // Open port request from remote endpoint.
             MultiplexMsg::OpenPort { client_port, wait } => {
+                if !self.outstanding_remote_port_requests.insert(client_port) {
+                    return Err(protocol_err!(format!(
+                        "remote endpoint sent OpenPort request for same remote port {} twice",
+                        client_port
+                    )));
+                }
                 let req = RemoteConnectMsg::Request(Request::new(
                     client_port,
                     wait,
@@ -979,6 +996,15 @@ where
                     ..
                 }) = self.ports.get_mut(&port)
                 {
+                    for port in &ports {
+                        if !self.outstanding_remote_port_requests.insert(*port) {
+                            return Err(protocol_err!(format!(
+                                "remote endpoint sent PortData request for same remote port {} twice",
+                                port
+                            )));
+                        }
+                    }
+
                     let used_credit =
                         match ports.len().checked_mul(size_of::<u32>()).and_then(|v| u32::try_from(v).ok()) {
                             Some(size) if size <= self.local_cfg.chunk_size => {
@@ -991,6 +1017,7 @@ where
                                 )))
                             }
                         };
+
                     let port_allocator = self.port_allocator.clone();
                     let channel_tx = self.channel_tx.clone();
                     let requests = ports
