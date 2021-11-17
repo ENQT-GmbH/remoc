@@ -634,14 +634,14 @@ where
         let mut transport_stream = self.transport_stream.take().unwrap();
 
         // Create send over transport task.
-        let (send_tx, send_rx) = mpsc::channel(1);
+        let (send_tx, send_rx) = mpsc::channel(self.local_cfg.transport_send_queue);
         let send_task =
             Self::send_task(&mut transport_sink, self.remote_cfg.connection_timeout.map(|d| d / 2), send_rx)
                 .fuse();
         pin_mut!(send_task);
 
         // Create receive over transport task.
-        let (recv_tx, mut recv_rx) = mpsc::channel(1);
+        let (recv_tx, mut recv_rx) = mpsc::channel(self.local_cfg.transport_receive_queue);
         let recv_task = Self::recv_task(&mut transport_stream, self.local_cfg.connection_timeout, recv_tx).fuse();
         pin_mut!(recv_task);
 

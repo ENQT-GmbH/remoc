@@ -46,7 +46,7 @@ pub struct Cfg {
     pub max_data_size: usize,
     /// Maximum port requests received per message.
     ///
-    /// [Remote channels](crate::rch)  are not affected by this limit.
+    /// [Remote channels](crate::rch) are not affected by this limit.
     /// This can be configured on a per-receiver basis.
     ///
     /// By default this is 128.
@@ -60,20 +60,42 @@ pub struct Cfg {
     /// Size of receive buffer of each port in bytes.
     /// The size of the received data can exceed this value.
     ///
+    /// It will not affect [remote channels](crate::rch).
+    ///
     /// By default this is 64 kB.
     /// This must be at least 4 bytes.
     pub receive_buffer: u32,
     /// Length of global send queue.
     /// Each element holds a chunk.
     ///
-    /// This limit the number of chunks sendable by using
+    /// This limits the number of chunks sendable by using
     /// [Sender::try_send](super::Sender::try_send).
+    /// It will not affect [remote channels](crate::rch).
+    ///
     /// By default this is 32.
     /// This must not be zero.
     pub shared_send_queue: usize,
+    /// Length of transport send queue.
+    /// Each element holds a chunk.
+    ///
+    /// Raising this may improve performance but might incur a slight increase in latency.
+    /// For minimum latency this should be set to 1.
+    ///
+    /// By default this is 16.
+    /// This must not be zero.
+    pub transport_send_queue: usize,
+    /// Length of transport receive queue.
+    /// Each element holds a chunk.
+    ///
+    /// Raising this may improve performance but might incur a slight increase in latency.
+    /// For minimum latency this should be set to 1.
+    ///
+    /// By default this is 16.
+    /// This must not be zero.
+    pub transport_receive_queue: usize,
     /// Maximum number of outstanding connection requests.
     ///
-    /// By default this is 128,
+    /// By default this is 128.
     /// This must not be zero.
     pub connect_queue: u16,
     #[doc(hidden)]
@@ -91,6 +113,8 @@ impl Default for Cfg {
             chunk_size: 16384,
             receive_buffer: 65536,
             shared_send_queue: 32,
+            transport_send_queue: 16,
+            transport_receive_queue: 16,
             connect_queue: 128,
             _non_exhaustive: (),
         }
@@ -117,6 +141,14 @@ impl Cfg {
 
         if self.shared_send_queue == 0 {
             panic!("shared send queue length must not be zero");
+        }
+
+        if self.transport_send_queue == 0 {
+            panic!("transport send queue length must not be zero");
+        }
+
+        if self.transport_receive_queue == 0 {
+            panic!("transport receive queue length must not be zero");
         }
 
         if self.connect_queue == 0 {
