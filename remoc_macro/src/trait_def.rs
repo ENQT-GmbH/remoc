@@ -297,7 +297,7 @@ impl TraitDef {
             {
                 fn new(target: Target, request_buffer: usize) -> (Self, Self::Client) {
                     let (req_tx, req_rx) = ::remoc::rch::mpsc::channel(request_buffer);
-                    (Self { target, req_rx }, Self::Client { req_tx })
+                    (Self { target, req_rx }, Self::Client::new(req_tx))
                 }
 
                 async fn serve(self) -> Option<Target> {
@@ -364,7 +364,7 @@ impl TraitDef {
             {
                 fn new(target: &'target Target, request_buffer: usize) -> (Self, Self::Client) {
                     let (req_tx, req_rx) = ::remoc::rch::mpsc::channel(request_buffer);
-                    (Self { target, req_rx }, Self::Client { req_tx })
+                    (Self { target, req_rx }, Self::Client::new(req_tx))
                 }
 
                 async fn serve(self) {
@@ -425,7 +425,7 @@ impl TraitDef {
             {
                 fn new(target: &'target mut Target, request_buffer: usize) -> (Self, Self::Client) {
                     let (req_tx, req_rx) = ::remoc::rch::mpsc::channel(request_buffer);
-                    (Self { target, req_rx }, Self::Client { req_tx })
+                    (Self { target, req_rx }, Self::Client::new(req_tx))
                 }
 
                 async fn serve(self) {
@@ -489,7 +489,7 @@ impl TraitDef {
             {
                 fn new(target: ::std::sync::Arc<Target>, request_buffer: usize) -> (Self, Self::Client) {
                     let (req_tx, req_rx) = ::remoc::rch::mpsc::channel(request_buffer);
-                    (Self { target, req_rx }, Self::Client { req_tx })
+                    (Self { target, req_rx }, Self::Client::new(req_tx))
                 }
 
                 async fn serve(self, spawn: bool) {
@@ -557,7 +557,7 @@ impl TraitDef {
             {
                 fn new(target: ::std::sync::Arc<::remoc::rtc::LocalRwLock<Target>>, request_buffer: usize) -> (Self, Self::Client) {
                     let (req_tx, req_rx) = ::remoc::rch::mpsc::channel(request_buffer);
-                    (Self { target, req_rx }, Self::Client { req_tx })
+                    (Self { target, req_rx }, Self::Client::new(req_tx))
                 }
 
                 async fn serve(self, spawn: bool) {
@@ -655,6 +655,43 @@ impl TraitDef {
                     ::remoc::rtc::Req<#req_value #req_generics, #req_ref #req_generics, #req_ref_mut #req_generics>,
                     Codec,
                 >,
+                #[serde(skip)]
+                #[serde(default = "::remoc::rtc::empty_client_drop_tx")]
+                drop_tx: ::remoc::rtc::local_broadcast::Sender<()>,
+            }
+
+            impl #impl_generics_impl #client_ident #impl_generics_ty #impl_generics_where {
+                fn new(req_tx: ::remoc::rch::mpsc::Sender<
+                    ::remoc::rtc::Req<#req_value #req_generics, #req_ref #req_generics, #req_ref_mut #req_generics>,
+                    Codec,
+                >) -> Self
+                {
+                    Self {
+                        req_tx,
+                        drop_tx: ::remoc::rtc::empty_client_drop_tx(),
+                    }
+                }
+            }
+
+            impl #impl_generics_impl ::remoc::rtc::Client for #client_ident #impl_generics_ty #impl_generics_where {
+                fn capacity(&self) -> usize {
+                    self.req_tx.capacity()
+                }
+
+                fn closed(&self) -> ::remoc::rtc::Closed {
+                    let req_tx = self.req_tx.clone();
+                    let mut drop_rx = self.drop_tx.subscribe();
+                    ::remoc::rtc::Closed::new(async move {
+                        ::remoc::rtc::select! {
+                            () = req_tx.closed() => (),
+                            _ = drop_rx.recv() => (),
+                        }
+                    })
+                }
+
+                fn is_closed(&self) -> bool {
+                    self.req_tx.is_closed()
+                }
             }
 
             #[::remoc::rtc::async_trait]

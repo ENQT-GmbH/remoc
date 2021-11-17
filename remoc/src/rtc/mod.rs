@@ -18,6 +18,9 @@
 //! a [remote channel](crate::rch) or any other means to a remote endpoint.
 //! All methods called on the client will be forwarded to the server and executed there.
 //!
+//! The client type also implements the [Client] trait which provides a notification
+//! when the connection to the server has been lost.
+//!
 //! If the trait takes the receiver only by reference (`&self`) the client is [clonable](Clone).
 //!
 //! # Server types
@@ -194,7 +197,14 @@
 //! ```
 //!
 
-use std::{error::Error, fmt, sync::Arc};
+use futures::{future::BoxFuture, Future, FutureExt};
+use std::{
+    error::Error,
+    fmt,
+    pin::Pin,
+    sync::Arc,
+    task::{Context, Poll},
+};
 
 use crate::{
     chmux,
@@ -315,10 +325,57 @@ pub enum Req<V, R, M> {
     RefMut(M),
 }
 
-/// Base trait for the server of a remotable trait.
+/// Client of a remotable trait.
+pub trait Client {
+    /// Returns the current capacity of the channel for sending requests to
+    /// the server.
+    ///
+    /// Zero is returned when the server has been dropped or the connection
+    /// has been lost.
+    fn capacity(&self) -> usize;
+
+    /// Returns a future that completes when the server or client has been
+    /// dropped or the connection between them has been lost.
+    ///
+    /// In this case no more requests from this client will succeed.
+    fn closed(&self) -> Closed;
+
+    /// Returns whether the server has been dropped or the connection to it
+    /// has been lost.
+    fn is_closed(&self) -> bool;
+}
+
+/// A future that completes when the server or client has been dropped
+/// or the connection between them has been lost.
+///
+/// This can be obtained via [Client::closed].
+pub struct Closed(BoxFuture<'static, ()>);
+
+impl fmt::Debug for Closed {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_tuple("Closed").finish()
+    }
+}
+
+impl Closed {
+    #[doc(hidden)]
+    pub fn new(fut: impl Future<Output = ()> + Send + 'static) -> Self {
+        Self(fut.boxed())
+    }
+}
+
+impl Future for Closed {
+    type Output = ();
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        self.as_mut().0.poll_unpin(cx)
+    }
+}
+
+/// Base trait shared between all server variants of a remotable trait.
 pub trait ServerBase {
     /// The client type, which can be sent to a remote endpoint.
-    type Client;
+    type Client: Client;
 }
 
 /// A server of a remotable trait taking the target object by value.
@@ -409,6 +466,8 @@ where
 #[doc(hidden)]
 pub use serde::{Deserialize, Serialize};
 #[doc(hidden)]
+pub use tokio::sync::broadcast as local_broadcast;
+#[doc(hidden)]
 pub use tokio::sync::mpsc as local_mpsc;
 #[doc(hidden)]
 pub use tokio::sync::RwLock as LocalRwLock;
@@ -419,4 +478,10 @@ pub use tokio::{select, spawn};
 #[doc(hidden)]
 pub fn receiving_request_failed(err: mpsc::RecvError) {
     tracing::warn!(err = ?err, "receiving RTC request failed")
+}
+
+/// Broadcast sender with no subscribers.
+#[doc(hidden)]
+pub fn empty_client_drop_tx() -> local_broadcast::Sender<()> {
+    local_broadcast::channel(1).0
 }

@@ -62,3 +62,52 @@ async fn simple() {
 
     join!(client_task, server.serve());
 }
+
+#[tokio::test]
+async fn closed() {
+    use remoc::rtc::{Client, ServerRef};
+
+    crate::init();
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<ReadValueClient>().await;
+
+    println!("Creating server");
+    let obj = ReadValueObj::new(123);
+    let (server, client) = ReadValueServerRef::new(&obj, 16);
+
+    println!("Sending client");
+    a_tx.send(client).await.unwrap();
+
+    let (drop_tx, drop_rx) = tokio::sync::oneshot::channel();
+
+    let client_task = async move {
+        println!("Receiving client");
+        let client = b_rx.recv().await.unwrap().unwrap();
+
+        println!("value: {}", client.value().await.unwrap());
+        assert_eq!(client.value().await.unwrap(), 123);
+
+        assert!(!client.is_closed());
+        println!("Client capacity: {}", client.capacity());
+
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            drop_tx.send(()).unwrap();
+        });
+
+        println!("Waiting for client close");
+        client.closed().await;
+        println!("Client closed");
+
+        assert!(client.is_closed());
+    };
+
+    let server_task = async move {
+        tokio::select! {
+            () = server.serve() => (),
+            res = drop_rx => res.unwrap(),
+        }
+        println!("Dropping server");
+    };
+
+    join!(client_task, server_task);
+}
