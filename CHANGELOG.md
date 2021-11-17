@@ -4,6 +4,15 @@ All notable changes to Remoc will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## 0.9.5 - 2021-11-17
+### Added
+- rtc::Client trait implemented by all generated clients. This allows to
+  receive notifications when the server has been dropped or disconnected.
+- configuration options for transport queue lengths
+### Changed
+- fix mpsc channel close notifications not being delivered sometimes
+
 ## 0.9.4 - 2021-11-17
 ### Changed
 - fix build when no default codec is set
