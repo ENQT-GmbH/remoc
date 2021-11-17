@@ -550,7 +550,10 @@ where
                                                 _ => (),
                                             }
                                         },
-                                        _ => backchannel_active = false,
+                                        _ => {
+                                            let _ = closed_tx.send(true);
+                                            backchannel_active = false;
+                                        },
                                     }
                                 }
 
