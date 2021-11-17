@@ -1,6 +1,6 @@
 [package]
 name = "remoc_macro"
-version = "0.9.3"
+version = "0.9.4"
 authors = ["Sebastian Urban <surban@surban.net>", "ENQT GmbH <su@enqt.de>"]
 readme = "README.md"
 repository = "https://github.com/ENQT-GmbH/remoc/"
@@ -9,10 +9,12 @@ rust-version = "1.51"
 description = "Procedural macros for remoc"
 license = "Apache-2.0"
 
+
 [dependencies]
 proc-macro2 = "1"
 syn = { version = "1", features = ["extra-traits", "full", "visit"] }
 quote = "1"
+
 
 [lib]
 proc-macro = true

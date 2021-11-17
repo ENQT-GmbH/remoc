@@ -196,10 +196,7 @@ pub use message_pack::MessagePack as Default;
 /// Default codec is not set and cannot be used.
 ///
 /// Set one of the crate features `default-codec-*` to define the default codec.
-#[cfg(not(any(
-    feature = "default-codec-bincode",
-    feature = "default-codec-cbor",
-    feature = "default-codec-json",
-    feature = "default-codec-message-pack"
-)))]
+///
+/// This will cause a compile error when you attempt to use it.
+#[cfg(not(feature = "default-codec-set"))]
 pub struct Default;
