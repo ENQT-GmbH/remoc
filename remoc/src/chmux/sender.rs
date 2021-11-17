@@ -134,6 +134,12 @@ pub struct Closed {
     fut: Pin<Box<dyn Future<Output = ()> + Send>>,
 }
 
+impl fmt::Debug for Closed {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_tuple("Closed").finish()
+    }
+}
+
 impl Closed {
     fn new(hangup_notify: &Weak<std::sync::Mutex<Option<Vec<oneshot::Sender<()>>>>>) -> Self {
         if let Some(hangup_notify) = hangup_notify.upgrade() {
