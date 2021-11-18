@@ -89,8 +89,7 @@
 //! # Tracing
 //!
 //! Remoc uses the [Tracing crate](tracing) for logging of events.
-//! Setting the log level to `DEBUG` logs multiplexer lifetime events and messages as they are being processed.
-//! Setting the log level to `TRACE` logs multiplexer messages as they are being sent and received.
+//! Setting the log level to `TRACE` logs multiplexer lifetime events and messages as they are being processed.
 //!
 //! # Example
 //!
