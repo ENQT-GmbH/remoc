@@ -4,6 +4,16 @@ All notable changes to Remoc will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.9.7 - 2021-11-26
+### Added
+- rch::mpsc::Receiver::try_recv, error and take_error
+- rch::mpsc::Sender::closed_reason
+- `full-codecs` crate feature to activate all codecs
+### Changed
+- An mpsc channel receiver will hold back a receive error due to connection failure
+  if other senders are still active. The error will be returned after all other
+  senders have been disconnected.
+- Fixes premature drop of RwLock owners.
 
 ## 0.9.6 - 2021-11-18
 ### Added
