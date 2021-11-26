@@ -219,8 +219,8 @@ impl<T, Codec, Buffer> Receiver<T, Codec, Buffer> {
 
     /// Tries to receive the next message on this channel, if one is immediately available.
     ///
-    /// This function returns `Err([RecvError::Closed])` when all channel senders have been dropped
-    /// and `Err([RecvError::Empty])` if no value to receive is currently available.
+    /// This function returns `Err(RecvError::Closed)` when all channel senders have been dropped
+    /// and `Err(RecvError::Empty)` if no value to receive is currently available.
     ///
     /// When a receive error occurs due to a connection failure and other senders are still
     /// present, it is held back and returned after all other senders have been dropped or failed.
