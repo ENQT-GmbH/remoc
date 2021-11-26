@@ -58,7 +58,7 @@ impl<T> SendError<T> {
     pub fn is_final(&self) -> bool {
         match &self.kind {
             SendErrorKind::Serialize(_) => false,
-            SendErrorKind::Send(err) => err.is_final(),
+            SendErrorKind::Send(_) => true,
             SendErrorKind::Connect(_) => true,
         }
     }

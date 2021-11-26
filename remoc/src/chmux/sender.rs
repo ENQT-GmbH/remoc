@@ -45,6 +45,7 @@ impl SendError {
     }
 
     /// Returns whether the error is final, i.e. no further send operation can succeed.
+    #[deprecated = "a remoc::chmux::SendError is always final"]
     pub fn is_final(&self) -> bool {
         true
     }
@@ -95,7 +96,7 @@ impl TrySendError {
     pub fn is_final(&self) -> bool {
         match self {
             Self::Full => false,
-            Self::Send(err) => err.is_final(),
+            Self::Send(_) => true,
         }
     }
 }

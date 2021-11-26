@@ -55,7 +55,7 @@ impl SendErrorKind {
     pub fn is_final(&self) -> bool {
         match self {
             Self::Serialize(_) => false,
-            Self::Send(err) => err.is_final(),
+            Self::Send(_) => true,
         }
     }
 }
