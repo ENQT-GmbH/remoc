@@ -1,4 +1,4 @@
-use futures::{ready, task::noop_waker, Future};
+use futures::{ready, Future};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
     error::Error,
@@ -87,12 +87,14 @@ impl fmt::Display for TryRecvError {
     }
 }
 
-impl From<mpsc::RecvError> for TryRecvError {
-    fn from(err: mpsc::RecvError) -> Self {
+impl From<mpsc::TryRecvError> for TryRecvError {
+    fn from(err: mpsc::TryRecvError) -> Self {
         match err {
-            mpsc::RecvError::RemoteReceive(err) => Self::RemoteReceive(err),
-            mpsc::RecvError::RemoteConnect(err) => Self::RemoteConnect(err),
-            mpsc::RecvError::RemoteListen(err) => Self::RemoteListen(err),
+            mpsc::TryRecvError::Empty => Self::Empty,
+            mpsc::TryRecvError::Closed => Self::Closed,
+            mpsc::TryRecvError::RemoteReceive(err) => Self::RemoteReceive(err),
+            mpsc::TryRecvError::RemoteConnect(err) => Self::RemoteConnect(err),
+            mpsc::TryRecvError::RemoteListen(err) => Self::RemoteListen(err),
         }
     }
 }
@@ -124,18 +126,10 @@ where
         self.0.close()
     }
 
-    /// Attempts to receive a value.
+    /// Attempts to receive a value transmitted by the sender.
     #[inline]
     pub fn try_recv(&mut self) -> Result<T, TryRecvError> {
-        let waker = noop_waker();
-        let mut cx = Context::from_waker(&waker);
-
-        match self.0.poll_recv(&mut cx) {
-            Poll::Ready(Ok(Some(v))) => Ok(v),
-            Poll::Ready(Ok(None)) => Err(TryRecvError::Closed),
-            Poll::Ready(Err(err)) => Err(err.into()),
-            Poll::Pending => Err(TryRecvError::Empty),
-        }
+        Ok(self.0.try_recv()?)
     }
 }
 
@@ -146,6 +140,7 @@ where
 {
     type Output = Result<T, RecvError>;
 
+    /// Receives the value transmitted by the sender.
     #[inline]
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         match ready!(Pin::into_inner(self).0.poll_recv(cx)) {
