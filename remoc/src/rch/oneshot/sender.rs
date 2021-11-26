@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt};
 
-use super::super::{buffer, mpsc};
+use super::super::{buffer, mpsc, ClosedReason};
 use crate::{
     codec::{self},
     RemoteSend,
@@ -71,13 +71,25 @@ where
         self.0.try_send(value).map_err(|err| err.into())
     }
 
-    /// Completes when the receiver has been closed or dropped.
+    /// Completes when the receiver has been closed, dropped or the connection failed.
+    ///
+    /// Use [closed_reason](Self::closed_reason) to obtain the cause for closure.
     #[inline]
     pub async fn closed(&self) {
         self.0.closed().await
     }
 
-    /// Returns whether the receiver has been closed or dropped.
+    /// Returns the reason for why the channel has been closed.
+    ///
+    /// Returns [None] if the channel is not closed.
+    #[inline]
+    pub fn closed_reason(&self) -> Option<ClosedReason> {
+        self.0.closed_reason()
+    }
+
+    /// Returns whether the receiver has been closed, dropped or the connection failed.
+    ///
+    /// Use [closed_reason](Self::closed_reason) to obtain the cause for closure.
     #[inline]
     pub fn is_closed(&self) -> bool {
         self.0.is_closed()

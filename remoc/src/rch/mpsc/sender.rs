@@ -12,9 +12,10 @@ use std::{
 use super::{
     super::{
         base::{self, PortDeserializer, PortSerializer},
-        buffer, RemoteSendError, BACKCHANNEL_MSG_CLOSE, BACKCHANNEL_MSG_ERROR,
+        buffer, ClosedReason, RemoteSendError, BACKCHANNEL_MSG_CLOSE, BACKCHANNEL_MSG_ERROR,
     },
     receiver::RecvError,
+    recv_impl, send_impl,
 };
 use crate::{chmux, codec, RemoteSend};
 
@@ -34,17 +35,30 @@ pub enum SendError<T> {
 }
 
 impl<T> SendError<T> {
-    /// True, if the remote endpoint closed the channel.
+    /// True, if the remote endpoint closed the channel, was dropped or the connection failed.
     pub fn is_closed(&self) -> bool {
-        matches!(self, Self::Closed(_))
+        !matches!(self, Self::RemoteSend(base::SendErrorKind::Serialize(_)))
+    }
+
+    /// Returns the reason for why the channel has been closed.
+    ///
+    /// Returns [None] if the error is not due to the channel being closed.
+    /// Currently this can only happen if a serialization error occurred.
+    pub fn closed_reason(&self) -> Option<ClosedReason> {
+        match self {
+            Self::RemoteSend(base::SendErrorKind::Serialize(_)) => None,
+            Self::RemoteSend(base::SendErrorKind::Send(chmux::SendError::Closed { .. })) => {
+                Some(ClosedReason::Dropped)
+            }
+            Self::Closed(_) => Some(ClosedReason::Closed),
+            _ => Some(ClosedReason::Failed),
+        }
     }
 
     /// Returns whether the error is final, i.e. no further send operation can succeed.
+    #[deprecated = "a remoc::rch::mpsc::SendError is always final"]
     pub fn is_final(&self) -> bool {
-        match self {
-            Self::RemoteSend(err) => err.is_final(),
-            Self::Closed(_) | Self::RemoteConnect(_) | Self::RemoteListen(_) | Self::RemoteForward => true,
-        }
+        true
     }
 }
 
@@ -62,13 +76,14 @@ impl<T> fmt::Display for SendError<T> {
 
 impl<T> Error for SendError<T> where T: fmt::Debug {}
 
-impl<T> From<RemoteSendError> for SendError<T> {
-    fn from(err: RemoteSendError) -> Self {
+impl<T> SendError<T> {
+    fn from_remote_send_error(err: RemoteSendError, value: T) -> Self {
         match err {
             RemoteSendError::Send(err) => Self::RemoteSend(err),
             RemoteSendError::Connect(err) => Self::RemoteConnect(err),
             RemoteSendError::Listen(err) => Self::RemoteListen(err),
             RemoteSendError::Forward => Self::RemoteForward,
+            RemoteSendError::Closed => Self::Closed(value),
         }
     }
 }
@@ -99,11 +114,7 @@ impl<T> TrySendError<T> {
 
     /// Returns whether the error is final, i.e. no further send operation can succeed.
     pub fn is_final(&self) -> bool {
-        match self {
-            Self::RemoteSend(err) => err.is_final(),
-            Self::Full(_) => false,
-            Self::Closed(_) | Self::RemoteConnect(_) | Self::RemoteListen(_) | Self::RemoteForward => true,
-        }
+        !matches!(self, Self::Full(_))
     }
 }
 
@@ -120,13 +131,14 @@ impl<T> fmt::Display for TrySendError<T> {
     }
 }
 
-impl<T> From<RemoteSendError> for TrySendError<T> {
-    fn from(err: RemoteSendError) -> Self {
+impl<T> TrySendError<T> {
+    fn from_remote_send_error(err: RemoteSendError, value: T) -> Self {
         match err {
             RemoteSendError::Send(err) => Self::RemoteSend(err),
             RemoteSendError::Connect(err) => Self::RemoteConnect(err),
             RemoteSendError::Listen(err) => Self::RemoteListen(err),
             RemoteSendError::Forward => Self::RemoteForward,
+            RemoteSendError::Closed => Self::Closed(value),
         }
     }
 }
@@ -164,7 +176,7 @@ impl<T> Error for TrySendError<T> where T: fmt::Debug {}
 /// Instances are created by the [channel](super::channel) function.
 pub struct Sender<T, Codec = codec::Default, Buffer = buffer::Default> {
     tx: Weak<tokio::sync::mpsc::Sender<Result<T, RecvError>>>,
-    closed_rx: tokio::sync::watch::Receiver<bool>,
+    closed_rx: tokio::sync::watch::Receiver<Option<ClosedReason>>,
     remote_send_err_rx: tokio::sync::watch::Receiver<Option<RemoteSendError>>,
     dropped_tx: tokio::sync::mpsc::Sender<()>,
     _codec: PhantomData<Codec>,
@@ -208,7 +220,8 @@ where
 {
     /// Creates a new sender.
     pub(crate) fn new(
-        tx: tokio::sync::mpsc::Sender<Result<T, RecvError>>, mut closed_rx: tokio::sync::watch::Receiver<bool>,
+        tx: tokio::sync::mpsc::Sender<Result<T, RecvError>>,
+        mut closed_rx: tokio::sync::watch::Receiver<Option<ClosedReason>>,
         remote_send_err_rx: tokio::sync::watch::Receiver<Option<RemoteSendError>>,
     ) -> Self {
         let tx = Arc::new(tx);
@@ -229,7 +242,7 @@ where
                 tokio::select! {
                     res = closed_rx.changed() => {
                         match res {
-                            Ok(()) if *closed_rx.borrow() => break,
+                            Ok(()) if closed_rx.borrow().is_some() => break,
                             Ok(()) => (),
                             Err(_) => break,
                         }
@@ -248,7 +261,7 @@ where
     pub(crate) fn new_closed() -> Self {
         Self {
             tx: Weak::new(),
-            closed_rx: tokio::sync::watch::channel(true).1,
+            closed_rx: tokio::sync::watch::channel(Some(ClosedReason::Closed)).1,
             remote_send_err_rx: tokio::sync::watch::channel(None).1,
             dropped_tx: tokio::sync::mpsc::channel(1).0,
             _codec: PhantomData,
@@ -260,7 +273,7 @@ where
     #[inline]
     pub async fn send(&self, value: T) -> Result<(), SendError<T>> {
         if let Some(err) = self.remote_send_err_rx.borrow().as_ref() {
-            return Err(err.clone().into());
+            return Err(SendError::from_remote_send_error(err.clone(), value));
         }
 
         if let Some(tx) = self.tx.upgrade() {
@@ -278,7 +291,7 @@ where
     #[inline]
     pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
         if let Some(err) = self.remote_send_err_rx.borrow().as_ref() {
-            return Err(err.clone().into());
+            return Err(TrySendError::from_remote_send_error(err.clone(), value));
         }
 
         match self.tx.upgrade() {
@@ -310,7 +323,7 @@ where
     #[inline]
     pub async fn reserve(&self) -> Result<Permit<T>, SendError<()>> {
         if let Some(err) = self.remote_send_err_rx.borrow().as_ref() {
-            return Err(err.clone().into());
+            return Err(SendError::from_remote_send_error(err.clone(), ()));
         }
 
         if let Some(tx) = self.tx.upgrade() {
@@ -335,21 +348,37 @@ where
         }
     }
 
-    /// Completes when the receiver has been closed or dropped.
+    /// Completes when the receiver has been closed, dropped or the connection failed.
+    ///
+    /// Use [closed_reason](Self::closed_reason) to obtain the cause for closure.
     #[inline]
     pub async fn closed(&self) {
         let mut closed = self.closed_rx.clone();
-        while !*closed.borrow() {
+        while closed.borrow().is_none() {
             if closed.changed().await.is_err() {
                 break;
             }
         }
     }
 
-    /// Returns whether the receiver has been closed or dropped.
+    /// Returns the reason for why the channel has been closed.
+    ///
+    /// Returns [None] if the channel is not closed.
+    #[inline]
+    pub fn closed_reason(&self) -> Option<ClosedReason> {
+        match (self.closed_rx.borrow().clone(), self.remote_send_err_rx.borrow().as_ref()) {
+            (Some(reason), _) => Some(reason),
+            (None, Some(_)) => Some(ClosedReason::Failed),
+            (None, None) => None,
+        }
+    }
+
+    /// Returns whether the receiver has been closed, dropped or the connection failed.
+    ///
+    /// Use [closed_reason](Self::closed_reason) to obtain the cause for closure.
     #[inline]
     pub fn is_closed(&self) -> bool {
-        *self.closed_rx.borrow()
+        self.closed_reason().is_some()
     }
 
     /// Sets the codec that will be used when sending this sender to a remote endpoint.
@@ -431,47 +460,7 @@ where
                             }
                         };
 
-                        // Decode raw received data using remote receiver.
-                        let mut remote_rx = base::Receiver::<Result<T, RecvError>, Codec>::new(raw_rx);
-
-                        // Process events.
-                        let mut close_sent = false;
-                        loop {
-                            tokio::select! {
-                                biased;
-
-                                // Channel closure requested locally.
-                                res = closed_rx.changed() => {
-                                    match res {
-                                        Ok(()) if *closed_rx.borrow() && !close_sent => {
-                                            let _ = raw_tx.send(vec![BACKCHANNEL_MSG_CLOSE].into()).await;
-                                            close_sent = true;
-                                        }
-                                        Ok(()) => (),
-                                        Err(_) => break,
-                                    }
-                                }
-
-                                // Notify remote endpoint of error.
-                                Ok(()) = remote_send_err_rx.changed() => {
-                                    if remote_send_err_rx.borrow().as_ref().is_some() {
-                                        let _ = raw_tx.send(vec![BACKCHANNEL_MSG_ERROR].into()).await;
-                                    }
-                                }
-
-                                // Data received from remote endpoint.
-                                res = remote_rx.recv() => {
-                                    let value = match res {
-                                        Ok(Some(value)) => value,
-                                        Ok(None) => break,
-                                        Err(err) => Err(RecvError::RemoteReceive(err)),
-                                    };
-                                    if tx.send(value).await.is_err() {
-                                        break;
-                                    }
-                                }
-                            }
-                        }
+                        recv_impl!(T, tx, raw_tx, raw_rx, remote_send_err_rx, closed_rx);
                     }
                     .boxed()
                 })?)
@@ -510,7 +499,7 @@ where
             Some(port) => {
                 // Create internal communication channels.
                 let (tx, mut rx) = tokio::sync::mpsc::channel(Buffer::size());
-                let (closed_tx, closed_rx) = tokio::sync::watch::channel(false);
+                let (closed_tx, closed_rx) = tokio::sync::watch::channel(None);
                 let (remote_send_err_tx, remote_send_err_rx) = tokio::sync::watch::channel(None);
 
                 // Accept chmux port request.
@@ -525,51 +514,7 @@ where
                             }
                         };
 
-                        // Encode data using remote sender for sending.
-                        let mut remote_tx = base::Sender::<Result<T, RecvError>, Codec>::new(
-                            raw_tx,
-                        );
-
-                        // Process events.
-                        let mut backchannel_active = true;
-                        loop {
-                            tokio::select! {
-                                biased;
-
-                                // Back channel message from remote endpoint.
-                                backchannel_msg = raw_rx.recv(), if backchannel_active => {
-                                    match backchannel_msg {
-                                        Ok(Some(mut msg)) if msg.remaining() >= 1 => {
-                                            match msg.get_u8() {
-                                                BACKCHANNEL_MSG_CLOSE => {
-                                                    let _ = closed_tx.send(true);
-                                                }
-                                                BACKCHANNEL_MSG_ERROR => {
-                                                    let _ = remote_send_err_tx.send(Some(RemoteSendError::Forward));
-                                                }
-                                                _ => (),
-                                            }
-                                        },
-                                        _ => {
-                                            let _ = closed_tx.send(true);
-                                            backchannel_active = false;
-                                        },
-                                    }
-                                }
-
-                                // Data to send to remote endpoint.
-                                value_opt = rx.recv() => {
-                                    match value_opt {
-                                        Some(value) => {
-                                            if let Err(err) = remote_tx.send(value).await {
-                                                let _ = remote_send_err_tx.send(Some(RemoteSendError::Send(err.kind)));
-                                            }
-                                        }
-                                        None => break,
-                                    }
-                                }
-                            }
-                        }
+                        send_impl!(T, rx, raw_tx, raw_rx, remote_send_err_tx, closed_tx);
                     }
                     .boxed()
                 })?;

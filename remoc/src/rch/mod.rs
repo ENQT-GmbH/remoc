@@ -106,14 +106,25 @@ pub enum ConnectError {
 impl fmt::Display for ConnectError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ConnectError::Dropped => write!(f, "other part was dropped"),
-            ConnectError::Connect(err) => write!(f, "connect error: {}", err),
-            ConnectError::Listen(err) => write!(f, "listen error: {}", err),
+            Self::Dropped => write!(f, "other part was dropped"),
+            Self::Connect(err) => write!(f, "connect error: {}", err),
+            Self::Listen(err) => write!(f, "listen error: {}", err),
         }
     }
 }
 
 impl Error for ConnectError {}
+
+/// Reason for closure of sender.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum ClosedReason {
+    /// Channel was closed because receiver has been closed.
+    Closed,
+    /// Channel was closed because receiver has been dropped.
+    Dropped,
+    /// Channel was closed because connection between sender and receiver failed.
+    Failed,
+}
 
 /// Back channel message that receiver has been closed.
 pub(crate) const BACKCHANNEL_MSG_CLOSE: u8 = 0x01;
@@ -132,4 +143,6 @@ pub(crate) enum RemoteSendError {
     Listen(chmux::ListenerError),
     /// Forwarding error.
     Forward,
+    /// Receiver was closed.
+    Closed,
 }

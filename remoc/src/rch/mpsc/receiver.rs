@@ -12,9 +12,9 @@ use std::{
 use super::{
     super::{
         base::{self, PortDeserializer, PortSerializer},
-        buffer, RemoteSendError, BACKCHANNEL_MSG_CLOSE, BACKCHANNEL_MSG_ERROR,
+        buffer, ClosedReason, RemoteSendError, BACKCHANNEL_MSG_CLOSE, BACKCHANNEL_MSG_ERROR,
     },
-    Distributor,
+    recv_impl, send_impl, Distributor,
 };
 use crate::{chmux, codec, RemoteSend};
 
@@ -71,8 +71,9 @@ impl<T, Codec, Buffer> fmt::Debug for Receiver<T, Codec, Buffer> {
 
 pub(crate) struct ReceiverInner<T> {
     rx: tokio::sync::mpsc::Receiver<Result<T, RecvError>>,
-    closed_tx: tokio::sync::watch::Sender<bool>,
+    closed_tx: tokio::sync::watch::Sender<Option<ClosedReason>>,
     remote_send_err_tx: tokio::sync::watch::Sender<Option<RemoteSendError>>,
+    closed: bool,
 }
 
 /// Mpsc receiver in transport.
@@ -84,15 +85,19 @@ pub(crate) struct TransportedReceiver<T, Codec> {
     data: PhantomData<T>,
     /// Data codec.
     codec: PhantomData<Codec>,
+    /// Receiver has been closed.
+    #[serde(default)]
+    closed: bool,
 }
 
 impl<T, Codec, Buffer> Receiver<T, Codec, Buffer> {
     pub(crate) fn new(
-        rx: tokio::sync::mpsc::Receiver<Result<T, RecvError>>, closed_tx: tokio::sync::watch::Sender<bool>,
+        rx: tokio::sync::mpsc::Receiver<Result<T, RecvError>>,
+        closed_tx: tokio::sync::watch::Sender<Option<ClosedReason>>, closed: bool,
         remote_send_err_tx: tokio::sync::watch::Sender<Option<RemoteSendError>>,
     ) -> Self {
         Self {
-            inner: Some(ReceiverInner { rx, closed_tx, remote_send_err_tx }),
+            inner: Some(ReceiverInner { rx, closed_tx, remote_send_err_tx, closed }),
             successor_tx: Mutex::new(None),
             _codec: PhantomData,
             _buffer: PhantomData,
@@ -136,9 +141,14 @@ impl<T, Codec, Buffer> Receiver<T, Codec, Buffer> {
     }
 
     /// Closes the receiving half of a channel without dropping it.
+    ///
+    /// This allows to process outstanding values while stopping the sender from
+    /// sending new values.
     #[inline]
     pub fn close(&mut self) {
-        let _ = self.inner.as_mut().unwrap().closed_tx.send(true);
+        let mut inner = self.inner.as_mut().unwrap();
+        let _ = inner.closed_tx.send(Some(ClosedReason::Closed));
+        inner.closed = true;
     }
 
     /// Sets the codec that will be used when sending this receiver to a remote endpoint.
@@ -185,9 +195,13 @@ where
 
 impl<T, Codec, Buffer> Drop for Receiver<T, Codec, Buffer> {
     fn drop(&mut self) {
-        let mut successor_tx = self.successor_tx.lock().unwrap();
-        if let Some(successor_tx) = successor_tx.take() {
-            let _ = successor_tx.send(self.inner.take().unwrap());
+        if let Some(inner) = self.inner.take() {
+            let mut successor_tx = self.successor_tx.lock().unwrap();
+            if let Some(successor_tx) = successor_tx.take() {
+                let _ = successor_tx.send(inner);
+            } else if !inner.closed {
+                let _ = inner.closed_tx.send(Some(ClosedReason::Dropped));
+            }
         }
     }
 }
@@ -211,7 +225,8 @@ where
         let port = PortSerializer::connect(|connect| {
             async move {
                 // Receiver has been dropped after sending, so we receive its channels.
-                let ReceiverInner { mut rx, closed_tx, remote_send_err_tx } = match successor_rx.await {
+                let ReceiverInner { mut rx, closed_tx, remote_send_err_tx, closed: _ } = match successor_rx.await
+                {
                     Ok(inner) => inner,
                     Err(_) => return,
                 };
@@ -225,55 +240,18 @@ where
                     }
                 };
 
-                // Encode data using remote sender.
-                let mut remote_tx = base::Sender::<Result<T, RecvError>, Codec>::new(raw_tx);
-
-                // Process events.
-                let mut backchannel_active = true;
-                loop {
-                    tokio::select! {
-                        biased;
-
-                        // Back channel message from remote endpoint.
-                        backchannel_msg = raw_rx.recv(), if backchannel_active => {
-                            match backchannel_msg {
-                                Ok(Some(mut msg)) if msg.remaining() >= 1 => {
-                                    match msg.get_u8() {
-                                        BACKCHANNEL_MSG_CLOSE => {
-                                            let _ = closed_tx.send(true);
-                                        }
-                                        BACKCHANNEL_MSG_ERROR => {
-                                            let _ = remote_send_err_tx.send(Some(RemoteSendError::Forward));
-                                        }
-                                        _ => (),
-                                    }
-                                },
-                                _ => {
-                                    let _ = closed_tx.send(true);
-                                    backchannel_active = false;
-                                },
-                            }
-                        }
-
-                        // Data to send to remote endpoint.
-                        res_opt = rx.recv() => {
-                            let res = match res_opt {
-                                Some(res) => res,
-                                None => break,
-                            };
-
-                            if let Err(err) = remote_tx.send(res).await {
-                                let _ = remote_send_err_tx.send(Some(RemoteSendError::Send(err.kind)));
-                            }
-                        }
-                    }
-                }
+                send_impl!(T, rx, raw_tx, raw_rx, remote_send_err_tx, closed_tx);
             }
             .boxed()
         })?;
 
         // Encode chmux port number in transport type and serialize it.
-        let transported = TransportedReceiver::<T, Codec> { port, data: PhantomData, codec: PhantomData };
+        let transported = TransportedReceiver::<T, Codec> {
+            port,
+            data: PhantomData,
+            codec: PhantomData,
+            closed: self.inner.as_ref().unwrap().closed,
+        };
         transported.serialize(serializer)
     }
 }
@@ -293,11 +271,12 @@ where
         assert!(Buffer::size() > 0, "BUFFER must not be zero");
 
         // Get chmux port number from deserialized transport type.
-        let TransportedReceiver { port, .. } = TransportedReceiver::<T, Codec>::deserialize(deserializer)?;
+        let TransportedReceiver { port, closed, .. } =
+            TransportedReceiver::<T, Codec>::deserialize(deserializer)?;
 
         // Create channels.
         let (tx, rx) = tokio::sync::mpsc::channel(Buffer::size());
-        let (closed_tx, mut closed_rx) = tokio::sync::watch::channel(false);
+        let (closed_tx, mut closed_rx) = tokio::sync::watch::channel(None);
         let (remote_send_err_tx, mut remote_send_err_rx) = tokio::sync::watch::channel(None);
 
         PortDeserializer::accept(port, |local_port, request| {
@@ -311,51 +290,11 @@ where
                     }
                 };
 
-                // Decode received data using remote receiver.
-                let mut remote_rx = base::Receiver::<Result<T, RecvError>, Codec>::new(raw_rx);
-
-                // Process events.
-                let mut close_sent = false;
-                loop {
-                    tokio::select! {
-                        biased;
-
-                        // Channel closure requested locally.
-                        res = closed_rx.changed() => {
-                            match res {
-                                Ok(()) if *closed_rx.borrow() && !close_sent => {
-                                    let _ = raw_tx.send(vec![BACKCHANNEL_MSG_CLOSE].into()).await;
-                                    close_sent = true;
-                                }
-                                Ok(()) => (),
-                                Err(_) => break,
-                            }
-                        }
-
-                        // Notify remote endpoint of error.
-                        Ok(()) = remote_send_err_rx.changed() => {
-                            if remote_send_err_rx.borrow().as_ref().is_some() {
-                                let _ = raw_tx.send(vec![BACKCHANNEL_MSG_ERROR].into()).await;
-                            }
-                        }
-
-                        // Data received from remote endpoint.
-                        res = remote_rx.recv() => {
-                            let value = match res {
-                                Ok(Some(value)) => value,
-                                Ok(None) => break,
-                                Err(err) => Err(RecvError::RemoteReceive(err)),
-                            };
-                            if tx.send(value).await.is_err() {
-                                break;
-                            }
-                        }
-                    }
-                }
+                recv_impl!(T, tx, raw_tx, raw_rx, remote_send_err_rx, closed_rx);
             }
             .boxed()
         })?;
 
-        Ok(Self::new(rx, closed_tx, remote_send_err_tx))
+        Ok(Self::new(rx, closed_tx, closed, remote_send_err_tx))
     }
 }

@@ -1,9 +1,8 @@
 use std::time::Duration;
-
-use remoc::rch::watch;
 use tokio::time::sleep;
 
-use crate::loop_channel;
+use crate::{droppable_loop_channel, loop_channel};
+use remoc::rch::watch;
 
 #[tokio::test]
 async fn simple() {
@@ -69,6 +68,37 @@ async fn close() {
 
     println!("Dropping second receiver");
     drop(rx2);
+
+    println!("Waiting for close notification");
+    tx.closed().await;
+    assert!(tx.is_closed());
+
+    println!("Attempting to send");
+    match tx.send(15) {
+        Ok(()) => panic!("send succeeded after close"),
+        Err(err) if err.is_closed() => (),
+        Err(err) => panic!("wrong error after close: {}", err),
+    }
+}
+
+#[tokio::test]
+async fn conn_failure() {
+    crate::init();
+    let ((mut a_tx, _), (_, mut b_rx), conn) = droppable_loop_channel::<watch::Sender<i16>>().await;
+
+    println!("Sending remote mpsc channel sender");
+    let (tx, rx) = watch::channel(123);
+    a_tx.send(tx).await.unwrap();
+    println!("Receiving remote mpsc channel sender");
+    let tx = b_rx.recv().await.unwrap().unwrap();
+
+    println!("Cloning receiver");
+    let _rx2 = rx.clone();
+
+    assert!(!tx.is_closed());
+
+    println!("Dropping connection");
+    drop(conn);
 
     println!("Waiting for close notification");
     tx.closed().await;
