@@ -25,7 +25,7 @@ pub enum RecvError {
     Receive(chmux::RecvError),
     /// Deserialization of received data failed.
     Deserialize(DeserializationError),
-    /// chmux ports required for deserialization of received channels were not received.
+    /// Chmux ports required for deserialization of received channels were not received.
     MissingPorts(Vec<u32>),
 }
 
