@@ -1,5 +1,5 @@
 use bytes::Buf;
-use futures::{future, task::noop_waker, FutureExt};
+use futures::{task::noop_waker, FutureExt};
 use serde::{Deserialize, Serialize};
 use std::{
     error::Error,
@@ -15,14 +15,14 @@ use super::{
         RemoteSendError, BACKCHANNEL_MSG_ERROR,
     },
     receiver::RecvError,
-    Receiver, Ref, ERROR_QUEUE,
+    recv_impl, send_impl, Receiver, Ref, ERROR_QUEUE,
 };
 use crate::{chmux, codec, RemoteSend};
 
 /// An error occurred during sending over an mpsc channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SendError {
-    /// The remote end closed the channel.
+    /// The remote end closed the channel, was dropped or the connection failed.
     Closed,
     /// Sending to a remote endpoint failed.
     RemoteSend(base::SendErrorKind),
@@ -35,9 +35,9 @@ pub enum SendError {
 }
 
 impl SendError {
-    /// True, if all receivers have been dropped.
+    /// True, if the remote endpoint closed the channel, was dropped or the connection failed.
     pub fn is_closed(&self) -> bool {
-        matches!(self, Self::Closed)
+        !matches!(self, Self::RemoteSend(base::SendErrorKind::Serialize(_)))
     }
 
     /// Returns whether the error is final, i.e. no further send operation can succeed.
@@ -70,6 +70,7 @@ impl From<RemoteSendError> for SendError {
             RemoteSendError::Connect(err) => Self::RemoteConnect(err),
             RemoteSendError::Listen(err) => Self::RemoteListen(err),
             RemoteSendError::Forward => Self::RemoteForward,
+            RemoteSendError::Closed => Self::Closed,
         }
     }
 }
@@ -149,13 +150,13 @@ where
         }
     }
 
-    /// Completes when all receivers have been dropped.
+    /// Completes when all receivers have been dropped or the connection failed.
     #[inline]
     pub async fn closed(&self) {
         self.inner.as_ref().unwrap().tx.closed().await
     }
 
-    /// Returns whether all receivers have been dropped.
+    /// Returns whether all receivers have been dropped or the connection failed.
     #[inline]
     pub fn is_closed(&self) -> bool {
         self.inner.as_ref().unwrap().tx.is_closed()
@@ -244,39 +245,7 @@ where
                     }
                 };
 
-                // Decode raw received data using remote receiver.
-                let mut remote_rx = base::Receiver::<Result<T, RecvError>, Codec>::new(raw_rx);
-
-                // Process events.
-                loop {
-                    tokio::select! {
-                        biased;
-
-                        // Channel closure requested locally.
-                        () = tx.closed() => break,
-
-                        // Notify remote endpoint of error.
-                        Some(_) = remote_send_err_rx.recv() => {
-                            let _ = raw_tx.send(vec![BACKCHANNEL_MSG_ERROR].into()).await;
-                        }
-                        () = future::ready(()), if current_err.is_some() => {
-                            let _ = raw_tx.send(vec![BACKCHANNEL_MSG_ERROR].into()).await;
-                            current_err = None;
-                        }
-
-                        // Data received from remote endpoint.
-                        res = remote_rx.recv() => {
-                            let value = match res {
-                                Ok(Some(value)) => value,
-                                Ok(None) => break,
-                                Err(err) => Err(RecvError::RemoteReceive(err)),
-                            };
-                            if tx.send(value).is_err() {
-                                break;
-                            }
-                        }
-                    }
-                }
+                recv_impl!(T, tx, raw_tx, raw_rx, remote_send_err_rx, current_err);
             }
             .boxed()
         })?;
@@ -319,40 +288,7 @@ where
                     }
                 };
 
-                // Encode data using remote sender for sending.
-                let mut remote_tx = base::Sender::<Result<T, RecvError>, Codec>::new(raw_tx);
-
-                // Process events.
-                loop {
-                    tokio::select! {
-                        biased;
-
-                        // Back channel message from remote endpoint.
-                        backchannel_msg = raw_rx.recv() => {
-                            match backchannel_msg {
-                                Ok(Some(mut msg)) if msg.remaining() >= 1 => {
-                                    if msg.get_u8() == BACKCHANNEL_MSG_ERROR {
-                                        let _ = remote_send_err_tx.try_send(RemoteSendError::Forward);
-                                    }
-                                }
-                                _ => break,
-                            }
-                        }
-
-                        // Data to send to remote endpoint.
-                        changed = rx.changed() => {
-                            match changed {
-                                Ok(()) => {
-                                    let value = rx.borrow_and_update().clone();
-                                    if let Err(err) = remote_tx.send(value).await {
-                                        let _ = remote_send_err_tx.try_send(RemoteSendError::Send(err.kind));
-                                    }
-                                }
-                                Err(_) => break,
-                            }
-                        }
-                    }
-                }
+                send_impl!(T, rx, raw_tx, raw_rx, remote_send_err_tx);
             }
             .boxed()
         })?;

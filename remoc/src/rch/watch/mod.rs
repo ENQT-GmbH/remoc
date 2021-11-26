@@ -97,3 +97,84 @@ where
     let receiver = Receiver::new(rx, remote_send_err_tx);
     (sender, receiver)
 }
+
+/// Send implementation for deserializer of Sender and serializer of Receiver.
+macro_rules! send_impl {
+    ($T:ty, $rx:ident, $raw_tx:ident, $raw_rx:ident, $remote_send_err_tx:ident) => {
+        // Encode data using remote sender for sending.
+        let mut remote_tx = base::Sender::<Result<$T, RecvError>, Codec>::new($raw_tx);
+
+        // Process events.
+        loop {
+            tokio::select! {
+                biased;
+
+                // Back channel message from remote endpoint.
+                backchannel_msg = $raw_rx.recv() => {
+                    match backchannel_msg {
+                        Ok(Some(mut msg)) if msg.remaining() >= 1 => {
+                            if msg.get_u8() == BACKCHANNEL_MSG_ERROR {
+                                let _ = $remote_send_err_tx.try_send(RemoteSendError::Forward);
+                            }
+                        }
+                        _ => break,
+                    }
+                }
+
+                // Data to send to remote endpoint.
+                changed = $rx.changed() => {
+                    match changed {
+                        Ok(()) => {
+                            let value = $rx.borrow_and_update().clone();
+                            if let Err(err) = remote_tx.send(value).await {
+                                let _ = $remote_send_err_tx.try_send(RemoteSendError::Send(err.kind));
+                            }
+                        }
+                        Err(_) => break,
+                    }
+                }
+            }
+        }
+    };
+}
+pub(crate) use send_impl;
+
+/// Receive implementation for serializer of Sender and deserializer of Receiver.
+macro_rules! recv_impl {
+    ($T:ty, $tx:ident, $raw_tx:ident, $raw_rx:ident, $remote_send_err_rx:ident, $current_err:ident) => {
+        // Decode raw received data using remote receiver.
+        let mut remote_rx = base::Receiver::<Result<$T, RecvError>, Codec>::new($raw_rx);
+
+        // Process events.
+        loop {
+            tokio::select! {
+                biased;
+
+                // Channel closure requested locally.
+                () = $tx.closed() => break,
+
+                // Notify remote endpoint of error.
+                Some(_) = $remote_send_err_rx.recv() => {
+                    let _ = $raw_tx.send(vec![BACKCHANNEL_MSG_ERROR].into()).await;
+                }
+                () = futures::future::ready(()), if $current_err.is_some() => {
+                    let _ = $raw_tx.send(vec![BACKCHANNEL_MSG_ERROR].into()).await;
+                    $current_err = None;
+                }
+
+                // Data received from remote endpoint.
+                res = remote_rx.recv() => {
+                    let value = match res {
+                        Ok(Some(value)) => value,
+                        Ok(None) => break,
+                        Err(err) => Err(RecvError::RemoteReceive(err)),
+                    };
+                    if $tx.send(value).is_err() {
+                        break;
+                    }
+                }
+            }
+        }
+    };
+}
+pub(crate) use recv_impl;

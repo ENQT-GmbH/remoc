@@ -8,7 +8,7 @@ use super::{
         base::{self, PortDeserializer, PortSerializer},
         RemoteSendError, BACKCHANNEL_MSG_ERROR,
     },
-    Ref, ERROR_QUEUE,
+    recv_impl, send_impl, Ref, ERROR_QUEUE,
 };
 use crate::{chmux, codec, RemoteSend};
 
@@ -164,41 +164,7 @@ where
                     }
                 };
 
-                // Encode data using remote sender.
-                let mut remote_tx = base::Sender::<Result<T, RecvError>, Codec>::new(raw_tx);
-
-                // Process events.
-                let mut backchannel_active = true;
-                loop {
-                    tokio::select! {
-                        biased;
-
-                        // Back channel message from remote endpoint.
-                        backchannel_msg = raw_rx.recv(), if backchannel_active => {
-                            match backchannel_msg {
-                                Ok(Some(mut msg)) if msg.remaining() >= 1 => {
-                                    if msg.get_u8() == BACKCHANNEL_MSG_ERROR {
-                                        let _ = remote_send_err_tx.try_send(RemoteSendError::Forward);
-                                    }
-                                }
-                                _ => backchannel_active = false,
-                            }
-                        }
-
-                        // Data to send to remote endpoint.
-                        changed = rx.changed() => {
-                            match changed {
-                                Ok(()) => {
-                                    let value = rx.borrow_and_update().clone();
-                                    if let Err(err) = remote_tx.send(value).await {
-                                        let _ = remote_send_err_tx.try_send(RemoteSendError::Send(err.kind));
-                                    }
-                                }
-                                Err(_) => break,
-                            }
-                        }
-                    }
-                }
+                send_impl!(T, rx, raw_tx, raw_rx, remote_send_err_tx);
             }
             .boxed()
         })?;
@@ -239,35 +205,8 @@ where
                     }
                 };
 
-                // Decode received data using remote receiver.
-                let mut remote_rx = base::Receiver::<Result<T, RecvError>, Codec>::new(raw_rx);
-
-                // Process events.
-                loop {
-                    tokio::select! {
-                        biased;
-
-                        // Channel closure requested locally.
-                        () = tx.closed() => break,
-
-                        // Notify remote endpoint of error.
-                        Some(_) = remote_send_err_rx.recv() => {
-                            let _ = raw_tx.send(vec![BACKCHANNEL_MSG_ERROR].into()).await;
-                        }
-
-                        // Data received from remote endpoint.
-                        res = remote_rx.recv() => {
-                            let value = match res {
-                                Ok(Some(value)) => value,
-                                Ok(None) => break,
-                                Err(err) => Err(RecvError::RemoteReceive(err)),
-                            };
-                            if tx.send(value).is_err() {
-                                break;
-                            }
-                        }
-                    }
-                }
+                let mut current_err: Option<RemoteSendError> = None;
+                recv_impl!(T, tx, raw_tx, raw_rx, remote_send_err_rx, current_err);
             }
             .boxed()
         })?;
