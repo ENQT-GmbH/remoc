@@ -9,6 +9,7 @@
 //!
 //! Each codec is gated by the corresponding crate feature `codec-*`, i.e.
 //! the JSON codec is only available if the crate features `codec-json` is enabled.
+//! The crate feature `full-codecs` enables all codecs.
 //!
 //! The default codec, named [Default](struct@Default), can be selected by enabling the
 //! appropriate `default-codec-*` crate feature.

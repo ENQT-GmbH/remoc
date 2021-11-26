@@ -90,6 +90,8 @@ The feature `default-codec-*` selects the respective codec as default.
 At most one of this must be selected and this should only be used by
 applications, not libraries.
 
+The feature `full-codecs` enables all codecs.
+
 By default all features are enabled and the JSON codec is used as default.
 
 

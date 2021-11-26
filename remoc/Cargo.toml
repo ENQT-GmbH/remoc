@@ -30,7 +30,7 @@ codec-json = ["serde_json"]
 default-codec-json = ["codec-json", "default-codec-set"]
 codec-message-pack = ["rmp-serde"]
 default-codec-message-pack = ["codec-message-pack", "default-codec-set"]
-
+full-codecs = ["codec-bincode", "codec-cbor", "codec-json", "codec-message-pack"]
 
 [dependencies]
 remoc_macro = { version = "=0.9.6", path = "../remoc_macro", optional = true }
@@ -66,4 +66,5 @@ tracing-subscriber = "0.2"
 
 
 [package.metadata.docs.rs]
+features = ["full", "full-codecs", "default-codec-json"]
 rustdoc-args = ["--cfg", "docsrs"]
