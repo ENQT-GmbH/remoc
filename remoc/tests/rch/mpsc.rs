@@ -121,6 +121,94 @@ async fn simple_conn_failure() {
 }
 
 #[tokio::test]
+async fn two_sender_conn_failure() {
+    crate::init();
+    let ((mut a_tx, _), (_, mut b_rx), conn1) = droppable_loop_channel::<mpsc::Sender<i16>>().await;
+    let ((mut c_tx, _), (_, mut d_rx), _conn2) = droppable_loop_channel::<mpsc::Sender<i16>>().await;
+
+    let mut conn1 = Some(conn1);
+
+    println!("Sending two remote mpsc channel senders");
+    let (tx, mut rx) = mpsc::channel(16);
+    a_tx.send(tx.clone()).await.unwrap();
+    c_tx.send(tx.clone()).await.unwrap();
+
+    println!("Receiving two remote mpsc channel receivers");
+    let tx1 = b_rx.recv().await.unwrap().unwrap();
+    let tx2 = d_rx.recv().await.unwrap().unwrap();
+
+    for i in 1..100 {
+        println!("Sending {} over connection 1", i);
+        match tx1.send(i).await {
+            Ok(()) => println!("Send ok"),
+            Err(err) => {
+                if conn1.is_some() {
+                    panic!("Send failed before connection drop");
+                }
+                println!("Send failed: {} with reason {:?}", &err, err.closed_reason());
+                assert_eq!(err.closed_reason(), Some(ClosedReason::Failed));
+            }
+        }
+
+        println!("Sending {} over connection 2", i);
+        tx2.send(i).await.unwrap();
+
+        if i == 50 {
+            println!("Dropping connection 1");
+            conn1 = None;
+        }
+
+        if conn1.is_some() {
+            let r = rx.recv().await.unwrap().unwrap();
+            println!("Received {} first time", r);
+            assert_eq!(i, r, "send/receive mismatch");
+
+            let r = rx.recv().await.unwrap().unwrap();
+            println!("Received {} second time", r);
+            assert_eq!(i, r, "send/receive mismatch");
+        } else {
+            let r = rx.recv().await.unwrap().unwrap();
+            println!("Received {} first time", r);
+
+            if let Ok(r) = rx.try_recv() {
+                println!("Received {} second time", r);
+            }
+        }
+    }
+
+    println!("Waiting for sender 1 to be closed");
+    tx1.closed().await;
+    assert!(tx1.is_closed());
+    assert_eq!(tx1.closed_reason(), Some(ClosedReason::Failed));
+
+    println!("Trying send after connection failure over sender 1");
+    match tx1.send(0).await {
+        Ok(_) => panic!("send succeeded after close"),
+        Err(err) if err.is_closed() && err.closed_reason() == Some(ClosedReason::Failed) => (),
+        Err(_) => panic!("wrong error after close"),
+    }
+
+    println!("Verifying that channel is open");
+    assert!(!tx.is_closed());
+    assert_eq!(tx.closed_reason(), None);
+
+    println!("Closing receiver");
+    rx.close();
+
+    println!("Waiting for sender 2 to be closed");
+    tx2.closed().await;
+    assert!(tx2.is_closed());
+    assert_eq!(tx2.closed_reason(), Some(ClosedReason::Closed));
+
+    println!("Trying send after close over sender 2");
+    match tx2.send(0).await {
+        Ok(_) => panic!("send succeeded after close"),
+        Err(err) if err.is_closed() && err.closed_reason() == Some(ClosedReason::Closed) => (),
+        Err(_) => panic!("wrong error after close"),
+    }
+}
+
+#[tokio::test]
 async fn multiple() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<mpsc::Receiver<mpsc::Sender<i16>>>().await;

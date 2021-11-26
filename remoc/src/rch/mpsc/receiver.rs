@@ -51,6 +51,57 @@ impl RecvError {
     }
 }
 
+/// An error occurred during trying to receive over an mpsc channel.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum TryRecvError {
+    /// All channel senders have been dropped.
+    Closed,
+    /// Currently no value is ready to receive, but values may still arrive
+    /// in the future.
+    Empty,
+    /// Receiving from a remote endpoint failed.
+    RemoteReceive(base::RecvError),
+    /// Connecting a sent channel failed.
+    RemoteConnect(chmux::ConnectError),
+    /// Listening for a connection from a received channel failed.
+    RemoteListen(chmux::ListenerError),
+}
+
+impl fmt::Display for TryRecvError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Closed => write!(f, "channel is closed"),
+            Self::Empty => write!(f, "channel is empty"),
+            Self::RemoteReceive(err) => write!(f, "receive error: {}", err),
+            Self::RemoteConnect(err) => write!(f, "connect error: {}", err),
+            Self::RemoteListen(err) => write!(f, "listen error: {}", err),
+        }
+    }
+}
+
+impl From<RecvError> for TryRecvError {
+    fn from(err: RecvError) -> Self {
+        match err {
+            RecvError::RemoteReceive(err) => Self::RemoteReceive(err),
+            RecvError::RemoteConnect(err) => Self::RemoteConnect(err),
+            RecvError::RemoteListen(err) => Self::RemoteListen(err),
+        }
+    }
+}
+
+impl Error for TryRecvError {}
+
+impl TryRecvError {
+    /// Returns whether the error is final, i.e. no further receive operation can succeed.
+    pub fn is_final(&self) -> bool {
+        match self {
+            Self::Empty => false,
+            Self::RemoteReceive(err) => err.is_final(),
+            Self::Closed | Self::RemoteConnect(_) | Self::RemoteListen(_) => true,
+        }
+    }
+}
+
 /// Receive values from the associated [Sender](super::Sender),
 /// which may be located on a remote endpoint.
 ///
@@ -59,6 +110,7 @@ pub struct Receiver<T, Codec = codec::Default, Buffer = buffer::Default> {
     inner: Option<ReceiverInner<T>>,
     #[allow(clippy::type_complexity)]
     successor_tx: Mutex<Option<tokio::sync::oneshot::Sender<ReceiverInner<T>>>>,
+    final_err: Option<RecvError>,
     _codec: PhantomData<Codec>,
     _buffer: PhantomData<Buffer>,
 }
@@ -99,6 +151,7 @@ impl<T, Codec, Buffer> Receiver<T, Codec, Buffer> {
         Self {
             inner: Some(ReceiverInner { rx, closed_tx, remote_send_err_tx, closed }),
             successor_tx: Mutex::new(None),
+            final_err: None,
             _codec: PhantomData,
             _buffer: PhantomData,
         }
@@ -106,25 +159,93 @@ impl<T, Codec, Buffer> Receiver<T, Codec, Buffer> {
 
     /// Receives the next value for this receiver.
     ///
-    /// This function returns `Ok(None)` when the channel sender has been dropped.
+    /// This function returns `Ok(None)` when all channel senders have been dropped.
+    ///
+    /// When a receive error occurs due to a connection failure and other senders are still
+    /// present, it is held back and returned after all other senders have been dropped or failed.
+    /// Use [error](Self::error) to check if such an error is present.
     #[inline]
     pub async fn recv(&mut self) -> Result<Option<T>, RecvError> {
-        match self.inner.as_mut().unwrap().rx.recv().await {
-            Some(Ok(value_opt)) => Ok(Some(value_opt)),
-            Some(Err(err)) => Err(err),
-            None => Ok(None),
+        loop {
+            match self.inner.as_mut().unwrap().rx.recv().await {
+                Some(Ok(value_opt)) => return Ok(Some(value_opt)),
+                Some(Err(err)) => {
+                    if err.is_final() {
+                        if self.final_err.is_none() {
+                            self.final_err = Some(err);
+                        }
+                        continue;
+                    } else {
+                        return Err(err);
+                    }
+                }
+                None => match self.take_error() {
+                    Some(err) => return Err(err),
+                    None => return Ok(None),
+                },
+            }
         }
     }
 
     /// Polls to receive the next message on this channel.
     ///
-    /// This function returns `Poll::Ready(Ok(None))` when the channel sender has been dropped.
+    /// This function returns `Poll::Ready(Ok(None))` when all channel senders have been dropped.
+    ///
+    /// When a receive error occurs due to a connection failure and other senders are still
+    /// present, it is held back and returned after all other senders have been dropped or failed.
+    /// Use [error](Self::error) to check if such an error is present.
     #[inline]
     pub fn poll_recv(&mut self, cx: &mut Context<'_>) -> Poll<Result<Option<T>, RecvError>> {
-        match ready!(self.inner.as_mut().unwrap().rx.poll_recv(cx)) {
-            Some(Ok(value_opt)) => Poll::Ready(Ok(Some(value_opt))),
-            Some(Err(err)) => Poll::Ready(Err(err)),
-            None => Poll::Ready(Ok(None)),
+        loop {
+            match ready!(self.inner.as_mut().unwrap().rx.poll_recv(cx)) {
+                Some(Ok(value_opt)) => return Poll::Ready(Ok(Some(value_opt))),
+                Some(Err(err)) => {
+                    if err.is_final() {
+                        if self.final_err.is_none() {
+                            self.final_err = Some(err);
+                        }
+                        continue;
+                    } else {
+                        return Poll::Ready(Err(err));
+                    }
+                }
+                None => match self.take_error() {
+                    Some(err) => return Poll::Ready(Err(err)),
+                    None => return Poll::Ready(Ok(None)),
+                },
+            }
+        }
+    }
+
+    /// Tries to receive the next message on this channel, if one is immediately available.
+    ///
+    /// This function returns `Err([RecvError::Closed])` when all channel senders have been dropped
+    /// and `Err([RecvError::Empty])` if no value to receive is currently available.
+    ///
+    /// When a receive error occurs due to a connection failure and other senders are still
+    /// present, it is held back and returned after all other senders have been dropped or failed.
+    /// Use [error](Self::error) to check if such an error is present.
+    #[inline]
+    pub fn try_recv(&mut self) -> Result<T, TryRecvError> {
+        loop {
+            match self.inner.as_mut().unwrap().rx.try_recv() {
+                Ok(Ok(value_opt)) => return Ok(value_opt),
+                Ok(Err(err)) => {
+                    if err.is_final() {
+                        if self.final_err.is_none() {
+                            self.final_err = Some(err);
+                        }
+                        continue;
+                    } else {
+                        return Err(err.into());
+                    }
+                }
+                Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => match self.take_error() {
+                    Some(err) => return Err(err.into()),
+                    None => return Err(TryRecvError::Closed),
+                },
+                Err(tokio::sync::mpsc::error::TryRecvError::Empty) => return Err(TryRecvError::Empty),
+            }
         }
     }
 
@@ -151,11 +272,27 @@ impl<T, Codec, Buffer> Receiver<T, Codec, Buffer> {
         inner.closed = true;
     }
 
+    /// Returns the first error that occurred during receiving due to a connection failure,
+    /// but is being held back because other senders are still connected to this receiver.
+    ///
+    /// Use [take_error](Self::take_error) to clear it.
+    pub fn error(&self) -> &Option<RecvError> {
+        &self.final_err
+    }
+
+    /// Returns the held back error and clears it.
+    ///
+    /// See [recv](Self::recv) and [error](Self::error) for details.
+    pub fn take_error(&mut self) -> Option<RecvError> {
+        self.final_err.take()
+    }
+
     /// Sets the codec that will be used when sending this receiver to a remote endpoint.
     pub fn set_codec<NewCodec>(mut self) -> Receiver<T, NewCodec, Buffer> {
         Receiver {
             inner: self.inner.take(),
             successor_tx: Mutex::new(None),
+            final_err: self.final_err.clone(),
             _codec: PhantomData,
             _buffer: PhantomData,
         }
@@ -170,6 +307,7 @@ impl<T, Codec, Buffer> Receiver<T, Codec, Buffer> {
         Receiver {
             inner: self.inner.take(),
             successor_tx: Mutex::new(None),
+            final_err: self.final_err.clone(),
             _codec: PhantomData,
             _buffer: PhantomData,
         }
