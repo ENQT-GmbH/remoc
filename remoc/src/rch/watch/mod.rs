@@ -164,12 +164,19 @@ macro_rules! recv_impl {
 
                 // Data received from remote endpoint.
                 res = remote_rx.recv() => {
+                    let mut is_final_err = false;
                     let value = match res {
                         Ok(Some(value)) => value,
                         Ok(None) => break,
-                        Err(err) => Err(RecvError::RemoteReceive(err)),
+                        Err(err) => {
+                            is_final_err = err.is_final();
+                            Err(RecvError::RemoteReceive(err))
+                        },
                     };
                     if $tx.send(value).is_err() {
+                        break;
+                    }
+                    if is_final_err {
                         break;
                     }
                 }

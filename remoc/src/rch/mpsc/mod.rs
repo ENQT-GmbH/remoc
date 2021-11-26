@@ -52,7 +52,7 @@ mod receiver;
 mod sender;
 
 pub use distributor::{DistributedReceiverHandle, Distributor};
-pub use receiver::{Receiver, RecvError};
+pub use receiver::{Receiver, RecvError, TryRecvError};
 pub use sender::{Permit, SendError, Sender, TrySendError};
 
 /// Creates a bounded channel for communicating between asynchronous tasks with back pressure.
@@ -178,12 +178,19 @@ macro_rules! recv_impl {
 
                 // Data received from remote endpoint.
                 res = remote_rx.recv() => {
+                    let mut is_final_err = false;
                     let value = match res {
                         Ok(Some(value)) => value,
                         Ok(None) => break,
-                        Err(err) => Err(RecvError::RemoteReceive(err)),
+                        Err(err) => {
+                            is_final_err = err.is_final();
+                            Err(RecvError::RemoteReceive(err))
+                        },
                     };
                     if $tx.send(value).await.is_err() {
+                        break;
+                    }
+                    if is_final_err {
                         break;
                     }
                 }
