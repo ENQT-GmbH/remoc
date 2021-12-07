@@ -137,6 +137,7 @@ pub(crate) struct ConnectRequest {
 
 /// Connection to remote service response from local multiplexer.
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum ConnectResponse {
     /// Connection accepted and channel opened.
     Accepted(Sender, Receiver),
