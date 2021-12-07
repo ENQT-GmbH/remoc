@@ -41,7 +41,13 @@ pub enum SendError {
 impl SendError {
     /// Returns true, if error it due to channel being closed.
     pub fn is_closed(&self) -> bool {
-        matches!(self, Self::Closed { .. })
+        matches!(self, Self::Closed { gracefully: true })
+    }
+
+    /// True, if the remote endpoint closed the channel, was dropped or the connection failed.
+    #[deprecated = "a chmux::SendError is always due to disconnection"]
+    pub fn is_disconnected(&self) -> bool {
+        true
     }
 
     /// Returns whether the error is final, i.e. no further send operation can succeed.

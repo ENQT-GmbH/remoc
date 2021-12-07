@@ -12,7 +12,7 @@ use std::{
 use super::{
     super::{
         base::{self, PortDeserializer, PortSerializer},
-        RemoteSendError, BACKCHANNEL_MSG_ERROR,
+        RemoteSendError, SendErrorExt, BACKCHANNEL_MSG_ERROR,
     },
     receiver::RecvError,
     recv_impl, send_impl, Receiver, Ref, ERROR_QUEUE,
@@ -22,7 +22,7 @@ use crate::{chmux, codec, RemoteSend};
 /// An error occurred during sending over an mpsc channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SendError {
-    /// The remote end closed the channel, was dropped or the connection failed.
+    /// The receiver was dropped or the connection failed.
     Closed,
     /// Sending to a remote endpoint failed.
     RemoteSend(base::SendErrorKind),
@@ -35,8 +35,13 @@ pub enum SendError {
 }
 
 impl SendError {
-    /// True, if the remote endpoint closed the channel, was dropped or the connection failed.
+    /// True, if the remote endpoint was dropped or the connection failed.
     pub fn is_closed(&self) -> bool {
+        !matches!(self, Self::RemoteSend(base::SendErrorKind::Serialize(_)))
+    }
+
+    /// True, if the remote endpoint was dropped or the connection failed.
+    pub fn is_disconnected(&self) -> bool {
         !matches!(self, Self::RemoteSend(base::SendErrorKind::Serialize(_)))
     }
 
@@ -46,6 +51,20 @@ impl SendError {
             Self::RemoteSend(err) => err.is_final(),
             Self::Closed | Self::RemoteConnect(_) | Self::RemoteListen(_) | Self::RemoteForward => true,
         }
+    }
+}
+
+impl SendErrorExt for SendError {
+    fn is_closed(&self) -> bool {
+        self.is_closed()
+    }
+
+    fn is_disconnected(&self) -> bool {
+        self.is_disconnected()
+    }
+
+    fn is_final(&self) -> bool {
+        self.is_final()
     }
 }
 

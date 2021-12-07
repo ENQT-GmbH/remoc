@@ -10,7 +10,7 @@ use std::{
 use super::{
     super::{
         base::{self, PortDeserializer, PortSerializer},
-        ConnectError,
+        ConnectError, SendErrorExt,
     },
     Interlock, Location,
 };
@@ -46,21 +46,33 @@ impl<T> SendError<T> {
         Self { kind, item }
     }
 
-    /// Returns true, if error it due to channel being closed.
+    /// True, if the remote endpoint closed the channel.
     pub fn is_closed(&self) -> bool {
-        match &self.kind {
-            SendErrorKind::Send(err) => err.is_closed(),
-            _ => false,
-        }
+        matches!(&self.kind, SendErrorKind::Send(err) if err.is_closed())
+    }
+
+    /// True, if the remote endpoint closed the channel, was dropped or the connection failed.
+    pub fn is_disconnected(&self) -> bool {
+        !matches!(&self.kind, SendErrorKind::Serialize(_))
     }
 
     /// Returns whether the error is final, i.e. no further send operation can succeed.
     pub fn is_final(&self) -> bool {
-        match &self.kind {
-            SendErrorKind::Serialize(_) => false,
-            SendErrorKind::Send(_) => true,
-            SendErrorKind::Connect(_) => true,
-        }
+        self.is_disconnected()
+    }
+}
+
+impl<T> SendErrorExt for SendError<T> {
+    fn is_closed(&self) -> bool {
+        self.is_closed()
+    }
+
+    fn is_disconnected(&self) -> bool {
+        self.is_disconnected()
+    }
+
+    fn is_final(&self) -> bool {
+        self.is_final()
     }
 }
 

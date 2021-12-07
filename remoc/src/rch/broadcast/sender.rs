@@ -9,7 +9,7 @@ use std::{
 };
 
 use super::{
-    super::{base, buffer, mpsc},
+    super::{base, buffer, mpsc, SendErrorExt},
     BroadcastMsg, Receiver,
 };
 use crate::{chmux, codec, RemoteSend};
@@ -58,12 +58,36 @@ impl<T, R> TryFrom<mpsc::TrySendError<T>> for SendError<R> {
 }
 
 impl<T> SendError<T> {
+    /// True, if the remote endpoint closed the channel.
+    pub fn is_closed(&self) -> bool {
+        matches!(self, Self::Closed(_))
+    }
+
+    /// True, if the remote endpoint closed the channel, was dropped or the connection failed.
+    pub fn is_disconnected(&self) -> bool {
+        !matches!(self, Self::RemoteSend(base::SendErrorKind::Serialize(_)))
+    }
+
     /// Returns whether the error is final, i.e. no further send operation can succeed.
     pub fn is_final(&self) -> bool {
         match self {
             Self::RemoteSend(err) => err.is_final(),
             Self::Closed(_) | Self::RemoteConnect(_) | Self::RemoteListen(_) | Self::RemoteForward => true,
         }
+    }
+}
+
+impl<T> SendErrorExt for SendError<T> {
+    fn is_closed(&self) -> bool {
+        self.is_closed()
+    }
+
+    fn is_disconnected(&self) -> bool {
+        self.is_disconnected()
+    }
+
+    fn is_final(&self) -> bool {
+        self.is_final()
     }
 }
 

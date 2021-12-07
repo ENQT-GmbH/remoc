@@ -12,7 +12,7 @@ use std::{
 use super::{
     super::{
         base::{self, PortDeserializer, PortSerializer},
-        buffer, ClosedReason, RemoteSendError, BACKCHANNEL_MSG_CLOSE, BACKCHANNEL_MSG_ERROR,
+        buffer, ClosedReason, RemoteSendError, SendErrorExt, BACKCHANNEL_MSG_CLOSE, BACKCHANNEL_MSG_ERROR,
     },
     receiver::RecvError,
     recv_impl, send_impl,
@@ -35,14 +35,14 @@ pub enum SendError<T> {
 }
 
 impl<T> SendError<T> {
-    /// True, if the remote endpoint closed the channel, was dropped or the connection failed.
+    /// True, if the remote endpoint closed the channel.
     pub fn is_closed(&self) -> bool {
-        !matches!(self, Self::RemoteSend(base::SendErrorKind::Serialize(_)))
+        matches!(self, Self::Closed(_))
     }
 
-    /// Returns the reason for why the channel has been closed.
+    /// Returns the reason for why the channel has been disconnected.
     ///
-    /// Returns [None] if the error is not due to the channel being closed.
+    /// Returns [None] if the error is not due to the channel being disconnected.
     /// Currently this can only happen if a serialization error occurred.
     pub fn closed_reason(&self) -> Option<ClosedReason> {
         match self {
@@ -55,10 +55,30 @@ impl<T> SendError<T> {
         }
     }
 
+    /// True, if the remote endpoint closed the channel, was dropped or the connection failed.
+    pub fn is_disconnected(&self) -> bool {
+        !matches!(self, Self::RemoteSend(base::SendErrorKind::Serialize(_)))
+    }
+
     /// Returns whether the error is final, i.e. no further send operation can succeed.
     #[deprecated = "a remoc::rch::mpsc::SendError is always final"]
     pub fn is_final(&self) -> bool {
         true
+    }
+}
+
+impl<T> SendErrorExt for SendError<T> {
+    fn is_closed(&self) -> bool {
+        self.is_closed()
+    }
+
+    fn is_disconnected(&self) -> bool {
+        self.is_disconnected()
+    }
+
+    fn is_final(&self) -> bool {
+        #[allow(deprecated)]
+        self.is_final()
     }
 }
 
@@ -112,9 +132,28 @@ impl<T> TrySendError<T> {
         matches!(self, Self::Closed(_))
     }
 
+    /// True, if the remote endpoint closed the channel, was dropped or the connection failed.
+    pub fn is_disconnected(&self) -> bool {
+        !matches!(self, Self::RemoteSend(base::SendErrorKind::Serialize(_)) | Self::Full(_))
+    }
+
     /// Returns whether the error is final, i.e. no further send operation can succeed.
     pub fn is_final(&self) -> bool {
         !matches!(self, Self::Full(_))
+    }
+}
+
+impl<T> SendErrorExt for TrySendError<T> {
+    fn is_closed(&self) -> bool {
+        self.is_closed()
+    }
+
+    fn is_disconnected(&self) -> bool {
+        self.is_disconnected()
+    }
+
+    fn is_final(&self) -> bool {
+        self.is_final()
     }
 }
 

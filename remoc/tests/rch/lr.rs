@@ -67,7 +67,7 @@ async fn send_receiver() {
     println!("Trying send after receiver drop");
     match tx.send(0).await {
         Ok(_) => panic!("send succeeded after close"),
-        Err(err) if err.is_closed() => (),
+        Err(err) if err.is_disconnected() => (),
         Err(_) => panic!("wrong error after close"),
     }
 }

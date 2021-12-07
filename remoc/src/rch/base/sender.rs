@@ -14,6 +14,7 @@ use std::{
 use tokio::task;
 
 use super::{
+    super::SendErrorExt,
     io::{ChannelBytesWriter, LimitedBytesWriter},
     BIG_DATA_CHUNK_QUEUE, BIG_DATA_LIMIT,
 };
@@ -43,20 +44,19 @@ pub enum SendErrorKind {
 }
 
 impl SendErrorKind {
-    /// Returns true, if error it due to channel being closed.
+    /// True, if the remote endpoint closed the channel.
     pub fn is_closed(&self) -> bool {
-        match self {
-            Self::Send(err) => err.is_closed(),
-            _ => false,
-        }
+        matches!(self, Self::Send(err) if err.is_closed())
+    }
+
+    /// True, if the remote endpoint closed the channel, was dropped or the connection failed.
+    pub fn is_disconnected(&self) -> bool {
+        matches!(self, Self::Send(_))
     }
 
     /// Returns whether the error is final, i.e. no further send operation can succeed.
     pub fn is_final(&self) -> bool {
-        match self {
-            Self::Serialize(_) => false,
-            Self::Send(_) => true,
-        }
+        matches!(self, Self::Send(_))
     }
 }
 
@@ -70,9 +70,28 @@ impl<T> SendError<T> {
         self.kind.is_closed()
     }
 
+    /// True, if the remote endpoint closed the channel, was dropped or the connection failed.
+    pub fn is_disconnected(&self) -> bool {
+        self.kind.is_disconnected()
+    }
+
     /// Returns whether the error is final, i.e. no further send operation can succeed.
     pub fn is_final(&self) -> bool {
         self.kind.is_final()
+    }
+}
+
+impl<T> SendErrorExt for SendError<T> {
+    fn is_closed(&self) -> bool {
+        self.is_closed()
+    }
+
+    fn is_disconnected(&self) -> bool {
+        self.is_disconnected()
+    }
+
+    fn is_final(&self) -> bool {
+        self.is_final()
     }
 }
 

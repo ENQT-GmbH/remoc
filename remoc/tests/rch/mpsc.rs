@@ -1,6 +1,6 @@
 use futures::future;
 use rand::Rng;
-use remoc::rch::{mpsc, ClosedReason};
+use remoc::rch::{mpsc, ClosedReason, SendResultExt};
 use std::time::Duration;
 use tokio::time::sleep;
 
@@ -39,7 +39,57 @@ async fn simple() {
     println!("Trying send after close");
     match tx.send(0).await {
         Ok(_) => panic!("send succeeded after close"),
-        Err(err) if err.is_closed() && err.closed_reason() == Some(ClosedReason::Closed) => (),
+        Err(err)
+            if err.is_closed() && err.is_disconnected() && err.closed_reason() == Some(ClosedReason::Closed) =>
+        {
+            ()
+        }
+        Err(_) => panic!("wrong error after close"),
+    }
+}
+
+#[tokio::test]
+async fn simple_close() {
+    crate::init();
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<mpsc::Receiver<i16>>().await;
+
+    println!("Sending remote mpsc channel receiver");
+    let (tx, rx) = mpsc::channel(16);
+    a_tx.send(rx).await.unwrap();
+    println!("Receiving remote mpsc channel receiver");
+    let mut rx = b_rx.recv().await.unwrap().unwrap();
+
+    for i in 1..1024 {
+        println!("Sending {}", i);
+        let tx = tx.clone();
+
+        if tx.send(i).await.into_closed().unwrap() {
+            println!("Receiver was closed");
+            break;
+        }
+
+        let r = rx.recv().await.unwrap().unwrap();
+        println!("Received {}", r);
+        assert_eq!(i, r, "send/receive mismatch");
+
+        if r == 512 {
+            println!("Closing receiver");
+            rx.close();
+        }
+    }
+
+    println!("Verifying that channel is closed");
+    assert!(tx.is_closed());
+    assert_eq!(tx.closed_reason(), Some(ClosedReason::Closed));
+
+    println!("Trying send after close");
+    match tx.send(0).await {
+        Ok(_) => panic!("send succeeded after close"),
+        Err(err)
+            if err.is_closed() && err.is_disconnected() && err.closed_reason() == Some(ClosedReason::Closed) =>
+        {
+            ()
+        }
         Err(_) => panic!("wrong error after close"),
     }
 }
@@ -77,7 +127,13 @@ async fn simple_drop() {
     println!("Trying send after drop");
     match tx.send(0).await {
         Ok(_) => panic!("send succeeded after close"),
-        Err(err) if err.is_closed() && err.closed_reason() == Some(ClosedReason::Dropped) => (),
+        Err(err)
+            if err.is_disconnected()
+                && !err.is_closed()
+                && err.closed_reason() == Some(ClosedReason::Dropped) =>
+        {
+            ()
+        }
         Err(_) => panic!("wrong error after close"),
     }
 }
@@ -115,7 +171,11 @@ async fn simple_conn_failure() {
     println!("Trying send after drop");
     match tx.send(0).await {
         Ok(_) => panic!("send succeeded after close"),
-        Err(err) if err.is_closed() && err.closed_reason() == Some(ClosedReason::Failed) => (),
+        Err(err)
+            if err.is_disconnected() && !err.is_closed() && err.closed_reason() == Some(ClosedReason::Failed) =>
+        {
+            ()
+        }
         Err(_) => panic!("wrong error after close"),
     }
 }
@@ -184,7 +244,7 @@ async fn two_sender_conn_failure() {
     println!("Trying send after connection failure over sender 1");
     match tx1.send(0).await {
         Ok(_) => panic!("send succeeded after close"),
-        Err(err) if err.is_closed() && err.closed_reason() == Some(ClosedReason::Failed) => (),
+        Err(err) if err.is_disconnected() && err.closed_reason() == Some(ClosedReason::Failed) => (),
         Err(_) => panic!("wrong error after close"),
     }
 
@@ -203,7 +263,7 @@ async fn two_sender_conn_failure() {
     println!("Trying send after close over sender 2");
     match tx2.send(0).await {
         Ok(_) => panic!("send succeeded after close"),
-        Err(err) if err.is_closed() && err.closed_reason() == Some(ClosedReason::Closed) => (),
+        Err(err) if err.is_disconnected() && err.closed_reason() == Some(ClosedReason::Closed) => (),
         Err(_) => panic!("wrong error after close"),
     }
 }

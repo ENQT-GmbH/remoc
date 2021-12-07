@@ -52,7 +52,7 @@
 //! occurs on the underlying physical connection the whole [chmux] connection will
 //! be terminated eventually and sending will fail.
 //!
-//! If you need confirmation for every sent value, consider sending a [oneshot::Sender]`<()>`
+//! If you need confirmation for every sent value, consider sending a [`oneshot::Sender`]`<()>`
 //! along with it (for example as a tuple).
 //! The remote endpoint can then send back an empty message as confirmation over the oneshot channel
 //! after it has processed the received value.
@@ -75,6 +75,14 @@
 //! in your data structure or limit their maximum size during deserialization by applying
 //! the `#[serde(deserialize_with="...")]` attribute to the fields containing them.
 //!
+//! # Error handling
+//! 
+//! During sending it is often useful to treat errors that occur due to the disconnection, either graceful
+//! or non-graceful, of the remote endpoint as an indication that the receiver is not
+//! interested anymore in the transmitted data, rather than a hard error.
+//! To avoid complicated error checks in your code, you can use [SendResultExt::into_disconnected]
+//! to query whether a send error occurred due to the above cause and exit the sending process gracefully.
+//! 
 
 use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt};
@@ -145,4 +153,149 @@ pub(crate) enum RemoteSendError {
     Forward,
     /// Receiver was closed.
     Closed,
+}
+
+/// Common functions to query send errors for details.
+///
+/// This is implemented for all send errors in this module.
+/// 
+/// Since [watch] channels have no method to close them,
+/// [is_closed](Self::is_closed) and [is_disconnected](Self::is_disconnected) are
+/// equivalent for them.
+pub trait SendErrorExt {
+    /// Whether the remote endpoint closed the channel.
+    fn is_closed(&self) -> bool;
+
+    /// Whether the remote endpoint closed the channel, was dropped or the connection failed.
+    fn is_disconnected(&self) -> bool;
+
+    /// Whether the error is final, i.e. no further send operation can succeed.
+    fn is_final(&self) -> bool;
+}
+
+/// Common functions to query results of send operations for details.
+///
+/// This is implemented by all results from send operations in this module.
+pub trait SendResultExt {
+    /// The error type of this result.
+    type Err: SendErrorExt;
+
+    /// Whether the remote endpoint closed the channel.
+    ///
+    /// Returns `Ok(false)` if the send was successful and `Ok(true)` if the send failed for the
+    /// above reason.
+    /// The original error is returned if the failure had another cause.
+    ///
+    /// # Example
+    ///
+    /// In the following example the client counts upwards and the server closes the connections once
+    /// it receives the number 5.
+    /// The client stops counting as soon as sending fails.
+    /// Note that the panic error path in the client would only be triggered by another error,
+    /// such as a serialization error.
+    ///
+    /// ```
+    /// use remoc::prelude::*;
+    ///
+    /// // This would be run on the client.
+    /// async fn client(mut tx: rch::base::Sender<u32>) {
+    ///     let mut n = 0;
+    ///
+    ///     loop {
+    ///         if tx.send(n).await.into_closed().unwrap() {
+    ///             break;
+    ///         }
+    ///         n += 1;
+    ///     }
+    ///
+    ///     assert!(n > 5);
+    /// }
+    ///
+    /// // This would be run on the server.
+    /// async fn server(mut rx: rch::base::Receiver<u32>) {
+    ///     while let Some(n) = rx.recv().await.unwrap() {
+    ///         if n == 5 {
+    ///             rx.close().await;
+    ///         }
+    ///     }
+    /// }
+    /// # tokio_test::block_on(remoc::doctest::client_server(client, server));
+    /// ```
+    fn into_closed(self) -> Result<bool, Self::Err>;
+
+    /// Whether the remote endpoint closed the channel, was dropped or the connection failed.
+    ///
+    /// Returns `Ok(false)` if the send was successful and `Ok(true)` if the send failed for the
+    /// above reasons.
+    /// The original error is returned if the failure had another cause.
+    ///
+    /// # Example
+    ///
+    /// In the following example the client counts upwards and the server drops the connections once
+    /// it receives the number 5.
+    /// The client stops counting as soon as sending fails.
+    /// Note that the panic error path in the client would only be triggered by another error,
+    /// such as a serialization error.
+    ///
+    /// ```
+    /// use remoc::prelude::*;
+    ///
+    /// // This would be run on the client.
+    /// async fn client(mut tx: rch::base::Sender<u32>) {
+    ///     let mut n = 0;
+    ///
+    ///     loop {
+    ///         if tx.send(n).await.into_disconnected().unwrap() {
+    ///             break;
+    ///         }
+    ///         n += 1;
+    ///     }
+    ///
+    ///     assert!(n > 5);
+    /// }
+    ///
+    /// // This would be run on the server.
+    /// async fn server(mut rx: rch::base::Receiver<u32>) {
+    ///     while let Some(n) = rx.recv().await.unwrap() {
+    ///         if n == 5 {
+    ///             break;
+    ///         }
+    ///     }
+    /// }
+    /// # tokio_test::block_on(remoc::doctest::client_server(client, server));
+    /// ```
+    fn into_disconnected(self) -> Result<bool, Self::Err>;
+}
+
+impl<E> SendResultExt for Result<(), E>
+where
+    E: SendErrorExt,
+{
+    type Err = E;
+
+    fn into_closed(self) -> Result<bool, E> {
+        match self {
+            Ok(()) => Ok(false),
+            Err(err) => {
+                if err.is_closed() {
+                    Ok(true)
+                } else {
+                    Err(err)
+                }
+            }
+        }
+    }
+
+    fn into_disconnected(self) -> Result<bool, E> {
+        match self {
+            Ok(()) => Ok(false),
+            Err(err) => {
+                if err.is_disconnected() {
+                    Ok(true)
+                } else {
+                    Err(err)
+                }
+            }
+        }
+    }
 }
