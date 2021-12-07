@@ -76,13 +76,13 @@
 //! the `#[serde(deserialize_with="...")]` attribute to the fields containing them.
 //!
 //! # Error handling
-//! 
+//!
 //! During sending it is often useful to treat errors that occur due to the disconnection, either graceful
 //! or non-graceful, of the remote endpoint as an indication that the receiver is not
 //! interested anymore in the transmitted data, rather than a hard error.
 //! To avoid complicated error checks in your code, you can use [SendResultExt::into_disconnected]
 //! to query whether a send error occurred due to the above cause and exit the sending process gracefully.
-//! 
+//!
 
 use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt};
@@ -158,7 +158,7 @@ pub(crate) enum RemoteSendError {
 /// Common functions to query send errors for details.
 ///
 /// This is implemented for all send errors in this module.
-/// 
+///
 /// Since [watch] channels have no method to close them,
 /// [is_closed](Self::is_closed) and [is_disconnected](Self::is_disconnected) are
 /// equivalent for them.

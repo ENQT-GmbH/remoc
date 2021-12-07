@@ -9,7 +9,7 @@
 //! Remoc 🦑 — remote multiplexed objects and channels
 //!
 //! Remoc makes remote interaction between Rust programs seamless and smooth.
-//! Over a single underlying transport, it provides:
+//! Over a [single underlying transport], it provides:
 //!
 //!   * [multiple channels] of different types like [MPSC], [oneshot], [watch], etc.,
 //!   * [remote synchronization] primitives,
@@ -19,6 +19,7 @@
 //! and [data format] supported by [Serde] and does not depend on any particular
 //! [transport type].
 //!
+//! [single underlying transport]: Connect
 //! [multiple channels]: rch
 //! [MPSC]: rch::mpsc
 //! [oneshot]: rch::oneshot

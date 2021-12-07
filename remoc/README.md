@@ -1,16 +1,24 @@
 # Remoc 🦑 — remote multiplexed objects and channels
 
 Remoc makes remote interaction between Rust programs seamless and smooth.
-Over a single underlying transport, it provides:
+Over a [single underlying transport], it provides:
 
-  * multiple channels of different types like MPSC, oneshot, watch, etc.,
-  * remote synchronization primitives,
-  * calling of remote functions and trait methods on a remote object (RPC).
+  * [multiple channels] of different types like [MPSC], [oneshot], [watch], etc.,
+  * [remote synchronization] primitives,
+  * calling of [remote functions] and [trait methods on a remote object (RPC)].
 
 Remoc is written in [100% safe Rust], builds upon [Tokio], works with any type
 and data format supported by [Serde] and does not depend on any particular
 transport type.
 
+[single underlying transport]: https://docs.rs/remoc/latest/remoc/struct.Connect.html#physical-transport
+[multiple channels]: https://docs.rs/remoc/latest/remoc/rch/index.html
+[MPSC]: https://docs.rs/remoc/latest/remoc/rch/mpsc/index.html
+[oneshot]: https://docs.rs/remoc/latest/remoc/rch/oneshot/index.html
+[watch]: https://docs.rs/remoc/latest/remoc/rch/watch/index.html
+[remote synchronization]: https://docs.rs/remoc/latest/remoc/robj/index.html
+[remote functions]: https://docs.rs/remoc/latest/remoc/rfn/index.html
+[trait methods on a remote object (RPC)]: https://docs.rs/remoc/latest/remoc/rtc/index.html
 [100% safe Rust]: https://www.rust-lang.org/
 [Tokio]: https://tokio.rs
 [Serde]: https://serde.rs
@@ -19,7 +27,6 @@ transport type.
 [![docs.rs page](https://docs.rs/remoc/badge.svg)](https://docs.rs/remoc)
 [![Apache 2 license](https://img.shields.io/crates/l/remoc)](https://raw.githubusercontent.com/ENQT-GmbH/remoc/master/LICENSE)
 [![codecov](https://codecov.io/gh/ENQT-GmbH/remoc/branch/master/graph/badge.svg?token=UDMOOK0QT8)](https://codecov.io/gh/ENQT-GmbH/remoc)
-[![Discord chat](https://img.shields.io/discord/900658510352756736)](https://discord.gg/VDQReNQc3K)
 
 ## Introduction
 
