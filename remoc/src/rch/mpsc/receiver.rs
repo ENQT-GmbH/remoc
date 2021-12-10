@@ -1,10 +1,11 @@
 use bytes::Buf;
-use futures::{ready, FutureExt};
+use futures::{ready, FutureExt, Stream};
 use serde::{Deserialize, Serialize};
 use std::{
     error::Error,
     fmt,
     marker::PhantomData,
+    pin::Pin,
     sync::Mutex,
     task::{Context, Poll},
 };
@@ -195,7 +196,7 @@ impl<T, Codec, Buffer> Receiver<T, Codec, Buffer> {
     /// present, it is held back and returned after all other senders have been dropped or failed.
     /// Use [error](Self::error) to check if such an error is present.
     #[inline]
-    pub fn poll_recv(&mut self, cx: &mut Context<'_>) -> Poll<Result<Option<T>, RecvError>> {
+    pub fn poll_recv(&mut self, cx: &mut Context) -> Poll<Result<Option<T>, RecvError>> {
         loop {
             match ready!(self.inner.as_mut().unwrap().rx.poll_recv(cx)) {
                 Some(Ok(value_opt)) => return Poll::Ready(Ok(Some(value_opt))),
@@ -436,3 +437,14 @@ where
         Ok(Self::new(rx, closed_tx, closed, remote_send_err_tx))
     }
 }
+
+impl<T, Codec, Buffer> Stream for Receiver<T, Codec, Buffer> {
+    type Item = Result<T, RecvError>;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
+        let res = ready!(Pin::into_inner(self).poll_recv(cx));
+        Poll::Ready(res.transpose())
+    }
+}
+
+impl<T, Codec, Buffer> Unpin for Receiver<T, Codec, Buffer> {}

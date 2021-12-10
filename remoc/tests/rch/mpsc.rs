@@ -1,4 +1,4 @@
-use futures::future;
+use futures::{future, StreamExt};
 use rand::Rng;
 use remoc::rch::{mpsc, ClosedReason, SendResultExt};
 use std::time::Duration;
@@ -22,6 +22,48 @@ async fn simple() {
         let tx = tx.clone();
         tx.send(i).await.unwrap();
         let r = rx.recv().await.unwrap().unwrap();
+        println!("Received {}", r);
+        assert_eq!(i, r, "send/receive mismatch");
+    }
+
+    println!("Verifying that channel is open");
+    assert!(!tx.is_closed());
+    assert_eq!(tx.closed_reason(), None);
+    rx.close();
+
+    println!("Closing channel");
+    tx.closed().await;
+    assert!(tx.is_closed());
+    assert_eq!(tx.closed_reason(), Some(ClosedReason::Closed));
+
+    println!("Trying send after close");
+    match tx.send(0).await {
+        Ok(_) => panic!("send succeeded after close"),
+        Err(err)
+            if err.is_closed() && err.is_disconnected() && err.closed_reason() == Some(ClosedReason::Closed) =>
+        {
+            ()
+        }
+        Err(_) => panic!("wrong error after close"),
+    }
+}
+
+#[tokio::test]
+async fn simple_stream() {
+    crate::init();
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<mpsc::Receiver<i16>>().await;
+
+    println!("Sending remote mpsc channel receiver");
+    let (tx, rx) = mpsc::channel(16);
+    a_tx.send(rx).await.unwrap();
+    println!("Receiving remote mpsc channel receiver");
+    let mut rx = b_rx.recv().await.unwrap().unwrap();
+
+    for i in 1..1024 {
+        println!("Sending {}", i);
+        let tx = tx.clone();
+        tx.send(i).await.unwrap();
+        let r = rx.next().await.unwrap().unwrap();
         println!("Received {}", r);
         assert_eq!(i, r, "send/receive mismatch");
     }
