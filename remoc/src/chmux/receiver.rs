@@ -1,13 +1,12 @@
 use bytes::{Buf, Bytes, BytesMut};
 use futures::{
-    future::BoxFuture,
     ready,
     stream::Stream,
     task::{Context, Poll},
-    FutureExt,
 };
-use std::{collections::VecDeque, error::Error, fmt, mem, pin::Pin, sync::Arc};
-use tokio::sync::{mpsc, oneshot, Mutex};
+use std::{collections::VecDeque, error::Error, fmt, mem, pin::Pin};
+use tokio::sync::{mpsc, oneshot};
+use tokio_util::sync::ReusableBoxFuture;
 
 use super::{
     credit::{ChannelCreditReturner, UsedCredit},
@@ -556,6 +555,7 @@ impl Receiver {
     }
 
     /// Convert this into a stream.
+    #[deprecated = "use ReceiverStream::from instead"]
     pub fn into_stream(self) -> ReceiverStream {
         ReceiverStream::new(self)
     }
@@ -581,43 +581,58 @@ impl Drop for Receiver {
 ///
 /// No ports or data exceeding the maximum buffer size can be received.
 pub struct ReceiverStream {
-    receiver: Arc<Mutex<Receiver>>,
-    receive_fut: Option<BoxFuture<'static, Result<Option<DataBuf>, RecvError>>>,
+    inner: ReusableBoxFuture<(Result<Option<DataBuf>, RecvError>, Receiver)>,
+    close: bool,
+}
+
+impl fmt::Debug for ReceiverStream {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("ReceiverStream").finish()
+    }
 }
 
 impl ReceiverStream {
-    fn new(receiver: Receiver) -> Self {
-        Self { receiver: Arc::new(Mutex::new(receiver)), receive_fut: None }
+    /// Creates a new `ReceiverStream`.
+    pub fn new(rx: Receiver) -> Self {
+        Self { inner: ReusableBoxFuture::new(Self::make_future(rx, false)), close: false }
     }
 
-    async fn receive(receiver: Arc<Mutex<Receiver>>) -> Result<Option<DataBuf>, RecvError> {
-        let mut receiver = receiver.lock().await;
-        receiver.recv().await
+    /// Closes the sender at the remote endpoint after the next value is received,
+    /// preventing it from sending new data.
+    ///
+    /// Already sent data will still be received.
+    pub fn close(&mut self) {
+        self.close = true;
     }
 
-    fn poll_next(&mut self, cx: &mut Context) -> Poll<Result<Option<DataBuf>, RecvError>> {
-        if self.receive_fut.is_none() {
-            self.receive_fut = Some(Self::receive(self.receiver.clone()).boxed());
+    async fn make_future(mut rx: Receiver, close: bool) -> (Result<Option<DataBuf>, RecvError>, Receiver) {
+        if close {
+            // Subsequent closes after the first are ignored.
+            rx.close().await;
         }
 
-        let fut = self.receive_fut.as_mut().unwrap();
-        let res = ready!(fut.as_mut().poll(cx));
-        self.receive_fut = None;
-        Poll::Ready(res)
-    }
-
-    /// Closes the sender at the remote endpoint, preventing it from sending new data.
-    /// Already sent message will still be received.
-    pub async fn close(&mut self) {
-        self.receiver.lock().await.close().await
+        let result = rx.recv().await;
+        (result, rx)
     }
 }
 
 impl Stream for ReceiverStream {
     type Item = Result<DataBuf, RecvError>;
 
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
-        let res = ready!(Pin::into_inner(self).poll_next(cx));
-        Poll::Ready(res.transpose())
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
+        let (result, rx) = ready!(self.inner.poll(cx));
+
+        let close = self.close;
+        self.inner.set(Self::make_future(rx, close));
+
+        Poll::Ready(result.transpose())
+    }
+}
+
+impl Unpin for ReceiverStream {}
+
+impl From<Receiver> for ReceiverStream {
+    fn from(recv: Receiver) -> Self {
+        Self::new(recv)
     }
 }

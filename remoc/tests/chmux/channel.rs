@@ -1,6 +1,6 @@
 use chmux::{PortsExhausted, SendError};
 use futures::{channel::oneshot, future::try_join, stream::StreamExt};
-use remoc::chmux;
+use remoc::chmux::{self, ReceiverStream};
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing::Instrument;
@@ -129,6 +129,88 @@ async fn basic() {
         panic!("received not equal number messages than sent");
     }
     println!("A client receiver closed");
+
+    drop(tx);
+    drop(rx);
+    drop(a_client);
+
+    println!("Waiting for server");
+    server_done_rx.await.unwrap();
+
+    drop(a_server);
+
+    println!("Waiting for multiplexers");
+    a_mux_done_rx.await.unwrap();
+    b_mux_done_rx.await.unwrap();
+}
+
+#[tokio::test]
+async fn receiver_stream() {
+    crate::init();
+
+    loop_transport!(0, a_tx, a_rx, b_tx, b_rx);
+    let ((a_mux, a_client, a_server), (b_mux, b_client, mut b_server)) =
+        try_join(chmux::ChMux::new(cfg(), a_tx, a_rx), chmux::ChMux::new(cfg2(), b_tx, b_rx)).await.unwrap();
+
+    let (a_mux_done_tx, a_mux_done_rx) = oneshot::channel();
+    tokio::spawn(
+        async move {
+            a_mux.run().await.expect("a_mux");
+            let _ = a_mux_done_tx.send(());
+        }
+        .instrument(tracing::info_span!("A mux")),
+    );
+
+    let (b_mux_done_tx, b_mux_done_rx) = oneshot::channel();
+    tokio::spawn(
+        async move {
+            b_mux.run().await.expect("b_mux");
+            let _ = b_mux_done_tx.send(());
+        }
+        .instrument(tracing::info_span!("B mux")),
+    );
+
+    const N_MSG: usize = 100;
+
+    let (server_done_tx, server_done_rx) = oneshot::channel();
+    tokio::spawn(async move {
+        while let Some((mut tx, rx)) = b_server.accept().await.unwrap() {
+            let mut n = 0;
+            let mut rx = ReceiverStream::from(rx);
+            while let Some(msg) = rx.next().await {
+                let msg = msg.unwrap();
+                tx.send(msg.into()).await.unwrap();
+
+                n += 1;
+                if n == N_MSG {
+                    rx.close();
+                }
+            }
+        }
+
+        drop(b_client);
+        let _ = server_done_tx.send(());
+    });
+
+    let (mut tx, mut rx): (chmux::Sender, chmux::Receiver) = a_client.connect().await.unwrap();
+
+    let mut n = 0;
+    loop {
+        let s = format!("{}", n);
+        let data = s.as_bytes().to_vec();
+        match tx.send(data.clone().into()).await {
+            Ok(()) => (),
+            Err(err) if err.is_closed() => break,
+            Err(err) => panic!("send error: {}", err),
+        }
+
+        n += 1;
+
+        let reply = rx.recv().await.unwrap().unwrap();
+        let reply_data: Vec<u8> = reply.into();
+        assert_eq!(data, reply_data);
+    }
+    assert!(n > N_MSG);
 
     drop(tx);
     drop(rx);
