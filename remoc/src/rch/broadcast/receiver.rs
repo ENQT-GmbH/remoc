@@ -1,10 +1,13 @@
-use futures::task::noop_waker;
+use futures::{ready, task::noop_waker, Stream};
 use serde::{Deserialize, Serialize};
 use std::{
+    convert::TryFrom,
     error::Error,
     fmt,
+    pin::Pin,
     task::{Context, Poll},
 };
+use tokio_util::sync::ReusableBoxFuture;
 
 use super::{
     super::{base, buffer, mpsc},
@@ -93,6 +96,32 @@ pub enum TryRecvError {
     RemoteListen(chmux::ListenerError),
 }
 
+impl TryRecvError {
+    /// True, if no value is currently present.
+    pub fn is_empty(&self) -> bool {
+        matches!(self, Self::Empty)
+    }
+
+    /// True, if all senders have been dropped.
+    pub fn is_closed(&self) -> bool {
+        matches!(self, Self::Closed)
+    }
+
+    /// True, if the receiver has lagged behind and messages have been lost.
+    pub fn is_lagged(&self) -> bool {
+        matches!(self, Self::Lagged)
+    }
+
+    /// Returns whether the error is final, i.e. no further receive operation can succeed.
+    pub fn is_final(&self) -> bool {
+        match self {
+            Self::RemoteReceive(err) => err.is_final(),
+            Self::Closed | Self::RemoteConnect(_) | Self::RemoteListen(_) => true,
+            Self::Empty | Self::Lagged => false,
+        }
+    }
+}
+
 impl fmt::Display for TryRecvError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -121,6 +150,9 @@ impl Error for TryRecvError {}
 /// Receiving-half of the broadcast channel.
 ///
 /// Can be sent over a remote channel.
+///
+/// This can be converted into a [Stream] of values by wrapping it into
+/// a [ReceiverStream].
 #[derive(Serialize, Deserialize)]
 #[serde(bound(serialize = "T: RemoteSend, Codec: codec::Codec, Buffer: buffer::Size"))]
 #[serde(bound(deserialize = "T: RemoteSend, Codec: codec::Codec, Buffer: buffer::Size"))]
@@ -173,5 +205,125 @@ where
 impl<T, Codec, Buffer> Drop for Receiver<T, Codec, Buffer> {
     fn drop(&mut self) {
         // empty
+    }
+}
+
+/// An error occurred during receiving over a broadcast channel receiver stream.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum StreamError {
+    /// The receiver stream lagged too far behind.
+    ///
+    /// The next value will be the oldest message still retained by the channel.
+    Lagged,
+    /// Receiving from a remote endpoint failed.
+    RemoteReceive(base::RecvError),
+    /// Connecting a sent channel failed.
+    RemoteConnect(chmux::ConnectError),
+    /// Listening for a connection from a received channel failed.
+    RemoteListen(chmux::ListenerError),
+}
+
+impl StreamError {
+    /// True, if the receiver has lagged behind and messages have been lost.
+    pub fn is_lagged(&self) -> bool {
+        matches!(self, Self::Lagged)
+    }
+
+    /// Returns whether the error is final, i.e. no further receive operation can succeed.
+    pub fn is_final(&self) -> bool {
+        match self {
+            Self::RemoteReceive(err) => err.is_final(),
+            Self::RemoteConnect(_) | Self::RemoteListen(_) => true,
+            Self::Lagged => false,
+        }
+    }
+}
+
+impl fmt::Display for StreamError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Lagged => write!(f, "receiver lagged behind"),
+            Self::RemoteReceive(err) => write!(f, "receive error: {}", err),
+            Self::RemoteConnect(err) => write!(f, "connect error: {}", err),
+            Self::RemoteListen(err) => write!(f, "listen error: {}", err),
+        }
+    }
+}
+
+impl TryFrom<RecvError> for StreamError {
+    type Error = RecvError;
+    fn try_from(err: RecvError) -> Result<Self, Self::Error> {
+        match err {
+            RecvError::Lagged => Ok(Self::Lagged),
+            RecvError::RemoteReceive(err) => Ok(Self::RemoteReceive(err)),
+            RecvError::RemoteConnect(err) => Ok(Self::RemoteConnect(err)),
+            RecvError::RemoteListen(err) => Ok(Self::RemoteListen(err)),
+            other => Err(other),
+        }
+    }
+}
+
+impl Error for StreamError {}
+
+/// A wrapper around a broadcast [Receiver] that implements [Stream].
+pub struct ReceiverStream<T, Codec = codec::Default, Buffer = buffer::Default> {
+    #[allow(clippy::type_complexity)]
+    inner: ReusableBoxFuture<(Result<T, RecvError>, Receiver<T, Codec, Buffer>)>,
+}
+
+impl<T, Codec> fmt::Debug for ReceiverStream<T, Codec> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("ReceiverStream").finish()
+    }
+}
+
+impl<T, Codec, Buffer> ReceiverStream<T, Codec, Buffer>
+where
+    T: RemoteSend + Sync,
+    Codec: codec::Codec,
+    Buffer: buffer::Size,
+{
+    /// Creates a new `ReceiverStream`.
+    pub fn new(rx: Receiver<T, Codec, Buffer>) -> Self {
+        Self { inner: ReusableBoxFuture::new(Self::make_future(rx)) }
+    }
+
+    async fn make_future(
+        mut rx: Receiver<T, Codec, Buffer>,
+    ) -> (Result<T, RecvError>, Receiver<T, Codec, Buffer>) {
+        let result = rx.recv().await;
+        (result, rx)
+    }
+}
+
+impl<T: Clone, Codec, Buffer> Stream for ReceiverStream<T, Codec, Buffer>
+where
+    T: RemoteSend + Sync,
+    Codec: codec::Codec,
+    Buffer: buffer::Size,
+{
+    type Item = Result<T, StreamError>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
+        let (result, rx) = ready!(self.inner.poll(cx));
+        self.inner.set(Self::make_future(rx));
+        match result {
+            Ok(value) => Poll::Ready(Some(Ok(value))),
+            Err(RecvError::Closed) => Poll::Ready(None),
+            Err(err) => Poll::Ready(Some(Err(StreamError::try_from(err).unwrap()))),
+        }
+    }
+}
+
+impl<T, Codec, Buffer> Unpin for ReceiverStream<T, Codec, Buffer> {}
+
+impl<T, Codec, Buffer> From<Receiver<T, Codec, Buffer>> for ReceiverStream<T, Codec, Buffer>
+where
+    T: RemoteSend + Sync,
+    Codec: codec::Codec,
+    Buffer: buffer::Size,
+{
+    fn from(recv: Receiver<T, Codec, Buffer>) -> Self {
+        Self::new(recv)
     }
 }

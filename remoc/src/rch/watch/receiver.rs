@@ -257,9 +257,9 @@ where
     }
 }
 
-impl<T: Clone, Codec> Stream for ReceiverStream<T, Codec>
+impl<T, Codec> Stream for ReceiverStream<T, Codec>
 where
-    T: RemoteSend + Sync,
+    T: Clone + RemoteSend + Sync,
     Codec: Send + 'static,
 {
     type Item = Result<T, RecvError>;

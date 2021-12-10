@@ -16,7 +16,7 @@ use crate::{codec, RemoteSend};
 mod receiver;
 mod sender;
 
-pub use receiver::{Receiver, RecvError};
+pub use receiver::{Receiver, ReceiverStream, RecvError, StreamError, TryRecvError};
 pub use sender::{SendError, Sender};
 
 /// Broadcast transport message.
