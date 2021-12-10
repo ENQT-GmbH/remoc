@@ -147,7 +147,9 @@ where
         Self { inner: Some(inner), successor_tx: Mutex::new(None) }
     }
 
-    /// Sends a value over this channel.
+    /// Sends a value over this channel, notifying all receivers.
+    ///
+    /// This method fails if all receivers have been dropped or become disconnected.
     #[inline]
     pub fn send(&self, value: T) -> Result<(), SendError> {
         match self.inner.as_ref().unwrap().tx.send(Ok(value)) {
@@ -159,14 +161,20 @@ where
         }
     }
 
+    /// Sends a new value via the channel, notifying all receivers and returning the
+    /// previous value in the channel.
+    ///
+    /// This method never fails, even if all receivers have been dropped or become
+    /// disconnected.
+    #[inline]
+    pub fn send_replace(&self, value: T) -> T {
+        self.inner.as_ref().unwrap().tx.send_replace(Ok(value)).unwrap()
+    }
+
     /// Returns a reference to the most recently sent value.
     #[inline]
-    pub fn borrow(&self) -> Result<Ref<'_, T>, RecvError> {
-        let ref_res = self.inner.as_ref().unwrap().tx.borrow();
-        match &*ref_res {
-            Ok(_) => Ok(Ref(ref_res)),
-            Err(err) => Err(err.clone()),
-        }
+    pub fn borrow(&self) -> Ref<'_, T> {
+        Ref(self.inner.as_ref().unwrap().tx.borrow())
     }
 
     /// Completes when all receivers have been dropped or the connection failed.
@@ -289,6 +297,9 @@ where
     {
         // Get chmux port number from deserialized transport type.
         let TransportedSender { port, data, .. } = TransportedSender::<T, Codec>::deserialize(deserializer)?;
+        if data.is_err() {
+            return Err(serde::de::Error::custom("received watch data with error"));
+        }
 
         // Create internal communication channels.
         let (tx, mut rx) = tokio::sync::watch::channel(data);

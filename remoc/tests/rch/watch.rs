@@ -35,7 +35,7 @@ async fn simple() {
     for value in start_value..=end_value {
         println!("Sending {}", value);
         tx.send(value).unwrap();
-        assert_eq!(*tx.borrow().unwrap(), value);
+        assert_eq!(*tx.borrow(), value);
 
         if value % 10 == 0 {
             sleep(Duration::from_millis(20)).await;
@@ -72,10 +72,13 @@ async fn simple_stream() {
         assert_eq!(value, end_value);
     });
 
+    let mut prev_value = start_value;
     for value in start_value..=end_value {
         println!("Sending {}", value);
-        tx.send(value).unwrap();
-        assert_eq!(*tx.borrow().unwrap(), value);
+        let last_value = tx.send_replace(value);
+        assert_eq!(last_value, prev_value);
+        assert_eq!(*tx.borrow(), value);
+        prev_value = value;
 
         if value % 10 == 0 {
             sleep(Duration::from_millis(20)).await;
