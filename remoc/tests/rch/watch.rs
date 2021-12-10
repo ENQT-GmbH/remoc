@@ -1,8 +1,9 @@
+use futures::StreamExt;
 use std::time::Duration;
 use tokio::time::sleep;
 
 use crate::{droppable_loop_channel, loop_channel};
-use remoc::rch::watch;
+use remoc::rch::watch::{self, ReceiverStream};
 
 #[tokio::test]
 async fn simple() {
@@ -28,6 +29,46 @@ async fn simple() {
         }
 
         value = *rx.borrow_and_update().unwrap();
+        assert_eq!(value, end_value);
+    });
+
+    for value in start_value..=end_value {
+        println!("Sending {}", value);
+        tx.send(value).unwrap();
+        assert_eq!(*tx.borrow().unwrap(), value);
+
+        if value % 10 == 0 {
+            sleep(Duration::from_millis(20)).await;
+        }
+    }
+    drop(tx);
+
+    println!("Waiting for receive task");
+    recv_task.await.unwrap();
+}
+
+#[tokio::test]
+async fn simple_stream() {
+    crate::init();
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<watch::Receiver<i16>>().await;
+
+    let start_value = 2;
+    let end_value = 124;
+
+    println!("Sending remote mpsc channel receiver");
+    let (tx, rx) = watch::channel(start_value);
+    a_tx.send(rx).await.unwrap();
+    println!("Receiving remote mpsc channel receiver");
+    let rx = b_rx.recv().await.unwrap().unwrap();
+    let mut rx = ReceiverStream::from(rx);
+
+    let recv_task = tokio::spawn(async move {
+        let mut value = 0;
+        while let Some(rxed_value) = rx.next().await {
+            value = rxed_value.unwrap();
+            println!("Received value change: {}", value);
+        }
+
         assert_eq!(value, end_value);
     });
 

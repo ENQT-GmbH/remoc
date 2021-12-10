@@ -1,7 +1,14 @@
 use bytes::Buf;
-use futures::FutureExt;
+use futures::{ready, FutureExt, Stream};
 use serde::{Deserialize, Serialize};
-use std::{error::Error, fmt, marker::PhantomData};
+use std::{
+    error::Error,
+    fmt,
+    marker::PhantomData,
+    pin::Pin,
+    task::{Context, Poll},
+};
+use tokio_util::sync::ReusableBoxFuture;
 
 use super::{
     super::{
@@ -73,6 +80,9 @@ impl Error for ChangedError {}
 /// which may be located on a remote endpoint.
 ///
 /// Instances are created by the [channel](super::channel) function.
+///
+/// This can be converted into a [Stream] of values by wrapping it into
+/// a [ReceiverStream].
 #[derive(Clone)]
 pub struct Receiver<T, Codec = codec::Default> {
     rx: tokio::sync::watch::Receiver<Result<T, RecvError>>,
@@ -212,5 +222,72 @@ where
         })?;
 
         Ok(Self::new(rx, remote_send_err_tx))
+    }
+}
+
+/// A wrapper around a watch [Receiver] that implements [Stream].
+///
+/// This stream will always start by yielding the current value when it is polled,
+/// regardless of whether it was the initial value or sent afterwards.
+///
+/// Note that intermediate values may be missed due to the nature of watch channels.
+pub struct ReceiverStream<T, Codec = codec::Default> {
+    inner: ReusableBoxFuture<(Result<(), ChangedError>, Receiver<T, Codec>)>,
+}
+
+impl<T, Codec> fmt::Debug for ReceiverStream<T, Codec> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("ReceiverStream").finish()
+    }
+}
+
+impl<T, Codec> ReceiverStream<T, Codec>
+where
+    T: RemoteSend + Sync,
+    Codec: Send + 'static,
+{
+    /// Creates a new `ReceiverStream`.
+    pub fn new(rx: Receiver<T, Codec>) -> Self {
+        Self { inner: ReusableBoxFuture::new(async move { (Ok(()), rx) }) }
+    }
+
+    async fn make_future(mut rx: Receiver<T, Codec>) -> (Result<(), ChangedError>, Receiver<T, Codec>) {
+        let result = rx.changed().await;
+        (result, rx)
+    }
+}
+
+impl<T: Clone, Codec> Stream for ReceiverStream<T, Codec>
+where
+    T: RemoteSend + Sync,
+    Codec: Send + 'static,
+{
+    type Item = Result<T, RecvError>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
+        let (result, mut rx) = ready!(self.inner.poll(cx));
+        match result {
+            Ok(()) => {
+                let received = rx.borrow_and_update().map(|v| v.clone());
+                self.inner.set(Self::make_future(rx));
+                Poll::Ready(Some(received))
+            }
+            Err(_) => {
+                self.inner.set(Self::make_future(rx));
+                Poll::Ready(None)
+            }
+        }
+    }
+}
+
+impl<T, Codec> Unpin for ReceiverStream<T, Codec> {}
+
+impl<T, Codec> From<Receiver<T, Codec>> for ReceiverStream<T, Codec>
+where
+    T: RemoteSend + Sync,
+    Codec: Send + 'static,
+{
+    fn from(recv: Receiver<T, Codec>) -> Self {
+        Self::new(recv)
     }
 }
