@@ -4,7 +4,7 @@ use super::{Codec, DeserializationError, SerializationError};
 
 /// CBOR codec.
 ///
-/// See [serde_cbor] for details.
+/// See [ciborium] for details.
 #[cfg_attr(docsrs, doc(cfg(feature = "codec-cbor")))]
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Cbor;
@@ -16,7 +16,7 @@ impl Codec for Cbor {
         Writer: std::io::Write,
         Item: serde::Serialize,
     {
-        serde_cbor::to_writer(writer, item).map_err(SerializationError::new)
+        ciborium::ser::into_writer(item, writer).map_err(SerializationError::new)
     }
 
     #[inline]
@@ -25,6 +25,6 @@ impl Codec for Cbor {
         Reader: std::io::Read,
         Item: serde::de::DeserializeOwned,
     {
-        serde_cbor::from_reader(reader).map_err(DeserializationError::new)
+        ciborium::de::from_reader(reader).map_err(DeserializationError::new)
     }
 }
