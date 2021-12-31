@@ -24,7 +24,8 @@
 //! The following features select the default codec.
 //!
 //!   * `default-codec-bincode` -- enables and selects Bincode as the default codec
-//!   * `default-codec-cbor` -- enables and selects CBOR as the default codec
+//!   * `default-codec-cbor` -- enables and selects CBOR with `serde_cbor` as the default codec[^serde_cbor]
+//!   * `default-codec-ciborium` -- enables and selects CBOR with `ciborium` as the default codec
 //!   * `default-codec-json` -- enables and selects JSON as the default codec
 //!   * `default-codec-message-pack` -- enables selects MessagePack as the default codec
 //!
@@ -33,6 +34,8 @@
 //! Thus to change the default codec, you must specify `default-features = false` when
 //! referencing Remoc in your `Cargo.toml`.
 //!
+//! [^serde_cbor]: `serde_cbor` is [no longer maintained](https://rustsec.org/advisories/RUSTSEC-2021-0127),
+//!                 it is recommended to use `codec-ciborium` instead.
 
 use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize};
 use std::{
@@ -177,6 +180,14 @@ pub use cbor::Cbor;
 #[cfg(feature = "default-codec-cbor")]
 #[doc(no_inline)]
 pub use cbor::Cbor as Default;
+
+#[cfg(feature = "codec-ciborium")]
+mod ciborium;
+#[cfg(feature = "codec-ciborium")]
+pub use self::ciborium::Ciborium;
+#[cfg(feature = "default-codec-ciborium")]
+#[doc(no_inline)]
+pub use self::ciborium::Ciborium as Default;
 
 #[cfg(feature = "codec-json")]
 mod json;
