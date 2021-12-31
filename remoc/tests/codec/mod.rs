@@ -92,6 +92,12 @@ fn cbor() {
     roundtrip::<TestStruct, codec::Cbor>()
 }
 
+#[cfg(feature = "codec-ciborium")]
+#[test]
+fn ciborium() {
+    roundtrip::<TestStruct, codec::Ciborium>()
+}
+
 #[cfg(feature = "codec-json")]
 #[test]
 #[should_panic]

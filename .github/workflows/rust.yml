@@ -29,8 +29,10 @@ jobs:
         run: cargo test --quiet
       - name: Run tests with Bincode codec
         run: cargo test --no-default-features --quiet --features full --features default-codec-bincode
-      - name: Run tests with CBOR codec
+      - name: Run tests with CBOR (serde_cbor) codec
         run: cargo test --no-default-features --quiet --features full --features default-codec-cbor
+      - name: Run tests with CBOR (ciborium) codec
+        run: cargo test --no-default-features --quiet --features full --features default-codec-ciborium
       - name: Run tests with MessagePack codec
         run: cargo test --no-default-features --quiet --features full --features default-codec-message-pack
       - name: Test rch feature only

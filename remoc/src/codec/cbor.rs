@@ -2,9 +2,12 @@ use serde::{Deserialize, Serialize};
 
 use super::{Codec, DeserializationError, SerializationError};
 
-/// CBOR codec.
+/// CBOR codec using [serde_cbor].
 ///
-/// See [serde_cbor] for details.
+/// This codec use [serde_cbor] which is [no longer maintained].
+/// It is recommended to use `codec-ciborium` instead.
+///
+/// [no longer maintained]: https://rustsec.org/advisories/RUSTSEC-2021-0127
 #[cfg_attr(docsrs, doc(cfg(feature = "codec-cbor")))]
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Cbor;
