@@ -1,17 +1,27 @@
+// This attribute is necessary to avoid deprecation warnings on generated
+// Serialize and Deserialize implementations.
+#![allow(deprecated)]
+
 use serde::{Deserialize, Serialize};
 
 use super::{Codec, DeserializationError, SerializationError};
 
-/// CBOR codec using [serde_cbor].
+/// Legacy CBOR codec using [serde_cbor].
 ///
-/// This codec use [serde_cbor] which is [no longer maintained].
+/// This codec uses [serde_cbor] which is [no longer maintained].
 /// It is recommended to use `codec-ciborium` instead.
 ///
 /// [no longer maintained]: https://rustsec.org/advisories/RUSTSEC-2021-0127
 #[cfg_attr(docsrs, doc(cfg(feature = "codec-cbor")))]
+#[deprecated(
+    since = "0.9.10",
+    note = "This uses serde_cbor, which is no longer maintained. \
+            You should migrate to the Ciborium codec."
+)]
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Cbor;
 
+#[allow(deprecated)]
 impl Codec for Cbor {
     #[inline]
     fn serialize<Writer, Item>(writer: Writer, item: &Item) -> Result<(), super::SerializationError>
