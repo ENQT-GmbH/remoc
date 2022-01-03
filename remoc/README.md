@@ -89,7 +89,9 @@ The meta-feature `full` enables all features from above but no codecs.
 The following features enable data formats for transmission:
 
   * `codec-bincode` provides the Bincode format.
-  * `codec-cbor` and `codec-ciborium` provides the CBOR format.
+  * `codec-cbor` provides the CBOR format using [`serde_cbor`], which is
+    [no longer maintained]. It is recommended to use `codec-ciborium` instead.
+  * `codec-ciborium` provides the CBOR format.
   * `codec-json` provides the JSON format.
   * `codec-message-pack` provides the MessagePack format.
 
@@ -101,12 +103,8 @@ The feature `full-codecs` enables all codecs.
 
 By default all features are enabled and the JSON codec is used as default.
 
-The `codec-cbor` feature enable CBOR format using [`serde_cbor`], which is
-[no longer maintained]. It is recommended to use `codec-ciborium` instead.
-
 [`serde_cbor`]: https://crates.io/crates/serde_cbor
 [no longer maintained]: https://rustsec.org/advisories/RUSTSEC-2021-0127
-
 
 ## Supported Rust versions
 

@@ -4,6 +4,12 @@ All notable changes to Remoc will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.9.10 - 2022-01-03
+### Added
+- Cbor codec using ciborium, contributed by baptiste0928
+### Deprecated
+- legacy Cbor codec using serde_cbor
+
 ## 0.9.9 - 2021-12-10
 ### Added
 - rch::mpsc::Receiver implements the Stream trait
