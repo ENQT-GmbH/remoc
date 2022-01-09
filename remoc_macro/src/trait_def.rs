@@ -43,6 +43,9 @@ impl Parse for TraitDef {
         if generics.params.iter().any(|p| matches!(p, GenericParam::Type(tp) if tp.ident == "Target")) {
             return Err(input.error("remote trait must not be generic over type parameter Target"));
         }
+        if generics.lifetimes().count() > 0 {
+            return Err(input.error("lifetimes are not allowed on remote traits"));
+        }
 
         // Generics where clause.
         if let Some(where_clause) = input.parse::<Option<WhereClause>>()? {

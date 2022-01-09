@@ -8,7 +8,7 @@ use syn::{
     punctuated::Punctuated,
     spanned::Spanned,
     token::Comma,
-    Attribute, FnArg, Ident, Pat, PatType, ReturnType, Token, Type,
+    Attribute, FnArg, Generics, Ident, Pat, PatType, ReturnType, Token, Type,
 };
 
 use crate::util::{attribute_tokens, to_pascal_case};
@@ -84,6 +84,12 @@ impl Parse for TraitMethod {
             }
             true
         });
+
+        // Parse generics.
+        let generics = input.parse::<Generics>()?;
+        if generics.lt_token.is_some() {
+            return Err(input.error("generics and lifetimes are not allowed on remote trait methods"));
+        }
 
         // Parse arguments.
         let content;

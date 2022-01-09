@@ -172,7 +172,7 @@
 //! // This would be run on the client.
 //! async fn client(mut rx: rch::base::Receiver<CounterClient>) {
 //!     let mut remote_counter = rx.recv().await.unwrap().unwrap();
-//!     let mut watch_rx = remote_counter.watch().await.unwrap();    
+//!     let mut watch_rx = remote_counter.watch().await.unwrap();
 //!
 //!     assert_eq!(remote_counter.value().await.unwrap(), 0);
 //!
@@ -239,10 +239,14 @@ pub use async_trait::async_trait;
 /// Since the generated code relies on [Tokio](tokio) macros, you must add a dependency
 /// to Tokio in your `Cargo.toml`.
 ///
-/// # Generics
+/// # Generics and lifetimes
 ///
 /// The trait may be generic with constraints on the generic arguments.
 /// You will probably need to constrain them on [RemoteSend](crate::RemoteSend).
+/// Method definitions within the remote trait may use generic arguments from the trait
+/// definition, but must not introduce generic arguments in the method definition.
+///
+/// Lifetimes are not allowed on remote traits and their methods.
 ///
 /// # Attributes
 ///
