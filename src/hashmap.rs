@@ -67,8 +67,7 @@ pub enum HashMapEvent<K, V> {
 }
 
 fn send_event<K, V, Codec>(
-    tx: &rch::broadcast::Sender<HashMapEvent<K, V>, Codec>, on_err: &Box<dyn Fn(SendError)>,
-    event: HashMapEvent<K, V>,
+    tx: &rch::broadcast::Sender<HashMapEvent<K, V>, Codec>, on_err: &dyn Fn(SendError), event: HashMapEvent<K, V>,
 ) where
     Codec: remoc::codec::Codec,
     HashMapEvent<K, V>: RemoteSend + Clone,
@@ -118,6 +117,17 @@ where
 impl<K, V, Codec> From<ObservableHashMap<K, V, Codec>> for HashMap<K, V> {
     fn from(ohm: ObservableHashMap<K, V, Codec>) -> Self {
         ohm.hm
+    }
+}
+
+impl<K, V, Codec> Default for ObservableHashMap<K, V, Codec>
+where
+    K: Eq + Hash + Clone + RemoteSend,
+    V: Clone + RemoteSend,
+    Codec: remoc::codec::Codec,
+{
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -256,7 +266,7 @@ where
     value: &'a mut V,
     changed: bool,
     tx: &'a rch::broadcast::Sender<HashMapEvent<K, V>, Codec>,
-    on_err: &'a Box<dyn Fn(SendError)>,
+    on_err: &'a dyn Fn(SendError),
 }
 
 impl<'a, K, V, Codec> Deref for RefMut<'a, K, V, Codec>
@@ -268,7 +278,7 @@ where
     type Target = V;
 
     fn deref(&self) -> &Self::Target {
-        &self.value
+        self.value
     }
 }
 
@@ -280,7 +290,7 @@ where
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.changed = true;
-        &mut self.value
+        self.value
     }
 }
 
@@ -303,7 +313,7 @@ where
 pub struct IterMut<'a, K, V, Codec> {
     inner: std::collections::hash_map::IterMut<'a, K, V>,
     tx: &'a rch::broadcast::Sender<HashMapEvent<K, V>, Codec>,
-    on_err: &'a Box<dyn Fn(SendError)>,
+    on_err: &'a dyn Fn(SendError),
 }
 
 impl<'a, K, V, Codec> Iterator for IterMut<'a, K, V, Codec>
@@ -317,7 +327,7 @@ where
     fn next(&mut self) -> Option<Self::Item> {
         match self.inner.next() {
             Some((key, value)) => {
-                Some(RefMut { key: key.clone(), value, changed: false, tx: &self.tx, on_err: &self.on_err })
+                Some(RefMut { key: key.clone(), value, changed: false, tx: self.tx, on_err: self.on_err })
             }
             None => None,
         }
@@ -471,7 +481,7 @@ where
     /// Returns a reference to the current value of the hash map.
     ///
     /// Updates are paused while the read lock is held.
-    /// 
+    ///
     /// This method returns an error if the observed hash map has been dropped
     /// or the connection to it failed.
     /// In this case the mirrored contents at the point of loss of connection
@@ -491,7 +501,7 @@ where
     /// after this method returns.
     ///
     /// Updates are paused while the read lock is held.
-    /// 
+    ///
     /// This method returns an error if the observed hash map has been dropped
     /// or the connection to it failed.
     /// In this case the mirrored contents at the point of loss of connection
@@ -513,7 +523,7 @@ where
     }
 
     /// Waits for a change and marks the newest value as seen.
-    /// 
+    ///
     /// This also returns when connection to the observed hash map has been lost.
     pub async fn changed(&mut self) {
         let _ = self.changed_rx.changed().await;
