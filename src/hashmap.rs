@@ -66,8 +66,7 @@ pub enum HashMapEvent<K, V> {
 }
 
 fn send_event<K, V, Codec>(
-    tx: &rch::broadcast::Sender<HashMapEvent<K, V>, Codec>,
-    on_err: &Box<dyn Fn(SendError)>,
+    tx: &rch::broadcast::Sender<HashMapEvent<K, V>, Codec>, on_err: &Box<dyn Fn(SendError)>,
     event: HashMapEvent<K, V>,
 ) where
     Codec: remoc::codec::Codec,
@@ -111,11 +110,7 @@ where
         let on_err = |err: SendError| {
             tracing::warn!("sending event failed: {}", err);
         };
-        Self {
-            hm,
-            tx,
-            on_err: Box::new(on_err),
-        }
+        Self { hm, tx, on_err: Box::new(on_err) }
     }
 }
 
@@ -147,10 +142,7 @@ where
 
     /// Subscribes to change events from this observable hash map.
     pub fn subscribe(&self, send_buffer: usize) -> HashMapSubscription<K, V, Codec> {
-        HashMapSubscription {
-            initial: self.hm.clone(),
-            events: self.tx.subscribe(send_buffer),
-        }
+        HashMapSubscription { initial: self.hm.clone(), events: self.tx.subscribe(send_buffer) }
     }
 
     /// Inserts a value under a key.
@@ -159,11 +151,7 @@ where
     ///
     /// Returns the value previously stored under the key, if any.
     pub fn insert(&mut self, k: K, v: V) -> Result<Option<V>, SendError> {
-        send_event(
-            &self.tx,
-            &self.on_err,
-            HashMapEvent::Set(k.clone(), v.clone()),
-        );
+        send_event(&self.tx, &self.on_err, HashMapEvent::Set(k.clone(), v.clone()));
         Ok(self.hm.insert(k, v))
     }
 
@@ -226,13 +214,7 @@ where
             Some((key, _)) => {
                 let key = key.clone();
                 let value = self.hm.get_mut(k).unwrap();
-                Some(RefMut {
-                    key,
-                    value,
-                    changed: false,
-                    tx: &self.tx,
-                    on_err: &self.on_err,
-                })
+                Some(RefMut { key, value, changed: false, tx: &self.tx, on_err: &self.on_err })
             }
             None => None,
         }
@@ -242,11 +224,7 @@ where
     ///
     /// A [HashMapEvent::Set] change event is sent for each value that is accessed mutably.
     pub fn iter_mut(&mut self) -> IterMut<'_, K, V, Codec> {
-        IterMut {
-            inner: self.hm.iter_mut(),
-            tx: &self.tx,
-            on_err: &self.on_err,
-        }
+        IterMut { inner: self.hm.iter_mut(), tx: &self.tx, on_err: &self.on_err }
     }
 
     /// Shrinks the capacity of the hash map as much as possible.
@@ -313,11 +291,7 @@ where
 {
     fn drop(&mut self) {
         if self.changed {
-            send_event(
-                self.tx,
-                self.on_err,
-                HashMapEvent::Set(self.key.clone(), self.value.clone()),
-            );
+            send_event(self.tx, self.on_err, HashMapEvent::Set(self.key.clone(), self.value.clone()));
         }
     }
 }
@@ -341,13 +315,9 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.inner.next() {
-            Some((key, value)) => Some(RefMut {
-                key: key.clone(),
-                value,
-                changed: false,
-                tx: &self.tx,
-                on_err: &self.on_err,
-            }),
+            Some((key, value)) => {
+                Some(RefMut { key: key.clone(), value, changed: false, tx: &self.tx, on_err: &self.on_err })
+            }
             None => None,
         }
     }
@@ -379,9 +349,7 @@ where
 /// Observable hash map subscription.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(bound(serialize = "K: RemoteSend + Eq + Hash, V: RemoteSend, Codec: remoc::codec::Codec"))]
-#[serde(bound(
-    deserialize = "K: RemoteSend + Eq + Hash, V: RemoteSend, Codec: remoc::codec::Codec"
-))]
+#[serde(bound(deserialize = "K: RemoteSend + Eq + Hash, V: RemoteSend, Codec: remoc::codec::Codec"))]
 pub struct HashMapSubscription<K, V, Codec> {
     /// Value of hash map at time of subscription.
     pub initial: HashMap<K, V>,
@@ -397,15 +365,9 @@ where
 {
     /// Mirror the observed hash map that this subscription is receiving events from.
     pub fn mirror(self) -> MirroredHashMap<K, V, Codec> {
-        let Self {
-            initial,
-            mut events,
-        } = self;
+        let Self { initial, mut events } = self;
 
-        let inner = Arc::new(RwLock::new(Some(MirroredHashMapInner {
-            hm: initial,
-            error: None,
-        })));
+        let inner = Arc::new(RwLock::new(Some(MirroredHashMapInner { hm: initial, error: None })));
         let inner_weak = Arc::downgrade(&inner);
 
         let (tx, _rx) = rch::broadcast::channel::<_, _, rch::buffer::Default>(1);
@@ -500,9 +462,7 @@ where
         let inner = self.inner.read().await;
         let inner = RwLockReadGuard::map(inner, |inner| inner.as_ref().unwrap());
         match &inner.error {
-            None => Ok(ObsHashMapView(RwLockReadGuard::map(inner, |inner| {
-                &inner.hm
-            }))),
+            None => Ok(ObsHashMapView(RwLockReadGuard::map(inner, |inner| &inner.hm))),
             Some(err) => Err(err.clone()),
         }
     }
@@ -514,10 +474,7 @@ where
     }
 
     /// Subscribes to change events from this mirrored hash map.
-    pub async fn subscribe(
-        &self,
-        send_buffer: usize,
-    ) -> Result<HashMapSubscription<K, V, Codec>, RecvError> {
+    pub async fn subscribe(&self, send_buffer: usize) -> Result<HashMapSubscription<K, V, Codec>, RecvError> {
         let view = self.read().await?;
         let initial = view.clone();
         let events = self.tx.subscribe(send_buffer);
