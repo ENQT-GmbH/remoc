@@ -75,6 +75,21 @@ impl From<mpsc::RecvError> for RecvError {
     }
 }
 
+impl TryFrom<TryRecvError> for RecvError {
+    type Error = TryRecvError;
+
+    fn try_from(err: TryRecvError) -> Result<Self, Self::Error> {
+        match err {
+            TryRecvError::Empty => Err(TryRecvError::Empty),
+            TryRecvError::Closed => Ok(Self::Closed),
+            TryRecvError::Lagged => Ok(Self::Lagged),
+            TryRecvError::RemoteReceive(err) => Ok(Self::RemoteReceive(err)),
+            TryRecvError::RemoteConnect(err) => Ok(Self::RemoteConnect(err)),
+            TryRecvError::RemoteListen(err) => Ok(Self::RemoteListen(err)),
+        }
+    }
+}
+
 impl Error for RecvError {}
 
 /// An error occurred during trying to receive over a broadcast channel.
@@ -141,6 +156,18 @@ impl From<mpsc::RecvError> for TryRecvError {
             mpsc::RecvError::RemoteReceive(err) => Self::RemoteReceive(err),
             mpsc::RecvError::RemoteConnect(err) => Self::RemoteConnect(err),
             mpsc::RecvError::RemoteListen(err) => Self::RemoteListen(err),
+        }
+    }
+}
+
+impl From<RecvError> for TryRecvError {
+    fn from(err: RecvError) -> Self {
+        match err {
+            RecvError::Closed => Self::Closed,
+            RecvError::Lagged => Self::Lagged,
+            RecvError::RemoteReceive(err) => Self::RemoteReceive(err),
+            RecvError::RemoteConnect(err) => Self::RemoteConnect(err),
+            RecvError::RemoteListen(err) => Self::RemoteListen(err),
         }
     }
 }

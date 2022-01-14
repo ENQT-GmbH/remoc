@@ -1,6 +1,7 @@
 use futures::{ready, Future};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
+    convert::TryFrom,
     error::Error,
     fmt,
     pin::Pin,
@@ -44,6 +45,20 @@ impl From<mpsc::RecvError> for RecvError {
             mpsc::RecvError::RemoteReceive(err) => Self::RemoteReceive(err),
             mpsc::RecvError::RemoteConnect(err) => Self::RemoteConnect(err),
             mpsc::RecvError::RemoteListen(err) => Self::RemoteListen(err),
+        }
+    }
+}
+
+impl TryFrom<TryRecvError> for RecvError {
+    type Error = TryRecvError;
+
+    fn try_from(err: TryRecvError) -> Result<Self, Self::Error> {
+        match err {
+            TryRecvError::Empty => Err(TryRecvError::Empty),
+            TryRecvError::Closed => Ok(Self::Closed),
+            TryRecvError::RemoteReceive(err) => Ok(Self::RemoteReceive(err)),
+            TryRecvError::RemoteConnect(err) => Ok(Self::RemoteConnect(err)),
+            TryRecvError::RemoteListen(err) => Ok(Self::RemoteListen(err)),
         }
     }
 }
@@ -95,6 +110,17 @@ impl From<mpsc::TryRecvError> for TryRecvError {
             mpsc::TryRecvError::RemoteReceive(err) => Self::RemoteReceive(err),
             mpsc::TryRecvError::RemoteConnect(err) => Self::RemoteConnect(err),
             mpsc::TryRecvError::RemoteListen(err) => Self::RemoteListen(err),
+        }
+    }
+}
+
+impl From<RecvError> for TryRecvError {
+    fn from(err: RecvError) -> Self {
+        match err {
+            RecvError::Closed => Self::Closed,
+            RecvError::RemoteReceive(err) => Self::RemoteReceive(err),
+            RecvError::RemoteConnect(err) => Self::RemoteConnect(err),
+            RecvError::RemoteListen(err) => Self::RemoteListen(err),
         }
     }
 }

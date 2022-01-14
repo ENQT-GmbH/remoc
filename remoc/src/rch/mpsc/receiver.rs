@@ -2,6 +2,7 @@ use bytes::Buf;
 use futures::{ready, FutureExt, Stream};
 use serde::{Deserialize, Serialize};
 use std::{
+    convert::TryFrom,
     error::Error,
     fmt,
     marker::PhantomData,
@@ -36,6 +37,20 @@ impl fmt::Display for RecvError {
             Self::RemoteReceive(err) => write!(f, "receive error: {}", err),
             Self::RemoteConnect(err) => write!(f, "connect error: {}", err),
             Self::RemoteListen(err) => write!(f, "listen error: {}", err),
+        }
+    }
+}
+
+impl TryFrom<TryRecvError> for RecvError {
+    type Error = TryRecvError;
+
+    fn try_from(err: TryRecvError) -> Result<Self, Self::Error> {
+        match err {
+            TryRecvError::Closed => Err(TryRecvError::Closed),
+            TryRecvError::Empty => Err(TryRecvError::Empty),
+            TryRecvError::RemoteReceive(err) => Ok(Self::RemoteReceive(err)),
+            TryRecvError::RemoteConnect(err) => Ok(Self::RemoteConnect(err)),
+            TryRecvError::RemoteListen(err) => Ok(Self::RemoteListen(err)),
         }
     }
 }
