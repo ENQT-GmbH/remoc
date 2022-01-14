@@ -1,7 +1,8 @@
+//! Remotely observable hash map.
+
 use remoc::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{
-    borrow::Borrow,
     collections::HashMap,
     error::Error,
     fmt,
@@ -10,7 +11,7 @@ use std::{
     ops::{Deref, DerefMut},
     sync::Arc,
 };
-use tokio::sync::{OwnedRwLockReadGuard, RwLock, RwLockReadGuard};
+use tokio::sync::{oneshot, watch, RwLock, RwLockReadGuard};
 
 pub use rch::broadcast::RecvError;
 
@@ -162,7 +163,7 @@ where
     /// The value is returned.
     pub fn remove<Q>(&mut self, k: &Q) -> Result<Option<V>, SendError>
     where
-        K: Borrow<Q>,
+        K: std::borrow::Borrow<Q>,
         Q: Hash + Eq,
     {
         match self.hm.remove_entry(k) {
@@ -206,7 +207,7 @@ where
     /// A [HashMapEvent::Set] change event is sent if the reference is accessed mutably.
     pub fn get_mut<Q>(&mut self, k: &Q) -> Option<RefMut<'_, K, V, Codec>>
     where
-        K: Borrow<Q>,
+        K: std::borrow::Borrow<Q>,
         Q: Hash + Eq,
         V: Eq,
     {
@@ -346,6 +347,30 @@ where
 {
 }
 
+struct MirroredHashMapInner<K, V> {
+    hm: HashMap<K, V>,
+    error: Option<RecvError>,
+}
+
+impl<K, V> MirroredHashMapInner<K, V>
+where
+    K: Eq + Hash,
+{
+    fn handle_event(&mut self, event: HashMapEvent<K, V>) {
+        match event {
+            HashMapEvent::Set(k, v) => {
+                self.hm.insert(k, v);
+            }
+            HashMapEvent::Remove(k) => {
+                self.hm.remove(&k);
+            }
+            HashMapEvent::Clear => {
+                self.hm.clear();
+            }
+        }
+    }
+}
+
 /// Observable hash map subscription.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(bound(serialize = "K: RemoteSend + Eq + Hash, V: RemoteSend, Codec: remoc::codec::Codec"))]
@@ -368,20 +393,24 @@ where
         let Self { initial, mut events } = self;
 
         let inner = Arc::new(RwLock::new(Some(MirroredHashMapInner { hm: initial, error: None })));
-        let inner_weak = Arc::downgrade(&inner);
+        let inner_task = inner.clone();
 
         let (tx, _rx) = rch::broadcast::channel::<_, _, rch::buffer::Default>(1);
         let tx_send = tx.clone();
 
+        let (changed_tx, changed_rx) = watch::channel(());
+        let (dropped_tx, mut dropped_rx) = oneshot::channel();
+
         tokio::spawn(async move {
             loop {
-                let event = events.recv().await;
-
-                let inner = match inner_weak.upgrade() {
-                    Some(inner) => inner,
-                    None => break,
+                let event = tokio::select! {
+                    event = events.recv() => event,
+                    _ = &mut dropped_rx => break,
                 };
-                let mut inner = inner.write().await;
+
+                changed_tx.send_replace(());
+
+                let mut inner = inner_task.write().await;
                 let mut inner = match inner.as_mut() {
                     Some(inner) => inner,
                     None => break,
@@ -415,7 +444,7 @@ where
             }
         });
 
-        MirroredHashMap { inner, tx }
+        MirroredHashMap { inner, tx, changed_rx, _dropped_tx: dropped_tx }
     }
 }
 
@@ -423,29 +452,13 @@ where
 pub struct MirroredHashMap<K, V, Codec> {
     inner: Arc<RwLock<Option<MirroredHashMapInner<K, V>>>>,
     tx: rch::broadcast::Sender<HashMapEvent<K, V>, Codec>,
+    changed_rx: watch::Receiver<()>,
+    _dropped_tx: oneshot::Sender<()>,
 }
 
-struct MirroredHashMapInner<K, V> {
-    hm: HashMap<K, V>,
-    error: Option<RecvError>,
-}
-
-impl<K, V> MirroredHashMapInner<K, V>
-where
-    K: Eq + Hash,
-{
-    fn handle_event(&mut self, event: HashMapEvent<K, V>) {
-        match event {
-            HashMapEvent::Set(k, v) => {
-                self.hm.insert(k, v);
-            }
-            HashMapEvent::Remove(k) => {
-                self.hm.remove(&k);
-            }
-            HashMapEvent::Clear => {
-                self.hm.clear();
-            }
-        }
+impl<K, V, Codec> fmt::Debug for MirroredHashMap<K, V, Codec> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("MirroredHashMap").finish()
     }
 }
 
@@ -455,27 +468,60 @@ where
     V: RemoteSend + Clone,
     Codec: remoc::codec::Codec,
 {
-    /// Locks the hash map for reading.
+    /// Returns a reference to the current value of the hash map.
     ///
     /// Updates are paused while the read lock is held.
-    pub async fn read(&self) -> Result<ObsHashMapView<'_, K, V>, RecvError> {
+    /// 
+    /// This method returns an error if the observed hash map has been dropped
+    /// or the connection to it failed.
+    /// In this case the mirrored contents at the point of loss of connection
+    /// can be obtained using [detach](Self::detach).
+    pub async fn borrow(&self) -> Result<MirroredHashMapRef<'_, K, V>, RecvError> {
         let inner = self.inner.read().await;
         let inner = RwLockReadGuard::map(inner, |inner| inner.as_ref().unwrap());
         match &inner.error {
-            None => Ok(ObsHashMapView(RwLockReadGuard::map(inner, |inner| &inner.hm))),
+            None => Ok(MirroredHashMapRef(RwLockReadGuard::map(inner, |inner| &inner.hm))),
             Some(err) => Err(err.clone()),
         }
     }
 
-    /// Stops updating the hash map and returns its current version.
-    pub async fn take(self) -> HashMap<K, V> {
+    /// Returns a reference to the current value of the hash map and marks it as seen.
+    ///
+    /// Thus [changed](Self::changed) will not return immediately until the value changes
+    /// after this method returns.
+    ///
+    /// Updates are paused while the read lock is held.
+    /// 
+    /// This method returns an error if the observed hash map has been dropped
+    /// or the connection to it failed.
+    /// In this case the mirrored contents at the point of loss of connection
+    /// can be obtained using [detach](Self::detach).
+    pub async fn borrow_and_update(&mut self) -> Result<MirroredHashMapRef<'_, K, V>, RecvError> {
+        let inner = self.inner.read().await;
+        self.changed_rx.borrow_and_update();
+        let inner = RwLockReadGuard::map(inner, |inner| inner.as_ref().unwrap());
+        match &inner.error {
+            None => Ok(MirroredHashMapRef(RwLockReadGuard::map(inner, |inner| &inner.hm))),
+            Some(err) => Err(err.clone()),
+        }
+    }
+
+    /// Stops updating the hash map and returns its current contents.
+    pub async fn detach(self) -> HashMap<K, V> {
         let mut inner = self.inner.write().await;
         inner.take().unwrap().hm
     }
 
+    /// Waits for a change and marks the newest value as seen.
+    /// 
+    /// This also returns when connection to the observed hash map has been lost.
+    pub async fn changed(&mut self) {
+        let _ = self.changed_rx.changed().await;
+    }
+
     /// Subscribes to change events from this mirrored hash map.
     pub async fn subscribe(&self, send_buffer: usize) -> Result<HashMapSubscription<K, V, Codec>, RecvError> {
-        let view = self.read().await?;
+        let view = self.borrow().await?;
         let initial = view.clone();
         let events = self.tx.subscribe(send_buffer);
         drop(view);
@@ -484,10 +530,16 @@ where
     }
 }
 
-/// A snapshot view of an observable hash map.
-pub struct ObsHashMapView<'a, K, V>(RwLockReadGuard<'a, HashMap<K, V>>);
+impl<K, V, Codec> Drop for MirroredHashMap<K, V, Codec> {
+    fn drop(&mut self) {
+        // empty
+    }
+}
 
-impl<'a, K, V> fmt::Debug for ObsHashMapView<'a, K, V>
+/// A snapshot view of an observable hash map.
+pub struct MirroredHashMapRef<'a, K, V>(RwLockReadGuard<'a, HashMap<K, V>>);
+
+impl<'a, K, V> fmt::Debug for MirroredHashMapRef<'a, K, V>
 where
     K: fmt::Debug,
     V: fmt::Debug,
@@ -497,7 +549,7 @@ where
     }
 }
 
-impl<'a, K, V> Deref for ObsHashMapView<'a, K, V> {
+impl<'a, K, V> Deref for MirroredHashMapRef<'a, K, V> {
     type Target = HashMap<K, V>;
 
     fn deref(&self) -> &Self::Target {
