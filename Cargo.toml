@@ -15,14 +15,12 @@ license = "Apache-2.0"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-remoc = { version = "0.9.10", path = "../remoc/remoc", default-features = false, features = [
-    "rch",
-] }
+remoc = { version = "0.9.11", default-features = false, features = ["rch"] }
 tokio = { version = "1.0", features = ["sync"] }
 serde = { version = "1.0", features = ["derive"] }
 tracing = "0.1"
 
 [dev-dependencies]
-remoc = { version = "0.9.10", path = "../remoc/remoc", default-features = false, features = [
+remoc = { version = "0.9.11", default-features = false, features = [
     "default-codec-json",
 ] }

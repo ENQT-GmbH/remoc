@@ -1,4 +1,12 @@
 //! Remotely observable hash map.
+//!
+//! # Basic use
+//! Create a [ObservableHashMap] and obtain a [subscription](HashMapSubscription) to it using
+//! [ObservableHashMap::subscribe].
+//! Send this subscription to a remote endpoint via a [remote channel](remoc::rch) and call
+//! [HashMapSubscription::mirror] on the remote endpoint to obtain a live mirror of the observed
+//! hash map.
+//!
 
 use remoc::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -56,7 +64,7 @@ impl<T> TryFrom<rch::broadcast::SendError<T>> for SendError {
 }
 
 /// A hash map change event.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub enum HashMapEvent<K, V> {
     /// An item was inserted or modified.
     Set(K, V),
@@ -83,6 +91,9 @@ fn send_event<K, V, Codec>(
 }
 
 /// A hash map that emits an event for each change.
+///
+/// Use [subscribe](Self::subscribe) to obtain an event stream
+/// that can be used for building a mirror of this hash map.
 pub struct ObservableHashMap<K, V, Codec = remoc::codec::Default> {
     hm: HashMap<K, V>,
     tx: rch::broadcast::Sender<HashMapEvent<K, V>, Codec>,
@@ -152,6 +163,8 @@ where
     }
 
     /// Subscribes to change events from this observable hash map.
+    ///
+    /// The current contents of the hash map is included as well.
     pub fn subscribe(&self, send_buffer: usize) -> HashMapSubscription<K, V, Codec> {
         HashMapSubscription { initial: self.hm.clone(), events: self.tx.subscribe(send_buffer) }
     }
@@ -161,9 +174,9 @@ where
     /// A [HashMapEvent::Set] change event is sent.
     ///
     /// Returns the value previously stored under the key, if any.
-    pub fn insert(&mut self, k: K, v: V) -> Result<Option<V>, SendError> {
+    pub fn insert(&mut self, k: K, v: V) -> Option<V> {
         send_event(&self.tx, &self.on_err, HashMapEvent::Set(k.clone(), v.clone()));
-        Ok(self.hm.insert(k, v))
+        self.hm.insert(k, v)
     }
 
     /// Removes the value under the specified key.
@@ -171,7 +184,7 @@ where
     /// A [HashMapEvent::Remove] change event is sent.
     ///
     /// The value is returned.
-    pub fn remove<Q>(&mut self, k: &Q) -> Result<Option<V>, SendError>
+    pub fn remove<Q>(&mut self, k: &Q) -> Option<V>
     where
         K: std::borrow::Borrow<Q>,
         Q: Hash + Eq,
@@ -179,9 +192,9 @@ where
         match self.hm.remove_entry(k) {
             Some((k, v)) => {
                 send_event(&self.tx, &self.on_err, HashMapEvent::Remove(k));
-                Ok(Some(v))
+                Some(v)
             }
-            None => Ok(None),
+            None => None,
         }
     }
 
@@ -382,6 +395,12 @@ where
 }
 
 /// Observable hash map subscription.
+///
+/// This can be sent to a remote endpoint via a [remote channel](remoc::rch).
+/// Then, on the remote endpoint, [mirror](Self::mirror) can be used to build
+/// and keep up-to-date a mirror of the observed hash map.
+///
+/// You can also break apart this structure and use the event stream directly.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(bound(serialize = "K: RemoteSend + Eq + Hash, V: RemoteSend, Codec: remoc::codec::Codec"))]
 #[serde(bound(deserialize = "K: RemoteSend + Eq + Hash, V: RemoteSend, Codec: remoc::codec::Codec"))]
@@ -418,13 +437,13 @@ where
                     _ = &mut dropped_rx => break,
                 };
 
-                changed_tx.send_replace(());
-
                 let mut inner = inner_task.write().await;
                 let mut inner = match inner.as_mut() {
                     Some(inner) => inner,
                     None => break,
                 };
+
+                changed_tx.send_replace(());
 
                 match event {
                     Ok(event) => {
