@@ -178,7 +178,7 @@ impl Error for TryRecvError {}
 ///
 /// Can be sent over a remote channel.
 ///
-/// This can be converted into a [Stream] of values by wrapping it into
+/// This can be converted into a [Stream](futures::Stream) of values by wrapping it into
 /// a [ReceiverStream].
 #[derive(Serialize, Deserialize)]
 #[serde(bound(serialize = "T: RemoteSend, Codec: codec::Codec, Buffer: buffer::Size"))]
@@ -292,7 +292,7 @@ impl TryFrom<RecvError> for StreamError {
 
 impl Error for StreamError {}
 
-/// A wrapper around a broadcast [Receiver] that implements [Stream].
+/// A wrapper around a broadcast [Receiver] that implements [Stream](futures::Stream).
 pub struct ReceiverStream<T, Codec = codec::Default, Buffer = buffer::Default> {
     #[allow(clippy::type_complexity)]
     inner: ReusableBoxFuture<(Result<T, RecvError>, Receiver<T, Codec, Buffer>)>,

@@ -81,7 +81,7 @@ impl Error for ChangedError {}
 ///
 /// Instances are created by the [channel](super::channel) function.
 ///
-/// This can be converted into a [Stream] of values by wrapping it into
+/// This can be converted into a [Stream](futures::Stream) of values by wrapping it into
 /// a [ReceiverStream].
 #[derive(Clone)]
 pub struct Receiver<T, Codec = codec::Default> {
@@ -225,7 +225,7 @@ where
     }
 }
 
-/// A wrapper around a watch [Receiver] that implements [Stream].
+/// A wrapper around a watch [Receiver] that implements [Stream](futures::Stream).
 ///
 /// This stream will always start by yielding the current value when it is polled,
 /// regardless of whether it was the initial value or sent afterwards.
