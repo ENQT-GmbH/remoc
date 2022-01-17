@@ -404,7 +404,7 @@ where
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(bound(serialize = "K: RemoteSend + Eq + Hash, V: RemoteSend, Codec: remoc::codec::Codec"))]
 #[serde(bound(deserialize = "K: RemoteSend + Eq + Hash, V: RemoteSend, Codec: remoc::codec::Codec"))]
-pub struct HashMapSubscription<K, V, Codec> {
+pub struct HashMapSubscription<K, V, Codec = remoc::codec::Default> {
     /// Value of hash map at time of subscription.
     pub initial: HashMap<K, V>,
     /// Change events receiver.
@@ -478,7 +478,7 @@ where
 }
 
 /// A hash map that is mirroring an observable hash map.
-pub struct MirroredHashMap<K, V, Codec> {
+pub struct MirroredHashMap<K, V, Codec = remoc::codec::Default> {
     inner: Arc<RwLock<Option<MirroredHashMapInner<K, V>>>>,
     tx: rch::broadcast::Sender<HashMapEvent<K, V>, Codec>,
     changed_rx: watch::Receiver<()>,
