@@ -97,7 +97,7 @@ fn send_event<K, V, Codec>(
 pub struct ObservableHashMap<K, V, Codec = remoc::codec::Default> {
     hm: HashMap<K, V>,
     tx: rch::broadcast::Sender<HashMapEvent<K, V>, Codec>,
-    on_err: Box<dyn Fn(SendError)>,
+    on_err: Box<dyn Fn(SendError) + Send + Sync>,
 }
 
 impl<K, V> fmt::Debug for ObservableHashMap<K, V>
@@ -157,7 +157,7 @@ where
     /// event fails.
     pub fn set_error_handler<E>(&mut self, on_err: E)
     where
-        E: Fn(SendError) + 'static,
+        E: Fn(SendError) + Send + Sync + 'static,
     {
         self.on_err = Box::new(on_err);
     }
