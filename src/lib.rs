@@ -6,3 +6,4 @@
 //!
 
 pub mod hashmap;
+pub mod mpsc_replay;

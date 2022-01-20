@@ -4,17 +4,18 @@ This crate provides collections that emit an event for each change.
 This event stream can be sent to a remote endpoint via a [Remoc] channel,
 where a mirrored collection can be built from it.
 
-At the moment only a hash map is implemented.
+At the moment the following is implemented:
+  * a remotely observable hash map
+  * a channel buffer that stores and replays all values sent through it
 
 [Remoc]: https://crates.io/crates/remoc
-
 [![crates.io page](https://img.shields.io/crates/v/remoc-obs)](https://crates.io/crates/remoc-obs)
 [![docs.rs page](https://docs.rs/remoc-obs/badge.svg)](https://docs.rs/remoc-obs)
 [![Apache 2 license](https://img.shields.io/crates/l/remoc-obs)](https://raw.githubusercontent.com/surban/remoc-obs/master/LICENSE)
 
 ## Supported Rust versions
 
-Remoc is built against the latest stable release.
+Remoc-obs is built against the latest stable release.
 The minimum supported Rust version (MSRV) is 1.57.
 
 ## License
