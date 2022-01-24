@@ -57,7 +57,7 @@ use crate::RemoteSend;
 mod receiver;
 mod sender;
 
-pub use receiver::{Receiver, ReceiverStream, RecvError};
+pub use receiver::{ChangedError, Receiver, ReceiverStream, RecvError};
 pub use sender::{SendError, Sender};
 
 /// Length of queuing for storing errors that occurred during remote send.
