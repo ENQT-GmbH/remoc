@@ -10,51 +10,163 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  msrv:
+    name: Minimum supported Rust version
+    runs-on: ubuntu-latest
+    env:
+      minrust: 1.51
+    
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Check version dependencies
+        run: ./check_version.sh
+
+      - name: Install Rust ${{ env.minrust }}
+        run: rustup default ${{ env.minrust }}
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v1
+
+      - name: Run cargo check
+        run: cargo Check
+  
+  # Lints
+  build-docs:
+    name: Build docs
+    needs: [msrv]
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
-      - name: Check version dependencies
-        run: ./check_version.sh
-      - name: Check code formatting
-        run: cargo fmt -- --check
-      - name: Build
-        run: cargo build
-      - name: Build documentation
-        run: cargo doc --no-deps --quiet
-      - name: Code analysis
-        run: cargo clippy --quiet
-      - name: Run tests with JSON (default) codec
-        run: cargo test --quiet
-      - name: Run tests with Bincode codec
-        run: cargo test --no-default-features --quiet --features full --features default-codec-bincode
-      - name: Run tests with CBOR (serde_cbor) codec
-        run: RUSTFLAGS="-A deprecated" cargo test --no-default-features --quiet --features full --features default-codec-cbor
-      - name: Run tests with CBOR (ciborium) codec
-        run: cargo test --no-default-features --quiet --features full --features default-codec-ciborium
-      - name: Run tests with MessagePack codec
-        run: cargo test --no-default-features --quiet --features full --features default-codec-message-pack
-      - name: Test rch feature only
-        run: cargo test --no-default-features --quiet --features rch --features default-codec-json
-      - name: Test rfn feature only
-        run: cargo test --no-default-features --quiet --features rfn --features default-codec-json
-      - name: Test robj feature only
-        run: cargo test --no-default-features --quiet --features robj --features default-codec-json
-      - name: Test rtc feature only
-        run: cargo test --no-default-features --quiet --features rtc --features default-codec-json
-      - name: Test with MSRV 1.51
-        run: |
-          rustup install 1.51
-          cargo +1.51 test --quiet
-      - name: Install Cargo Tarpaulin for code coverage
-        run: cargo install cargo-tarpaulin --locked --quiet
-        continue-on-error: true
-      - name: Code coverage
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v1
+
+      - name: Build docs
+        env:
+          RUSTDOCFLAGS: -D rustdoc::broken_intra_doc_links
+        run: cargo doc --no-deps
+  
+  clippy:
+    name: Clippy
+    needs: [msrv]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v1
+
+      - name: Run clippy
+        env:
+          RUSTFLAGS: -D warnings
+        run: cargo clippy --tests
+  
+  rustfmt:
+    name: Format
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Run cargo fmt
+        run: cargo fmt --all -- --check
+
+  # Tests
+  test:
+    name: Test
+    needs: [msrv]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v1
+
+      - name: Run cargo test
+        run: cargo test
+
+  test-codecs:
+    name: Test with codec ${{ matrix.codec }}  
+    needs: [test]
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        codec:
+          - bincode
+          - cbor
+          - ciborium
+          - message-pack
+    
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v1
+      
+      - name: Run cargo test
+        env:
+          RUSTFLAGS: -A deprecated
+        run: cargo test --no-default-features --features full --features default-codec-${{ matrix.codec }}
+  
+  test-features:
+    name: Test with ${{ matrix.feature }} only
+    needs: [test]
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        feature:
+          - rch
+          - rfn
+          - robj
+          - rtc
+    
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v1
+      
+      - name: Run cargo test
+        run: cargo test --no-default-features --features ${{ matrix.feature }} --features default-codec-json
+  
+  # Coverage
+  coverage:
+    name: Coverage
+    needs: [test-codecs, test-features]
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+      
+      - name: Install cargo tarpaulin
+        uses: baptiste0928/cargo-install@v1
+        with:
+          crate: cargo-tarpaulin
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v1
+      
+      - name: Run cargo tarpaulin
         shell: bash
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
         run: |
           cargo tarpaulin --out Xml
           bash <(curl -s https://codecov.io/bash)
-        continue-on-error: true
