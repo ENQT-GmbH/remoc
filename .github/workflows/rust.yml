@@ -80,8 +80,6 @@ jobs:
         uses: Swatinem/rust-cache@v1
 
       - name: Run clippy
-        env:
-          RUSTFLAGS: -D warnings
         run: cargo clippy --tests
 
   rustfmt:
