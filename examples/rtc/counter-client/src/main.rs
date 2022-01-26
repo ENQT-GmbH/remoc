@@ -16,7 +16,7 @@ async fn main() {
     let (socket_rx, socket_tx) = socket.into_split();
 
     // Establish a Remoc connection with default configuration over the TCP connection and
-    // consume (i.e. receive) the counter client from the client.
+    // consume (i.e. receive) the counter client from the server.
     let mut client: CounterClient =
         remoc::Connect::io(remoc::Cfg::default(), socket_rx, socket_tx).consume().await.unwrap();
 
