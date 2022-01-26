@@ -25,7 +25,7 @@ jobs:
         run: cargo fmt --all -- --check
 
   msrv:
-    name: Minimum supported Rust version
+    name: Check with MSRV
     runs-on: ubuntu-latest
     env:
       minrust: 1.51
@@ -61,8 +61,8 @@ jobs:
           RUSTDOCFLAGS: -D rustdoc::broken_intra_doc_links
         run: cargo doc --no-deps
 
-  build-examples:
-    name: Build examples
+  check-examples:
+    name: Check examples
     needs: [msrv]
     runs-on: ubuntu-latest
 
@@ -73,10 +73,10 @@ jobs:
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v1
 
-      - name: Build examples
+      - name: Check examples
         run: |
-          cargo build --manifest-path examples/rtc/counter-client/Cargo.toml
-          cargo build --manifest-path examples/rtc/counter-server/Cargo.toml
+          cargo check --manifest-path examples/rtc/counter-client/Cargo.toml
+          cargo check --manifest-path examples/rtc/counter-server/Cargo.toml
 
   clippy:
     name: Clippy
@@ -161,8 +161,8 @@ jobs:
 
   # Coverage
   coverage:
-    name: Coverage
-    needs: [test-codecs, test-features]
+    name: Code coverage
+    needs: [test-codecs, test-features, rustfmt]
     runs-on: ubuntu-latest
     continue-on-error: true
 
