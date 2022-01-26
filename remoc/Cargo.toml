@@ -1,6 +1,6 @@
 [package]
 name = "remoc"
-version = "0.9.12"
+version = "0.9.13"
 authors = ["Sebastian Urban <surban@surban.net>", "ENQT GmbH <su@enqt.de>", "Remoc contributors"]
 readme = "README.md"
 repository = "https://github.com/ENQT-GmbH/remoc/"
@@ -36,7 +36,7 @@ default-codec-message-pack = ["codec-message-pack", "default-codec-set"]
 full-codecs = ["codec-bincode", "codec-cbor", "codec-ciborium", "codec-json", "codec-message-pack"]
 
 [dependencies]
-remoc_macro = { version = "=0.9.12", path = "../remoc_macro", optional = true }
+remoc_macro = { version = "=0.9.13", path = "../remoc_macro", optional = true }
 
 futures = "0.3"
 tokio = { version = "1.13", features = ["macros", "rt", "sync", "time"] }
