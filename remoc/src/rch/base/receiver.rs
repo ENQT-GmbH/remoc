@@ -149,7 +149,7 @@ impl PortDeserializer {
 /// Receives arbitrary values from a remote endpoint.
 ///
 /// Values may be or contain any channel from this crate.
-pub struct Receiver<T, Codec = codec::Default> {
+pub struct Receiver<T = (), Codec = codec::Default> {
     receiver: chmux::Receiver,
     recved: Option<Option<Received>>,
     data: DataSource<T>,

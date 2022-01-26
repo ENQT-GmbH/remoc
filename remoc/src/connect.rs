@@ -6,6 +6,7 @@ use std::{
     convert::TryInto,
     error::Error,
     fmt, io,
+    marker::PhantomData,
     pin::Pin,
     task::{Context, Poll},
 };
@@ -177,12 +178,20 @@ impl<TransportSinkError, TransportStreamError> From<base::ConnectError>
 /// ```
 #[cfg_attr(docsrs, doc(cfg(feature = "rch")))]
 #[must_use = "You must poll or spawn the Connect future for the connection to work."]
-pub struct Connect<'transport, TransportSinkError, TransportStreamError>(
-    BoxFuture<'transport, Result<(), ChMuxError<TransportSinkError, TransportStreamError>>>,
-);
+pub struct Connect<'transport, TransportSinkError, TransportStreamError, Tx = (), Rx = (), Codec = codec::Default>
+{
+    fut: BoxFuture<'transport, Result<(), ChMuxError<TransportSinkError, TransportStreamError>>>,
+    _tx: PhantomData<Pin<Box<Tx>>>,
+    _rx: PhantomData<Pin<Box<Rx>>>,
+    _codec: PhantomData<Pin<Box<Codec>>>,
+}
 
-impl<'transport, TransportSinkError, TransportStreamError>
-    Connect<'transport, TransportSinkError, TransportStreamError>
+impl<'transport, TransportSinkError, TransportStreamError, Tx, Rx, Codec>
+    Connect<'transport, TransportSinkError, TransportStreamError, Tx, Rx, Codec>
+where
+    Tx: RemoteSend,
+    Rx: RemoteSend,
+    Codec: codec::Codec,
 {
     /// Establishes a connection over a framed transport (a [sink](Sink) and a [stream](Stream) of binary data) and
     /// returns a remote [sender](base::Sender) and [receiver](base::Receiver).
@@ -193,11 +202,11 @@ impl<'transport, TransportSinkError, TransportStreamError>
     ///
     /// # Panics
     /// Panics if the chmux configuration is invalid.
-    pub async fn framed<TransportSink, TransportStream, Tx, Rx, Codec>(
+    pub async fn framed<TransportSink, TransportStream>(
         cfg: crate::Cfg, transport_sink: TransportSink, transport_stream: TransportStream,
     ) -> Result<
         (
-            Connect<'transport, TransportSinkError, TransportStreamError>,
+            Connect<'transport, TransportSinkError, TransportStreamError, Tx, Rx, Codec>,
             base::Sender<Tx, Codec>,
             base::Receiver<Rx, Codec>,
         ),
@@ -208,12 +217,10 @@ impl<'transport, TransportSinkError, TransportStreamError>
         TransportSinkError: Error + Send + Sync + 'static,
         TransportStream: Stream<Item = Result<Bytes, TransportStreamError>> + Send + Sync + Unpin + 'transport,
         TransportStreamError: Error + Send + Sync + 'static,
-        Tx: RemoteSend,
-        Rx: RemoteSend,
-        Codec: codec::Codec,
     {
         let (mux, client, mut listener) = ChMux::new(cfg, transport_sink, transport_stream).await?;
-        let mut connection = Self(mux.run().boxed());
+        let mut connection =
+            Self { fut: mux.run().boxed(), _tx: PhantomData, _rx: PhantomData, _codec: PhantomData };
 
         tokio::select! {
             biased;
@@ -228,7 +235,12 @@ impl<'transport, TransportSinkError, TransportStreamError>
     }
 }
 
-impl<'transport> Connect<'transport, io::Error, io::Error> {
+impl<'transport, Tx, Rx, Codec> Connect<'transport, io::Error, io::Error, Tx, Rx, Codec>
+where
+    Tx: RemoteSend,
+    Rx: RemoteSend,
+    Codec: codec::Codec,
+{
     /// Establishes a connection over an IO transport (an [AsyncRead] and [AsyncWrite]) and
     /// returns a remote [sender](base::Sender) and [receiver](base::Receiver).
     ///
@@ -243,18 +255,19 @@ impl<'transport> Connect<'transport, io::Error, io::Error> {
     ///
     /// # Panics
     /// Panics if the chmux configuration is invalid.
-    pub async fn io<Read, Write, Tx, Rx, Codec>(
+    pub async fn io<Read, Write>(
         cfg: crate::Cfg, input: Read, output: Write,
     ) -> Result<
-        (Connect<'transport, io::Error, io::Error>, base::Sender<Tx, Codec>, base::Receiver<Rx, Codec>),
+        (
+            Connect<'transport, io::Error, io::Error, Tx, Rx, Codec>,
+            base::Sender<Tx, Codec>,
+            base::Receiver<Rx, Codec>,
+        ),
         ConnectError<io::Error, io::Error>,
     >
     where
         Read: AsyncRead + Send + Sync + Unpin + 'transport,
         Write: AsyncWrite + Send + Sync + Unpin + 'transport,
-        Tx: RemoteSend,
-        Rx: RemoteSend,
-        Codec: codec::Codec,
     {
         let max_recv_frame_length: usize = cfg.max_frame_length().try_into().unwrap();
         let transport_sink = LengthDelimitedCodec::builder()
@@ -283,18 +296,19 @@ impl<'transport> Connect<'transport, io::Error, io::Error> {
     ///
     /// # Panics
     /// Panics if the chmux configuration is invalid.
-    pub async fn io_buffered<Read, Write, Tx, Rx, Codec>(
+    pub async fn io_buffered<Read, Write>(
         cfg: crate::Cfg, input: Read, output: Write, buffer: usize,
     ) -> Result<
-        (Connect<'transport, io::Error, io::Error>, base::Sender<Tx, Codec>, base::Receiver<Rx, Codec>),
+        (
+            Connect<'transport, io::Error, io::Error, Tx, Rx, Codec>,
+            base::Sender<Tx, Codec>,
+            base::Receiver<Rx, Codec>,
+        ),
         ConnectError<io::Error, io::Error>,
     >
     where
         Read: AsyncRead + Send + Sync + Unpin + 'transport,
         Write: AsyncWrite + Send + Sync + Unpin + 'transport,
-        Tx: RemoteSend,
-        Rx: RemoteSend,
-        Codec: codec::Codec,
     {
         let buf_input = BufReader::with_capacity(buffer, input);
         let buf_output = BufWriter::with_capacity(buffer, output);
@@ -302,14 +316,14 @@ impl<'transport> Connect<'transport, io::Error, io::Error> {
     }
 }
 
-impl<'transport, TransportSinkError, TransportStreamError> Future
-    for Connect<'transport, TransportSinkError, TransportStreamError>
+impl<'transport, TransportSinkError, TransportStreamError, Tx, Rx, Codec> Future
+    for Connect<'transport, TransportSinkError, TransportStreamError, Tx, Rx, Codec>
 {
     /// Result of connection after it has been terminated.
     type Output = Result<(), ChMuxError<TransportSinkError, TransportStreamError>>;
 
     /// This future runs the dispatcher for this connection.
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        Pin::into_inner(self).0.poll_unpin(cx)
+        Pin::into_inner(self).fut.poll_unpin(cx)
     }
 }

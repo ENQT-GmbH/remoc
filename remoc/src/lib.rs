@@ -137,7 +137,7 @@ async fn connect_client() {
     // Establish Remoc connection over TCP.
     // The connection is always bidirectional, but we can just drop
     // the unneeded receiver.
-    let (conn, tx, _rx): (_, _, rch::base::Receiver<()>) =
+    let (conn, tx, _rx) =
         remoc::Connect::io(remoc::Cfg::default(), socket_rx, socket_tx)
         .await.unwrap();
     tokio::spawn(conn);

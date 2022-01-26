@@ -190,7 +190,7 @@ impl PortSerializer {
 /// Sends arbitrary values to a remote endpoint.
 ///
 /// Values may be or contain any channel from this crate.
-pub struct Sender<T, Codec = codec::Default> {
+pub struct Sender<T = (), Codec = codec::Default> {
     sender: chmux::Sender,
     big_data: i8,
     _data: PhantomData<T>,
