@@ -40,10 +40,7 @@ async fn simple() {
     match tx.send(0).await {
         Ok(_) => panic!("send succeeded after close"),
         Err(err)
-            if err.is_closed() && err.is_disconnected() && err.closed_reason() == Some(ClosedReason::Closed) =>
-        {
-            ()
-        }
+            if err.is_closed() && err.is_disconnected() && err.closed_reason() == Some(ClosedReason::Closed) => {}
         Err(_) => panic!("wrong error after close"),
     }
 }
@@ -82,10 +79,7 @@ async fn simple_stream() {
     match tx.send(0).await {
         Ok(_) => panic!("send succeeded after close"),
         Err(err)
-            if err.is_closed() && err.is_disconnected() && err.closed_reason() == Some(ClosedReason::Closed) =>
-        {
-            ()
-        }
+            if err.is_closed() && err.is_disconnected() && err.closed_reason() == Some(ClosedReason::Closed) => {}
         Err(_) => panic!("wrong error after close"),
     }
 }
@@ -128,10 +122,7 @@ async fn simple_close() {
     match tx.send(0).await {
         Ok(_) => panic!("send succeeded after close"),
         Err(err)
-            if err.is_closed() && err.is_disconnected() && err.closed_reason() == Some(ClosedReason::Closed) =>
-        {
-            ()
-        }
+            if err.is_closed() && err.is_disconnected() && err.closed_reason() == Some(ClosedReason::Closed) => {}
         Err(_) => panic!("wrong error after close"),
     }
 }
@@ -172,10 +163,7 @@ async fn simple_drop() {
         Err(err)
             if err.is_disconnected()
                 && !err.is_closed()
-                && err.closed_reason() == Some(ClosedReason::Dropped) =>
-        {
-            ()
-        }
+                && err.closed_reason() == Some(ClosedReason::Dropped) => {}
         Err(_) => panic!("wrong error after close"),
     }
 }
@@ -214,9 +202,7 @@ async fn simple_conn_failure() {
     match tx.send(0).await {
         Ok(_) => panic!("send succeeded after close"),
         Err(err)
-            if err.is_disconnected() && !err.is_closed() && err.closed_reason() == Some(ClosedReason::Failed) =>
-        {
-            ()
+            if err.is_disconnected() && !err.is_closed() && err.closed_reason() == Some(ClosedReason::Failed) => {
         }
         Err(_) => panic!("wrong error after close"),
     }
