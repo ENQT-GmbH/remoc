@@ -94,6 +94,9 @@
 //!
 //! # Example
 //!
+//! This is a short example; for a fully worked remote trait calling (RTC) example
+//! see the [examples directory](https://github.com/ENQT-GmbH/remoc/tree/master/examples).
+//!
 //! In the following example the server listens on TCP port 9870 and the client connects to it.
 //! Then both ends establish a Remoc connection using [Connect::io] over the TCP connection.
 //! The connection dispatchers are spawned onto new tasks and the `client()` and `server()` functions
@@ -232,6 +235,12 @@ mod connect;
 #[cfg(feature = "rch")]
 #[cfg_attr(docsrs, doc(cfg(feature = "rch")))]
 pub use connect::{Connect, ConnectError};
+
+#[cfg(feature = "rch")]
+mod connect_ext;
+#[cfg(feature = "rch")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rch")))]
+pub use connect_ext::{ConnectExt, ConsumeError, ProvideError};
 
 #[cfg(feature = "rfn")]
 #[cfg_attr(docsrs, doc(cfg(feature = "rfn")))]

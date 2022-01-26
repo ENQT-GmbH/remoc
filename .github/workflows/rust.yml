@@ -50,6 +50,23 @@ jobs:
           RUSTDOCFLAGS: -D rustdoc::broken_intra_doc_links
         run: cargo doc --no-deps
   
+  build-examples:
+    name: Build examples
+    needs: [msrv]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v1
+
+      - name: Build examples
+        run: |
+          cargo build --manifest-path examples/rtc/counter-client/Cargo.toml
+          cargo build --manifest-path examples/rtc/counter-server/Cargo.toml
+
   clippy:
     name: Clippy
     needs: [msrv]

@@ -75,6 +75,17 @@ impl<T> SendError<T> {
             Self::Closed(_) | Self::RemoteConnect(_) | Self::RemoteListen(_) | Self::RemoteForward => true,
         }
     }
+
+    /// Returns the error without the contained item.
+    pub fn without_item(self) -> SendError<()> {
+        match self {
+            Self::Closed(_) => SendError::Closed(()),
+            Self::RemoteSend(err) => SendError::RemoteSend(err),
+            Self::RemoteConnect(err) => SendError::RemoteConnect(err),
+            Self::RemoteListen(err) => SendError::RemoteListen(err),
+            Self::RemoteForward => SendError::RemoteForward,
+        }
+    }
 }
 
 impl<T> SendErrorExt for SendError<T> {

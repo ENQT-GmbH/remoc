@@ -79,6 +79,11 @@ impl<T> SendError<T> {
     pub fn is_final(&self) -> bool {
         self.kind.is_final()
     }
+
+    /// Returns the error without the contained item.
+    pub fn without_item(self) -> SendError<()> {
+        SendError { kind: self.kind, item: () }
+    }
 }
 
 impl<T> SendErrorExt for SendError<T> {

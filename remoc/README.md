@@ -113,6 +113,9 @@ The minimum supported Rust version (MSRV) is 1.51.
 
 ## Example
 
+This is a short example; for a fully worked remote trait calling (RTC) example
+see the [examples directory](https://github.com/ENQT-GmbH/remoc/tree/master/examples).
+
 In the following example the server listens on TCP port 9870 and the client connects to it.
 Then both ends establish a Remoc connection using `Connect::io()` over the TCP connection.
 The connection dispatchers are spawned onto new tasks and the `client()` and `server()` functions

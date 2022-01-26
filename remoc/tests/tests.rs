@@ -31,7 +31,7 @@ static INIT: Once = Once::new();
 
 pub fn init() {
     INIT.call_once(|| {
-        use tracing_subscriber::{fmt::format::FmtSpan, EnvFilter};
+        use tracing_subscriber::{filter::EnvFilter, fmt::format::FmtSpan};
         tracing_subscriber::fmt::fmt()
             .with_env_filter(EnvFilter::from_default_env())
             .with_span_events(FmtSpan::NEW)

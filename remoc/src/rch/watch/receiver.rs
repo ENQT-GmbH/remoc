@@ -61,8 +61,9 @@ pub enum ChangedError {
 
 impl ChangedError {
     /// True, if remote endpoint has closed channel.
+    #[deprecated = "a remoc::rch::watch::ChangedError is always due to closure"]
     pub fn is_closed(&self) -> bool {
-        matches!(self, Self::Closed)
+        true
     }
 }
 

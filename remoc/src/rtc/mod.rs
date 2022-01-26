@@ -93,6 +93,11 @@
 //!
 //! # Example
 //!
+//! This is a short example only; a fully worked example with client and server split into
+//! their own crates is available in the
+//! [examples directory](https://github.com/ENQT-GmbH/remoc/tree/master/examples/rtc).
+//! This can also be used as a template to get started quickly.
+//!
 //! In the following example a trait `Counter` is defined and marked as remotely callable.
 //! It is implemented on the `CounterObj` struct.
 //! The server creates a `CounterObj` and obtains a `CounterServerSharedMut` and `CounterClient` for it.
