@@ -15,6 +15,10 @@ pub use crate::rch;
 
 #[cfg(feature = "rch")]
 #[doc(no_inline)]
+pub use crate::ConnectExt;
+
+#[cfg(feature = "rch")]
+#[doc(no_inline)]
 pub use crate::rch::SendResultExt;
 
 #[cfg(feature = "rch")]

@@ -233,6 +233,12 @@ mod connect;
 #[cfg_attr(docsrs, doc(cfg(feature = "rch")))]
 pub use connect::{Connect, ConnectError};
 
+#[cfg(feature = "rch")]
+mod connect_ext;
+#[cfg(feature = "rch")]
+#[cfg_attr(docsrs, doc(cfg(feature = "rch")))]
+pub use connect_ext::{ConnectExt, ConsumeError, ProvideError};
+
 #[cfg(feature = "rfn")]
 #[cfg_attr(docsrs, doc(cfg(feature = "rfn")))]
 pub mod rfn;
