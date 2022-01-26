@@ -11,7 +11,7 @@ use crate::{
     RemoteSend,
 };
 
-/// An error occurred during establishing a providing connection.
+/// Error occurred during establishing a providing connection.
 #[derive(Debug, Clone)]
 pub enum ProvideError<TransportSinkError, TransportStreamError> {
     /// Channel multiplexer error.
@@ -68,7 +68,7 @@ where
 {
 }
 
-/// An error occurred during establishing a consuming connection.
+/// Error occurred during establishing a consuming connection.
 #[derive(Debug, Clone)]
 pub enum ConsumeError<TransportSinkError, TransportStreamError> {
     /// Channel multiplexer error.
@@ -77,7 +77,7 @@ pub enum ConsumeError<TransportSinkError, TransportStreamError> {
     Connect(ConnectError<TransportSinkError, TransportStreamError>),
     /// Receiving the value to consume failed.
     Recv(RecvError),
-    /// No value was received.
+    /// No value to consume was received.
     NoValueReceived,
 }
 
@@ -131,12 +131,12 @@ where
 /// Convenience methods for connection handling.
 ///
 /// This trait is implemented for the return value of any [Connect] method
-/// using the default codec.
+/// using the default codec and a transport with `'static` lifetime.
 #[async_trait]
 pub trait ConnectExt<T, TransportSinkError, TransportStreamError> {
     /// Establishes the connection and provides a single value to the remote endpoint.
     ///
-    /// The value is send over the base channel and then the channel is closed.
+    /// The value is sent over the base channel and then the base channel is closed.
     /// The connection dispatcher is spawned onto a new task and a warning message is logged
     /// if the connection fails.
     ///
@@ -146,7 +146,7 @@ pub trait ConnectExt<T, TransportSinkError, TransportStreamError> {
 
     /// Establishes the connection and consumes a single value from the remote endpoint.
     ///
-    /// The value is received over the base channel and then the channel is closed.
+    /// The value is received over the base channel and then the base channel is closed.
     /// The connection dispatcher is spawned onto a new task and a warning message is logged
     /// if the connection fails.
     ///

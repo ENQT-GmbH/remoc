@@ -100,6 +100,13 @@ impl<TransportSinkError, TransportStreamError> From<base::ConnectError>
 /// [pipes between processes]: https://docs.rs/tokio/1.12.0/tokio/process/struct.Child.html
 /// [serial links]: https://docs.rs/tokio-serial/5.4.1/tokio_serial/
 /// [Bluetooth L2CAP streams]: https://docs.rs/bluer/0.10.4/bluer/l2cap/struct.Stream.html
+/// 
+/// # Convenience functions
+/// 
+/// Methods from the [ConnectExt](crate::ConnectExt) trait can be used on the return values
+/// of all connect methods.
+/// They streamline connection handling when a single value, such as a [RTC](crate::rtc) client,
+/// should be exchanged over the connection and the flexibility of a base channel is not necessary.
 ///
 /// # Example
 ///
