@@ -10,6 +10,20 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  rustfmt:
+    name: Check formatting and version dependencies
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Check version dependencies
+        run: ./check_version.sh
+
+      - name: Run cargo fmt
+        run: cargo fmt --all -- --check
+
   msrv:
     name: Minimum supported Rust version
     runs-on: ubuntu-latest
@@ -19,9 +33,6 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
-
-      - name: Check version dependencies
-        run: ./check_version.sh
 
       - name: Install Rust ${{ env.minrust }}
         run: rustup default ${{ env.minrust }}
@@ -81,17 +92,6 @@ jobs:
 
       - name: Run clippy
         run: cargo clippy --tests
-
-  rustfmt:
-    name: Check formatting
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v2
-
-      - name: Run cargo fmt
-        run: cargo fmt --all -- --check
 
   # Tests
   test:
