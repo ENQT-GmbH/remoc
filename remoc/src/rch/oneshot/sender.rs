@@ -33,6 +33,14 @@ impl<T> SendError<T> {
     pub fn is_final(&self) -> bool {
         true
     }
+
+    /// Returns the error without the contained item.
+    pub fn without_item(self) -> SendError<()> {
+        match self {
+            Self::Closed(_) => SendError::Closed(()),
+            Self::Failed => SendError::Failed,
+        }
+    }
 }
 
 impl<T> SendErrorExt for SendError<T> {
