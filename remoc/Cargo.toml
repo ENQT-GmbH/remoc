@@ -16,7 +16,7 @@ license = "Apache-2.0"
 [features]
 default = ["full", "default-codec-json"]
 full = ["serde", "rch", "rfn", "robj", "rtc"]
-rch = ["serde", "tokio-util", "tokio/io-util"]
+rch = ["async-trait", "serde", "tokio-util", "tokio/io-util"]
 rfn = ["rch"]
 robj = ["rch"]
 rtc = ["rch", "remoc_macro", "async-trait"]
