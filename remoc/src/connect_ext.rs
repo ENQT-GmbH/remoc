@@ -12,6 +12,7 @@ use crate::{
 };
 
 /// Error occurred during establishing a providing connection.
+#[cfg_attr(docsrs, doc(cfg(feature = "rch")))]
 #[derive(Debug, Clone)]
 pub enum ProvideError<TransportSinkError, TransportStreamError> {
     /// Channel multiplexer error.
@@ -69,6 +70,7 @@ where
 }
 
 /// Error occurred during establishing a consuming connection.
+#[cfg_attr(docsrs, doc(cfg(feature = "rch")))]
 #[derive(Debug, Clone)]
 pub enum ConsumeError<TransportSinkError, TransportStreamError> {
     /// Channel multiplexer error.
@@ -132,6 +134,7 @@ where
 ///
 /// This trait is implemented for the return value of any [Connect] method
 /// using the default codec and a transport with `'static` lifetime.
+#[cfg_attr(docsrs, doc(cfg(feature = "rch")))]
 #[async_trait]
 pub trait ConnectExt<T, TransportSinkError, TransportStreamError> {
     /// Establishes the connection and provides a single value to the remote endpoint.
