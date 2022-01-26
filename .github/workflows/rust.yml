@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       minrust: 1.51
-    
+
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
@@ -31,7 +31,7 @@ jobs:
 
       - name: Run cargo check
         run: cargo check
-  
+
   # Lints
   build-docs:
     name: Build docs
@@ -49,7 +49,7 @@ jobs:
         env:
           RUSTDOCFLAGS: -D rustdoc::broken_intra_doc_links
         run: cargo doc --no-deps
-  
+
   build-examples:
     name: Build examples
     needs: [msrv]
@@ -83,9 +83,9 @@ jobs:
         env:
           RUSTFLAGS: -D warnings
         run: cargo clippy --tests
-  
+
   rustfmt:
-    name: Format
+    name: Check formatting
     runs-on: ubuntu-latest
 
     steps:
@@ -97,7 +97,7 @@ jobs:
 
   # Tests
   test:
-    name: Test
+    name: Test with default features
     needs: [msrv]
     runs-on: ubuntu-latest
 
@@ -112,7 +112,7 @@ jobs:
         run: cargo test
 
   test-codecs:
-    name: Test with codec ${{ matrix.codec }}  
+    name: Test with codec ${{ matrix.codec }}
     needs: [test]
     runs-on: ubuntu-latest
 
@@ -124,21 +124,21 @@ jobs:
           - cbor
           - ciborium
           - message-pack
-    
+
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
 
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v1
-      
+
       - name: Run cargo test
         env:
           RUSTFLAGS: -A deprecated
         run: cargo test --no-default-features --features full --features default-codec-${{ matrix.codec }}
-  
+
   test-features:
-    name: Test with ${{ matrix.feature }} only
+    name: Test ${{ matrix.feature }} feature
     needs: [test]
     runs-on: ubuntu-latest
 
@@ -150,17 +150,17 @@ jobs:
           - rfn
           - robj
           - rtc
-    
+
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
 
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v1
-      
+
       - name: Run cargo test
         run: cargo test --no-default-features --features ${{ matrix.feature }} --features default-codec-json
-  
+
   # Coverage
   coverage:
     name: Coverage
@@ -171,7 +171,7 @@ jobs:
     steps:
       - name: Checkout sources
         uses: actions/checkout@v2
-      
+
       - name: Install cargo tarpaulin
         uses: baptiste0928/cargo-install@v1
         with:
@@ -179,7 +179,7 @@ jobs:
 
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v1
-      
+
       - name: Run cargo tarpaulin
         shell: bash
         env:
