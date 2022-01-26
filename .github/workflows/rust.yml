@@ -43,6 +43,10 @@ jobs:
         run: cargo test --no-default-features --quiet --features robj --features default-codec-json
       - name: Test rtc feature only
         run: cargo test --no-default-features --quiet --features rtc --features default-codec-json
+      - name: Build examples
+        run: |
+          cargo build --quiet --manifest-path examples/rtc/counter-client/Cargo.toml
+          cargo build --quiet --manifest-path examples/rtc/counter-server/Cargo.toml
       - name: Test with MSRV 1.51
         run: |
           rustup install 1.51

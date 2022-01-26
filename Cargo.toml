@@ -1,9 +1,4 @@
 [workspace]
 resolver = "2"
-members = [
-    "remoc",
-    "remoc_macro",
-    "examples/rtc/counter",
-    "examples/rtc/counter-client",
-    "examples/rtc/counter-server",
-]
+members = ["remoc", "remoc_macro"]
+exclude = ["examples"]
