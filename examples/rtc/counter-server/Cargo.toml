@@ -1,0 +1,11 @@
+[package]
+name = "counter-server"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+counter = { path = "../counter" }
+remoc = { path = "../../../remoc" }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "time"] }
+tracing-subscriber = "0.3.7"
+
