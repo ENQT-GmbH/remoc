@@ -1,15 +1,18 @@
 //! Connection extensions.
 
 use async_trait::async_trait;
-use futures::Future;
 use std::{error::Error, fmt};
 
 use crate::{
     chmux::ChMuxError,
-    connect::{Connect, ConnectError},
-    rch::base::{self, RecvError, SendError},
-    RemoteSend,
+    connect::ConnectError,
+    rch::base::{RecvError, SendError},
 };
+
+#[cfg(feature = "default-codec-set")]
+use crate::{connect::Connect, rch::base, RemoteSend};
+#[cfg(feature = "default-codec-set")]
+use futures::Future;
 
 /// Error occurred during establishing a providing connection.
 #[cfg_attr(docsrs, doc(cfg(feature = "rch")))]
@@ -159,6 +162,7 @@ pub trait ConnectExt<T, TransportSinkError, TransportStreamError> {
 }
 
 #[async_trait]
+#[cfg(feature = "default-codec-set")]
 impl<TransportSinkError, TransportStreamError, T, ConnectFuture>
     ConnectExt<T, TransportSinkError, TransportStreamError> for ConnectFuture
 where
