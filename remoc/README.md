@@ -89,8 +89,6 @@ The meta-feature `full` enables all features from above but no codecs.
 The following features enable data formats for transmission:
 
   * `codec-bincode` provides the Bincode format.
-  * `codec-cbor` provides the CBOR format using [`serde_cbor`], which is
-    [no longer maintained]. It is recommended to use `codec-ciborium` instead.
   * `codec-ciborium` provides the CBOR format.
   * `codec-json` provides the JSON format.
   * `codec-message-pack` provides the MessagePack format.
