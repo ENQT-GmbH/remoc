@@ -159,10 +159,37 @@ jobs:
       - name: Run cargo test
         run: cargo test --no-default-features --features ${{ matrix.feature }} --features default-codec-json
 
+  check-features-without-codec:
+    name: Check ${{ matrix.feature }} feature without codec
+    needs: [test]
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        feature:
+          - none
+          - rch
+          - rfn
+          - robj
+          - rtc
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v1
+
+      - name: Run cargo check
+        run: |
+          if [ "${{ matrix.feature }}" = "none" ] ; then cargo check --no-default-features ; else \
+          cargo check --no-default-features --features ${{ matrix.feature }} ; fi
+
   # Coverage
   coverage:
     name: Code coverage
-    needs: [test-codecs, test-features, rustfmt]
+    needs: [test-codecs, test-features, check-features-without-codec, rustfmt]
     runs-on: ubuntu-latest
     continue-on-error: true
 
