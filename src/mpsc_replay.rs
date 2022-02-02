@@ -23,14 +23,12 @@ struct Subscription<T, Codec> {
     err_tx: oneshot::Sender<rch::mpsc::SendError<()>>,
 }
 
-/// A buffer that stores and replays values sent to a channel.
+/// A buffer that stores and replays values sent to it.
 ///
 /// Values sent to the replay channel buffer are stored in an internal buffer.
 /// Multiple remote MPSC channels can be subscribed to the replay channel buffer and each
 /// channel will receive all values sent to the replay channel buffer, even the
 /// values that were received before it was subscribed.
-///
-/// Drop this to free the buffer and close all subscribed channels.
 pub struct ReplayBuffer<T, Codec = remoc::codec::Default> {
     tx: mpsc::UnboundedSender<T>,
     sub_tx: mpsc::UnboundedSender<SubscribeReq<T, Codec>>,
@@ -48,7 +46,7 @@ where
     Codec: remoc::codec::Codec,
 {
     fn default() -> Self {
-        Self::new()
+        Self::new(false)
     }
 }
 
@@ -59,11 +57,13 @@ where
 {
     /// Creates a new replay channel buffer.
     ///
-    /// The buffer receives its values from the provided local MPSC channel receiver.
-    pub fn new() -> Self {
+    /// If `drain_on_drop` is `true` all buffered values at the time of drop are sent
+    /// to all subscribers before their channels are closed.
+    /// Otherwise, all channels to the subscribers are closed immediately when dropped.
+    pub fn new(drain_on_drop: bool) -> Self {
         let (tx, rx) = mpsc::unbounded_channel();
         let (sub_tx, sub_rx) = mpsc::unbounded_channel();
-        tokio::spawn(Self::buffer_task(rx, sub_rx));
+        tokio::spawn(Self::buffer_task(drain_on_drop, rx, sub_rx));
         Self { tx, sub_tx }
     }
 
@@ -75,6 +75,21 @@ where
         if self.tx.send(value).is_err() {
             panic!("replay buffer task was shut down");
         }
+    }
+
+    /// Feeds the replay channel buffer from a channel.
+    ///
+    /// This is equivalent to calling [send](Self::send) for every value received
+    /// over the specified channel's receive-half.
+    pub fn feed(&self, mut rx: mpsc::Receiver<T>) {
+        let tx = self.tx.clone();
+        tokio::spawn(async move {
+            while let Some(value) = rx.recv().await {
+                if tx.send(value).is_err() {
+                    panic!("replay buffer task was shut down");
+                }
+            }
+        });
     }
 
     /// Subscribes a remote MPSC channel to the replay channel buffer.
@@ -106,8 +121,11 @@ where
     }
 
     async fn buffer_task(
-        mut rx: mpsc::UnboundedReceiver<T>, mut sub_rx: mpsc::UnboundedReceiver<SubscribeReq<T, Codec>>,
+        drain_on_drop: bool, rx: mpsc::UnboundedReceiver<T>,
+        sub_rx: mpsc::UnboundedReceiver<SubscribeReq<T, Codec>>,
     ) {
+        let mut rx_opt = Some(rx);
+        let mut sub_rx_opt = Some(sub_rx);
         let mut buffer: Vec<T> = Vec::new();
         let mut subs: Vec<Subscription<T, Codec>> = Vec::new();
 
@@ -118,25 +136,55 @@ where
                     permit_tasks.push(async move { (i, sub.tx.reserve().await) }.boxed());
                 }
             }
-            let permit_select = async move { future::select_all(permit_tasks).await.0 };
+            if sub_rx_opt.is_none() && rx_opt.is_none() && permit_tasks.is_empty() {
+                break;
+            }
 
             tokio::select! {
                 biased;
-                sub_opt = sub_rx.recv() => {
+                sub_opt = async {
+                    match &mut sub_rx_opt {
+                        Some(sub_rx) => sub_rx.recv().await,
+                        None => future::pending().await,
+                    }
+                } => {
                     match sub_opt {
                         Some(SubscribeReq { tx, err_tx }) => {
                             subs.push(Subscription { pos: 0, tx, err_tx });
                         }
-                        None => break,
+                        None => {
+                            if drain_on_drop {
+                                sub_rx_opt = None;
+                            } else {
+                                break;
+                            }
+                        },
                     }
                 },
-                value_opt = rx.recv() => {
+                value_opt = async {
+                    match &mut rx_opt {
+                        Some(rx) => rx.recv().await,
+                        None => future::pending().await,
+                    }
+                } => {
                     match value_opt {
                         Some(value) => buffer.push(value),
-                        None => break,
+                        None => {
+                            if drain_on_drop {
+                                rx_opt = None;
+                            } else {
+                                break;
+                            }
+                        }
                     }
                 },
-                (i, res) = permit_select => {
+                (i, res) = async move {
+                    if permit_tasks.is_empty() {
+                        future::pending().await
+                    } else {
+                        future::select_all(permit_tasks).await.0
+                    }
+                } => {
                     match res {
                         Ok(permit) => {
                             permit.send(buffer[i].clone());
