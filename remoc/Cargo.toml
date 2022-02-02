@@ -1,6 +1,6 @@
 [package]
 name = "remoc"
-version = "0.9.13"
+version = "0.9.14"
 authors = ["Sebastian Urban <surban@surban.net>", "ENQT GmbH <su@enqt.de>", "Remoc contributors"]
 readme = "README.md"
 repository = "https://github.com/ENQT-GmbH/remoc/"
@@ -16,7 +16,7 @@ license = "Apache-2.0"
 [features]
 default = ["full", "default-codec-json"]
 full = ["serde", "rch", "rfn", "robj", "rtc"]
-rch = ["async-trait", "serde", "tokio-util", "tokio/io-util"]
+rch = ["async-trait", "serde", "tokio-util/codec", "tokio/io-util"]
 rfn = ["rch"]
 robj = ["rch"]
 rtc = ["rch", "remoc_macro", "async-trait"]
@@ -36,11 +36,11 @@ default-codec-message-pack = ["codec-message-pack", "default-codec-set"]
 full-codecs = ["codec-bincode", "codec-cbor", "codec-ciborium", "codec-json", "codec-message-pack"]
 
 [dependencies]
-remoc_macro = { version = "=0.9.13", path = "../remoc_macro", optional = true }
+remoc_macro = { version = "=0.9.14", path = "../remoc_macro", optional = true }
 
 futures = "0.3"
 tokio = { version = "1.13", features = ["macros", "rt", "sync", "time"] }
-tokio-util = { version = "0.6.3", features = ["codec"], optional = true }
+tokio-util = { version = "0.6.3", features = ["codec"] }
 rand = "0.8"
 tracing = "0.1.29"
 bytes = "1"
