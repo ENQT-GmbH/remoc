@@ -187,8 +187,9 @@ where
                 } => {
                     match res {
                         Ok(permit) => {
-                            permit.send(buffer[i].clone());
-                            subs[i].pos += 1;
+                            let pos = &mut subs[i].pos;
+                            permit.send(buffer[*pos].clone());
+                            *pos += 1;
                         }
                         Err(err) => {
                             let sub = subs.swap_remove(i);
