@@ -17,7 +17,11 @@ pub enum PortsExhausted {
 
 /// Channel multiplexer configuration.
 ///
-/// In most cases the default configuration ([Cfg::default]) is fine and should be used.
+/// In most cases the default configuration ([Cfg::default]) is recommended, since it
+/// provides a good balance between throughput, memory usage and latency.
+///
+/// In case of unsatisfactory performance (low throughput) your first step should be
+/// to increase the [receive buffer size](Self::receive_buffer).
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Cfg {
@@ -38,17 +42,24 @@ pub struct Cfg {
     pub ports_exhausted: PortsExhausted,
     /// Maximum size of received data per message in bytes.
     ///
-    /// [Receiver::recv_chunk](super::Receiver::recv_chunk) and [remote channels](crate::rch)
-    /// are not affected by this limit.
-    /// This can be configured on a per-receiver basis.
+    /// [Receiver::recv_chunk](super::Receiver::recv_chunk) is not affected by this limit.
     ///
-    /// By default this is 64 kB.
+    /// [Remote channels](crate::rch) will spawn a serialization and deserialization thread
+    /// to transmit and receive data in chunks if this limit is reached.
+    /// Thus, this does not limit the maximum serialized data size for remote channels
+    /// but will incur a small performance cost for inter-thread communication when exceeded.
+    ///
+    /// This can be configured on a per-receiver basis.
+    /// By default this is 512 kB.
     pub max_data_size: usize,
     /// Maximum port requests received per message.
     ///
-    /// [Remote channels](crate::rch) are not affected by this limit.
-    /// This can be configured on a per-receiver basis.
+    /// For [remote channels](crate::rch) this configures how many more ports than expected
+    /// (from the data type) can be received per message.
+    /// This is useful for compatibility when the receiver has an older version of a struct
+    /// type with less fields containing ports.
     ///
+    /// This can be configured on a per-receiver basis.
     /// By default this is 128.
     pub max_received_ports: usize,
     /// Size of a chunk of data in bytes.
@@ -58,11 +69,14 @@ pub struct Cfg {
     /// This must not exceed 2^32 - 16 = 4294967279.
     pub chunk_size: u32,
     /// Size of receive buffer of each port in bytes.
-    /// The size of the received data can exceed this value.
     ///
-    /// It will not affect [remote channels](crate::rch).
+    /// This controls the maximum amout of in-flight data per port, that is data on the transport
+    /// plus received but yet unprocessed data.
     ///
-    /// By default this is 64 kB.
+    /// Increase this value if the throughput (bytes per second) is significantly
+    /// lower than you would expect from your underlying transport connection.
+    ///
+    /// By default this is 512 kB.
     /// This must be at least 4 bytes.
     pub receive_buffer: u32,
     /// Length of global send queue.
@@ -72,7 +86,7 @@ pub struct Cfg {
     /// [Sender::try_send](super::Sender::try_send).
     /// It will not affect [remote channels](crate::rch).
     ///
-    /// By default this is 32.
+    /// By default this is 16.
     /// This must not be zero.
     pub shared_send_queue: usize,
     /// Length of transport send queue.
@@ -103,16 +117,18 @@ pub struct Cfg {
 }
 
 impl Default for Cfg {
+    /// The default configuration provides a balance between throughput,
+    /// memory usage and latency.
     fn default() -> Self {
         Self {
             connection_timeout: Some(Duration::from_secs(60)),
-            max_ports: 16384,
+            max_ports: 16_384,
             ports_exhausted: PortsExhausted::Wait(Some(Duration::from_secs(60))),
-            max_data_size: 65_536,
+            max_data_size: 524_288,
             max_received_ports: 128,
-            chunk_size: 16384,
-            receive_buffer: 65536,
-            shared_send_queue: 32,
+            chunk_size: 16_384,
+            receive_buffer: 524_288,
+            shared_send_queue: 16,
             transport_send_queue: 16,
             transport_receive_queue: 16,
             connect_queue: 128,
@@ -163,5 +179,36 @@ impl Cfg {
     /// Panics if the configuration is invalid.
     pub fn max_frame_length(&self) -> u32 {
         (MAX_MSG_LENGTH as u32).checked_add(self.chunk_size).expect("maximum frame size exceeds u32::MAX")
+    }
+
+    /// Configuration that is balanced between memory usage, latency and throughput.
+    pub fn balanced() -> Self {
+        Self::default()
+    }
+
+    /// Configuration that is optimized for low memory usage and low latency
+    /// but may be throughput-limited.
+    pub fn compact() -> Self {
+        Self {
+            shared_send_queue: 1,
+            transport_receive_queue: 1,
+            transport_send_queue: 1,
+            receive_buffer: 16_384,
+            chunk_size: 4096,
+            ..Default::default()
+        }
+    }
+
+    /// Configuration that is throughput-optimized but may use more memory per
+    /// channel and may have higher latency.
+    pub fn throughput() -> Self {
+        Self {
+            shared_send_queue: 64,
+            transport_receive_queue: 64,
+            transport_send_queue: 64,
+            receive_buffer: 1_048_576,
+            chunk_size: 32_768,
+            ..Default::default()
+        }
     }
 }
