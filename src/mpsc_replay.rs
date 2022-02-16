@@ -43,6 +43,17 @@ impl<T, Codec> fmt::Debug for ReplayBuffer<T, Codec> {
     }
 }
 
+impl<T, Codec> Default for ReplayBuffer<T, Codec>
+where
+    T: RemoteSend + Clone,
+    Codec: remoc::codec::Codec,
+{
+    fn default() -> Self {
+        let (_tx, rx) = mpsc::channel(1);
+        Self::new(rx)
+    }
+}
+
 impl<T, Codec> ReplayBuffer<T, Codec>
 where
     T: RemoteSend + Clone,
@@ -51,7 +62,7 @@ where
     /// Creates a new replay channel buffer.
     ///
     /// The replay channel buffer is fed from the receiver `rx`.
-    pub fn new(rx: mpsc::UnboundedReceiver<T>) -> Self {
+    pub fn new(rx: mpsc::Receiver<T>) -> Self {
         let (sub_tx, sub_rx) = mpsc::unbounded_channel();
         let (keep_tx, keep_rx) = oneshot::channel();
 
@@ -60,10 +71,28 @@ where
         Self { sub_tx, keep_tx: Some(keep_tx) }
     }
 
-    /// Consumes this replay buffer, but sends all buffered values
-    /// to all subscribers before their channels are closed.
-    pub fn keep(mut self) {
-        let _ = self.keep_tx.take().unwrap().send(());
+    /// Creates a new replay channel buffer.
+    ///
+    /// The replay channel buffer is fed from the unbounded receiver `rx`.
+    pub fn new_unbounded(mut rx: mpsc::UnboundedReceiver<T>) -> Self {
+        let (b_tx, b_rx) = mpsc::channel(16);
+        tokio::spawn(async move {
+            while let Some(value) = rx.recv().await {
+                if b_tx.send(value).await.is_err() {
+                    break;
+                }
+            }
+        });
+
+        Self::new(b_rx)
+    }
+
+    /// When this replay buffer is dropped, ensures that all outstanding values
+    /// are sent to the subscribers.
+    pub fn keep(&mut self) {
+        if let Some(keep_tx) = self.keep_tx.take() {
+            let _ = keep_tx.send(());
+        }
     }
 
     /// Subscribes a remote MPSC channel to the replay channel buffer.
@@ -95,7 +124,7 @@ where
     }
 
     async fn buffer_task(
-        rx: mpsc::UnboundedReceiver<T>, sub_rx: mpsc::UnboundedReceiver<SubscribeReq<T, Codec>>,
+        rx: mpsc::Receiver<T>, sub_rx: mpsc::UnboundedReceiver<SubscribeReq<T, Codec>>,
         keep_rx: oneshot::Receiver<()>,
     ) {
         let mut rx_opt = Some(rx);
