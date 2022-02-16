@@ -232,7 +232,6 @@ where
     where
         K: std::borrow::Borrow<Q>,
         Q: Hash + Eq,
-        V: Eq,
     {
         match self.hm.get_key_value(k) {
             Some((key, _)) => {
