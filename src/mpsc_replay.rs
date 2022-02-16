@@ -29,24 +29,17 @@ struct Subscription<T, Codec> {
 /// Multiple remote MPSC channels can be subscribed to the replay channel buffer and each
 /// channel will receive all values sent to the replay channel buffer, even the
 /// values that were received before it was subscribed.
+///
+/// When dropped all channels to the subscribers are closed immediately.
+/// Use [keep](Self::keep) if you want to avoid this.
 pub struct ReplayBuffer<T, Codec = remoc::codec::Default> {
-    tx: mpsc::UnboundedSender<T>,
     sub_tx: mpsc::UnboundedSender<SubscribeReq<T, Codec>>,
+    keep_tx: Option<oneshot::Sender<()>>,
 }
 
 impl<T, Codec> fmt::Debug for ReplayBuffer<T, Codec> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("ReplayBuffer").finish()
-    }
-}
-
-impl<T, Codec> Default for ReplayBuffer<T, Codec>
-where
-    T: RemoteSend + Clone,
-    Codec: remoc::codec::Codec,
-{
-    fn default() -> Self {
-        Self::new(false)
     }
 }
 
@@ -57,39 +50,20 @@ where
 {
     /// Creates a new replay channel buffer.
     ///
-    /// If `drain_on_drop` is `true` all buffered values at the time of drop are sent
-    /// to all subscribers before their channels are closed.
-    /// Otherwise, all channels to the subscribers are closed immediately when dropped.
-    pub fn new(drain_on_drop: bool) -> Self {
-        let (tx, rx) = mpsc::unbounded_channel();
+    /// The replay channel buffer is fed from the receiver `rx`.
+    pub fn new(rx: mpsc::UnboundedReceiver<T>) -> Self {
         let (sub_tx, sub_rx) = mpsc::unbounded_channel();
-        tokio::spawn(Self::buffer_task(drain_on_drop, rx, sub_rx));
-        Self { tx, sub_tx }
+        let (keep_tx, keep_rx) = oneshot::channel();
+
+        tokio::spawn(Self::buffer_task(rx, sub_rx, keep_rx));
+
+        Self { sub_tx, keep_tx: Some(keep_tx) }
     }
 
-    /// Sends a value to the replay channel buffer.
-    ///
-    /// The value will be received by all currently subscribed receivers and all
-    /// receivers that will be subscribed in the future.
-    pub fn send(&self, value: T) {
-        if self.tx.send(value).is_err() {
-            panic!("replay buffer task was shut down");
-        }
-    }
-
-    /// Feeds the replay channel buffer from a channel.
-    ///
-    /// This is equivalent to calling [send](Self::send) for every value received
-    /// over the specified channel's receive-half.
-    pub fn feed(&self, mut rx: mpsc::Receiver<T>) {
-        let tx = self.tx.clone();
-        tokio::spawn(async move {
-            while let Some(value) = rx.recv().await {
-                if tx.send(value).is_err() {
-                    panic!("replay buffer task was shut down");
-                }
-            }
-        });
+    /// Consumes this replay buffer, but sends all buffered values
+    /// to all subscribers before their channels are closed.
+    pub fn keep(mut self) {
+        let _ = self.keep_tx.take().unwrap().send(());
     }
 
     /// Subscribes a remote MPSC channel to the replay channel buffer.
@@ -121,21 +95,27 @@ where
     }
 
     async fn buffer_task(
-        drain_on_drop: bool, rx: mpsc::UnboundedReceiver<T>,
-        sub_rx: mpsc::UnboundedReceiver<SubscribeReq<T, Codec>>,
+        rx: mpsc::UnboundedReceiver<T>, sub_rx: mpsc::UnboundedReceiver<SubscribeReq<T, Codec>>,
+        keep_rx: oneshot::Receiver<()>,
     ) {
         let mut rx_opt = Some(rx);
         let mut sub_rx_opt = Some(sub_rx);
         let mut buffer: Vec<T> = Vec::new();
         let mut subs: Vec<Subscription<T, Codec>> = Vec::new();
+        let mut keep_rx = keep_rx.fuse();
 
         loop {
+            if rx_opt.is_none() {
+                subs.retain(|sub| sub.pos < buffer.len());
+            }
+
             let mut permit_tasks = Vec::new();
             for (i, sub) in subs.iter().enumerate() {
                 if sub.pos < buffer.len() {
                     permit_tasks.push(async move { (i, sub.tx.reserve().await) }.boxed());
                 }
             }
+
             if sub_rx_opt.is_none() && rx_opt.is_none() && permit_tasks.is_empty() {
                 break;
             }
@@ -152,13 +132,7 @@ where
                         Some(SubscribeReq { tx, err_tx }) => {
                             subs.push(Subscription { pos: 0, tx, err_tx });
                         }
-                        None => {
-                            if drain_on_drop {
-                                sub_rx_opt = None;
-                            } else {
-                                break;
-                            }
-                        },
+                        None => sub_rx_opt = None,
                     }
                 },
                 value_opt = async {
@@ -169,13 +143,12 @@ where
                 } => {
                     match value_opt {
                         Some(value) => buffer.push(value),
-                        None => {
-                            if drain_on_drop {
-                                rx_opt = None;
-                            } else {
-                                break;
-                            }
-                        }
+                        None => rx_opt = None,
+                    }
+                },
+                res = &mut keep_rx => {
+                    if res.is_err() {
+                        break;
                     }
                 },
                 (i, res) = async move {
