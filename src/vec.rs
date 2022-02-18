@@ -1,4 +1,4 @@
-//! A replayable MPSC channel buffer.
+//! Remotely observable growable array type.
 
 use futures::{
     future::{self, BoxFuture},
