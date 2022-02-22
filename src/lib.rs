@@ -1,7 +1,7 @@
 //! Locally and remotely observable collections.
 //!
 //! This crate provides collections that emit an event for each change.
-//! This event stream can be sent to a local or remote endpoint using [remoc],
+//! This event stream can be sent to a local or remote endpoint (using [remoc]),
 //! where it can be either processed event-wise or a mirrored collection can
 //! be built from it.
 //!
