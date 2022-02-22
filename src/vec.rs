@@ -25,7 +25,6 @@ use std::{
     fmt,
     mem::take,
     ops::{Deref, DerefMut},
-    slice::SliceIndex,
     sync::Arc,
 };
 use tokio::sync::{oneshot, watch, RwLock, RwLockReadGuard};

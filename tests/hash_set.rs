@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use remoc_obs::{
-    hashset::{HashSetEvent, ObservableHashSet},
+    hash_set::{HashSetEvent, ObservableHashSet},
     RecvError,
 };
 

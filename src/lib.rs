@@ -6,8 +6,8 @@
 //! be built from it.
 //!
 
-pub mod hashmap;
-pub mod hashset;
+pub mod hash_map;
+pub mod hash_set;
 pub mod list;
 pub mod vec;
 

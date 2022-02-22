@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use remoc_obs::{
-    hashmap::{HashMapEvent, ObservableHashMap},
+    hash_map::{HashMapEvent, ObservableHashMap},
     RecvError,
 };
 
