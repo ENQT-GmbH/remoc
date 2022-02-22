@@ -139,6 +139,11 @@ where
         )
     }
 
+    /// Current number of subscribers.
+    pub fn subscriber_count(&self) -> usize {
+        self.tx.receiver_count()
+    }
+
     /// Adds a value to the set.
     ///
     /// A [HashSetEvent::Set] change event is sent.

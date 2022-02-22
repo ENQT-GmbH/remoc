@@ -150,6 +150,11 @@ where
         )
     }
 
+    /// Current number of subscribers.
+    pub fn subscriber_count(&self) -> usize {
+        self.tx.receiver_count()
+    }
+
     /// Inserts a value under a key.
     ///
     /// A [HashMapEvent::Set] change event is sent.
