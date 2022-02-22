@@ -1,6 +1,6 @@
-//! Remotely observable hash set.
+//! Observable hash set.
 //!
-//! This provides a remotely observable hash set.
+//! This provides a locally and remotely observable hash set.
 //! The observable hash set sends a change event each time a change is performed on it.
 //! The [resulting event stream](HashSetSubscription) can either be processed event-wise
 //! or used to build a [mirrored hash set](MirroredHashSet).
@@ -373,7 +373,7 @@ enum HashSetInitialValue<T, Codec = remoc::codec::Default> {
 
 impl<T, Codec> HashSetInitialValue<T, Codec>
 where
-    T: RemoteSend + Eq + Hash + Clone + RemoteSend,
+    T: RemoteSend + Eq + Hash + Clone,
     Codec: remoc::codec::Codec,
 {
     /// Transmits the initial value as a whole.
@@ -432,7 +432,7 @@ pub struct HashSetSubscription<T, Codec = remoc::codec::Default> {
 
 impl<T, Codec> HashSetSubscription<T, Codec>
 where
-    T: RemoteSend + Eq + Hash + Clone + RemoteSend,
+    T: RemoteSend + Eq + Hash + Clone,
     Codec: remoc::codec::Codec,
 {
     fn new(

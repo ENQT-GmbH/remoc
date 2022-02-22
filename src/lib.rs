@@ -1,13 +1,14 @@
-//! Remotely observable collections for use with [remoc].
+//! Locally and remotely observable collections.
 //!
 //! This crate provides collections that emit an event for each change.
-//! This event stream can be sent to a remote endpoint via a remote channel,
+//! This event stream can be sent to a local or remote endpoint using [remoc],
 //! where it can be either processed event-wise or a mirrored collection can
 //! be built from it.
 //!
 
 pub mod hashmap;
 pub mod hashset;
+pub mod list;
 pub mod vec;
 
 use remoc::prelude::*;
@@ -86,6 +87,8 @@ pub enum RecvError {
     RemoteConnect(chmux::ConnectError),
     /// Listening for a connection from a received channel failed.
     RemoteListen(chmux::ListenerError),
+    /// Invalid index.
+    InvalidIndex(usize),
 }
 
 impl fmt::Display for RecvError {
@@ -97,6 +100,7 @@ impl fmt::Display for RecvError {
             Self::RemoteReceive(err) => write!(f, "receive error: {}", err),
             Self::RemoteConnect(err) => write!(f, "connect error: {}", err),
             Self::RemoteListen(err) => write!(f, "listen error: {}", err),
+            Self::InvalidIndex(idx) => write!(f, "index {idx} is invalid"),
         }
     }
 }

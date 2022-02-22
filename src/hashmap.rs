@@ -1,6 +1,6 @@
-//! Remotely observable hash map.
+//! Observable hash map.
 //!
-//! This provides a remotely observable hash map.
+//! This provides a locally and remotely observable hash map.
 //! The observable hash map sends a change event each time a change is performed on it.
 //! The [resulting event stream](HashMapSubscription) can either be processed event-wise
 //! or used to build a [mirrored hash map](MirroredHashMap).
@@ -486,8 +486,8 @@ enum HashMapInitialValue<K, V, Codec = remoc::codec::Default> {
 
 impl<K, V, Codec> HashMapInitialValue<K, V, Codec>
 where
-    K: RemoteSend + Eq + Hash + Clone + RemoteSend,
-    V: RemoteSend + Clone + RemoteSend,
+    K: RemoteSend + Eq + Hash + Clone,
+    V: RemoteSend + Clone,
     Codec: remoc::codec::Codec,
 {
     /// Transmits the initial value as a whole.
@@ -546,8 +546,8 @@ pub struct HashMapSubscription<K, V, Codec = remoc::codec::Default> {
 
 impl<K, V, Codec> HashMapSubscription<K, V, Codec>
 where
-    K: RemoteSend + Eq + Hash + Clone + RemoteSend,
-    V: RemoteSend + Clone + RemoteSend,
+    K: RemoteSend + Eq + Hash + Clone,
+    V: RemoteSend + Clone,
     Codec: remoc::codec::Codec,
 {
     fn new(
@@ -644,8 +644,8 @@ where
 
 impl<K, V, Codec> HashMapSubscription<K, V, Codec>
 where
-    K: RemoteSend + Eq + Hash + Clone + RemoteSend + Sync,
-    V: RemoteSend + Clone + RemoteSend + Sync,
+    K: RemoteSend + Eq + Hash + Clone + Sync,
+    V: RemoteSend + Clone + Sync,
     Codec: remoc::codec::Codec,
 {
     /// Mirror the hash map that this subscription is observing.
