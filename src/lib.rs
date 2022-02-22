@@ -14,7 +14,7 @@ use remoc::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt};
 
-/// An error occurred during sending an event for an observable HashMap change.
+/// An error occurred during sending an event for an observable collection.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SendError {
     /// Sending to a remote endpoint failed.
@@ -68,7 +68,7 @@ impl<T> TryFrom<rch::mpsc::SendError<T>> for SendError {
     }
 }
 
-/// An error occurred during receiving an event or initial value of an observed HashMap.
+/// An error occurred during receiving an event or initial value of an observed collection.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum RecvError {
     /// The observed collection was dropped before `done` was called on it.
@@ -89,7 +89,7 @@ pub enum RecvError {
 impl fmt::Display for RecvError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::Closed => write!(f, "observed HashMap was dropped"),
+            Self::Closed => write!(f, "observed collection was dropped"),
             Self::Lagged => write!(f, "observation lagged behind"),
             Self::RemoteReceive(err) => write!(f, "receive error: {}", err),
             Self::RemoteConnect(err) => write!(f, "connect error: {}", err),
