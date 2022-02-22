@@ -78,6 +78,8 @@ pub enum RecvError {
     /// Try increasing the send buffer specified when calling `subscribe` on the
     /// observed collection.
     Lagged,
+    /// The maximum size of the mirrored collection has been reached.
+    MaxSizeExceeded(usize),
     /// Receiving from a remote endpoint failed.
     RemoteReceive(rch::base::RecvError),
     /// Connecting a sent channel failed.
@@ -91,6 +93,7 @@ impl fmt::Display for RecvError {
         match self {
             Self::Closed => write!(f, "observed collection was dropped"),
             Self::Lagged => write!(f, "observation lagged behind"),
+            Self::MaxSizeExceeded(size) => write!(f, "mirrored collection reached it maximum size of {}", size),
             Self::RemoteReceive(err) => write!(f, "receive error: {}", err),
             Self::RemoteConnect(err) => write!(f, "connect error: {}", err),
             Self::RemoteListen(err) => write!(f, "listen error: {}", err),

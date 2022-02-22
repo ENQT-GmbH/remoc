@@ -315,19 +315,23 @@ struct MirroredHashSetInner<T> {
     complete: bool,
     done: bool,
     error: Option<RecvError>,
+    max_size: usize,
 }
 
 impl<T> MirroredHashSetInner<T>
 where
     T: Eq + Hash,
 {
-    fn handle_event(&mut self, event: HashSetEvent<T>) {
+    fn handle_event(&mut self, event: HashSetEvent<T>) -> Result<(), RecvError> {
         match event {
             HashSetEvent::InitialComplete => {
                 self.complete = true;
             }
             HashSetEvent::Set(v) => {
                 self.hs.insert(v);
+                if self.hs.len() > self.max_size {
+                    return Err(RecvError::MaxSizeExceeded(self.max_size));
+                }
             }
             HashSetEvent::Remove(k) => {
                 self.hs.remove(&k);
@@ -342,6 +346,7 @@ where
                 self.done = true;
             }
         }
+        Ok(())
     }
 }
 
@@ -522,7 +527,11 @@ where
     Codec: remoc::codec::Codec,
 {
     /// Mirror the hash set that this subscription is observing.
-    pub fn mirror(mut self) -> MirroredHashSet<T, Codec> {
+    ///
+    /// `max_size` specifies the maximum allowed size of the mirrored collection.
+    /// If this size is reached, processing of events is stopped and
+    /// [RecvError::MaxSizeExceeded] is returned.
+    pub fn mirror(mut self, max_size: usize) -> MirroredHashSet<T, Codec> {
         let (tx, _rx) = rch::broadcast::channel::<_, _, rch::buffer::Default>(1);
         let (changed_tx, changed_rx) = watch::channel(());
         let (dropped_tx, mut dropped_rx) = oneshot::channel();
@@ -533,6 +542,7 @@ where
             complete: self.is_complete(),
             done: self.is_done(),
             error: None,
+            max_size,
         })));
         let inner_task = inner.clone();
 
@@ -559,7 +569,11 @@ where
                             let _ = tx_send.send(event.clone());
                         }
 
-                        inner.handle_event(event);
+                        if let Err(err) = inner.handle_event(event) {
+                            inner.error = Some(err);
+                            return;
+                        }
+
                         if inner.done {
                             break;
                         }

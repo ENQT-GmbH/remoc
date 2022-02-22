@@ -94,7 +94,7 @@ async fn mirrored() {
     assert_eq!(obs.len(), len);
 
     let sub = obs.subscribe(1024);
-    let mut mirror = sub.mirror();
+    let mut mirror = sub.mirror(1000);
 
     for i in 1..500 {
         obs.insert(i);
@@ -150,7 +150,7 @@ async fn mirrored_disconnect() {
     let mut obs: ObservableHashSet<_, remoc::codec::Default> = ObservableHashSet::new();
 
     let sub = obs.subscribe(1024);
-    let mut mirror = sub.mirror();
+    let mut mirror = sub.mirror(1000);
 
     for i in 1..500 {
         obs.insert(i);
@@ -167,7 +167,7 @@ async fn mirrored_disconnect_after_done() {
     let mut obs: ObservableHashSet<_, remoc::codec::Default> = ObservableHashSet::new();
 
     let sub = obs.subscribe(1024);
-    let mut mirror = sub.mirror();
+    let mut mirror = sub.mirror(1000);
 
     for i in 1..500 {
         obs.insert(i);
@@ -204,7 +204,7 @@ async fn incremental() {
     assert_eq!(obs.len(), len);
 
     let sub = obs.subscribe_incremental(1024);
-    let mut mirror = sub.mirror();
+    let mut mirror = sub.mirror(10000);
 
     loop {
         let mb = mirror.borrow_and_update().await.unwrap();

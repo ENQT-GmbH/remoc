@@ -428,19 +428,23 @@ struct MirroredHashMapInner<K, V> {
     complete: bool,
     done: bool,
     error: Option<RecvError>,
+    max_size: usize,
 }
 
 impl<K, V> MirroredHashMapInner<K, V>
 where
     K: Eq + Hash,
 {
-    fn handle_event(&mut self, event: HashMapEvent<K, V>) {
+    fn handle_event(&mut self, event: HashMapEvent<K, V>) -> Result<(), RecvError> {
         match event {
             HashMapEvent::InitialComplete => {
                 self.complete = true;
             }
             HashMapEvent::Set(k, v) => {
                 self.hm.insert(k, v);
+                if self.hm.len() > self.max_size {
+                    return Err(RecvError::MaxSizeExceeded(self.max_size));
+                }
             }
             HashMapEvent::Remove(k) => {
                 self.hm.remove(&k);
@@ -455,6 +459,7 @@ where
                 self.done = true;
             }
         }
+        Ok(())
     }
 }
 
@@ -639,7 +644,11 @@ where
     Codec: remoc::codec::Codec,
 {
     /// Mirror the hash map that this subscription is observing.
-    pub fn mirror(mut self) -> MirroredHashMap<K, V, Codec> {
+    ///
+    /// `max_size` specifies the maximum allowed size of the mirrored collection.
+    /// If this size is reached, processing of events is stopped and
+    /// [RecvError::MaxSizeExceeded] is returned.
+    pub fn mirror(mut self, max_size: usize) -> MirroredHashMap<K, V, Codec> {
         let (tx, _rx) = rch::broadcast::channel::<_, _, rch::buffer::Default>(1);
         let (changed_tx, changed_rx) = watch::channel(());
         let (dropped_tx, mut dropped_rx) = oneshot::channel();
@@ -650,6 +659,7 @@ where
             complete: self.is_complete(),
             done: self.is_done(),
             error: None,
+            max_size,
         })));
         let inner_task = inner.clone();
 
@@ -676,7 +686,11 @@ where
                             let _ = tx_send.send(event.clone());
                         }
 
-                        inner.handle_event(event);
+                        if let Err(err) = inner.handle_event(event) {
+                            inner.error = Some(err);
+                            return;
+                        }
+
                         if inner.done {
                             break;
                         }
