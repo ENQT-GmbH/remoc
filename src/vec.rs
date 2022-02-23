@@ -23,6 +23,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
     fmt,
+    iter::{Enumerate, FusedIterator},
     mem::take,
     ops::{Deref, DerefMut},
     sync::Arc,
@@ -50,6 +51,8 @@ pub enum VecEvent<T> {
     Remove(usize),
     /// The specified element was removed and replaced by the last element.
     SwapRemove(usize),
+    /// All vector elements have been set to the specified value.
+    Fill(T),
     /// The vector has been resized to the specified length.
     Resize(usize, T),
     /// The vector has been truncated to the specified length.
@@ -217,6 +220,18 @@ where
         }
     }
 
+    /// Mutably iterates over items.
+    ///
+    /// A [VecEvent::Set] change event is sent for each value that is accessed mutably.
+    ///
+    /// # Panics
+    /// Panics when [done](Self::done) has been called before.    
+    pub fn iter_mut(&mut self) -> IterMut<T, Codec> {
+        self.assert_not_done();
+
+        IterMut { inner: self.v.iter_mut().enumerate(), tx: &self.tx, on_err: &*self.on_err }
+    }
+
     /// Inserts an element at the specified position, shift all elements after it to the right.
     ///
     /// A [VecEvent::Insert] change event is sent.
@@ -261,6 +276,19 @@ where
         let value = self.v.swap_remove(index);
         send_event(&self.tx, &*self.on_err, VecEvent::SwapRemove(index));
         value
+    }
+
+    /// Fills the vector with the specified value.
+    ///
+    /// A [VecEvent::Fill] change event is sent.
+    ///
+    /// # Panics
+    /// Panics when [done](Self::done) has been called before.
+    pub fn fill(&mut self, value: T) {
+        self.assert_not_done();
+
+        send_event(&self.tx, &*self.on_err, VecEvent::Fill(value.clone()));
+        self.v.fill(value);
     }
 
     /// Resizes the vector to the specified length, filling each additional slot with the
@@ -454,6 +482,68 @@ where
     }
 }
 
+/// A mutable iterator over the items in an [observable vector](ObservableVec).
+///
+/// A [VecEvent::Set] change event is sent for each value that is accessed mutably.
+pub struct IterMut<'a, T, Codec> {
+    inner: Enumerate<std::slice::IterMut<'a, T>>,
+    tx: &'a rch::broadcast::Sender<VecEvent<T>, Codec>,
+    on_err: &'a dyn Fn(SendError),
+}
+
+impl<'a, T, Codec> Iterator for IterMut<'a, T, Codec>
+where
+    T: Clone + RemoteSend,
+    Codec: remoc::codec::Codec,
+{
+    type Item = RefMut<'a, T, Codec>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.inner.next() {
+            Some((index, value)) => {
+                Some(RefMut { index, value, changed: false, tx: self.tx, on_err: self.on_err })
+            }
+            None => None,
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
+    }
+}
+
+impl<'a, T, Codec> ExactSizeIterator for IterMut<'a, T, Codec>
+where
+    T: Clone + RemoteSend,
+    Codec: remoc::codec::Codec,
+{
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+}
+
+impl<'a, T, Codec> DoubleEndedIterator for IterMut<'a, T, Codec>
+where
+    T: Clone + RemoteSend,
+    Codec: remoc::codec::Codec,
+{
+    fn next_back(&mut self) -> Option<Self::Item> {
+        match self.inner.next_back() {
+            Some((index, value)) => {
+                Some(RefMut { index, value, changed: false, tx: self.tx, on_err: self.on_err })
+            }
+            None => None,
+        }
+    }
+}
+
+impl<'a, T, Codec> FusedIterator for IterMut<'a, T, Codec>
+where
+    T: Clone + RemoteSend,
+    Codec: remoc::codec::Codec,
+{
+}
+
 struct MirroredVecInner<T> {
     v: Vec<T>,
     complete: bool,
@@ -503,6 +593,9 @@ where
                     return Err(RecvError::InvalidIndex(i));
                 }
                 self.v.swap_remove(i);
+            }
+            VecEvent::Fill(v) => {
+                self.v.fill(v);
             }
             VecEvent::Resize(l, v) => {
                 self.v.resize(l, v);
