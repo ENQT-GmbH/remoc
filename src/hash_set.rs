@@ -315,6 +315,18 @@ impl<T, Codec> Deref for ObservableHashSet<T, Codec> {
     }
 }
 
+impl<T, Codec> Extend<T> for ObservableHashSet<T, Codec>
+where
+    T: RemoteSend + Eq + Hash + Clone,
+    Codec: remoc::codec::Codec,
+{
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        for value in iter {
+            self.insert(value);
+        }
+    }
+}
+
 struct MirroredHashSetInner<T> {
     hs: HashSet<T>,
     complete: bool,

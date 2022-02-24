@@ -323,6 +323,19 @@ impl<K, V, Codec> Deref for ObservableHashMap<K, V, Codec> {
     }
 }
 
+impl<K, V, Codec> Extend<(K, V)> for ObservableHashMap<K, V, Codec>
+where
+    K: Eq + Hash + Clone + RemoteSend,
+    V: Clone + RemoteSend,
+    Codec: remoc::codec::Codec,
+{
+    fn extend<I: IntoIterator<Item = (K, V)>>(&mut self, iter: I) {
+        for (k, v) in iter {
+            self.insert(k, v);
+        }
+    }
+}
+
 /// A mutable reference to a value inside an [observable hash map](ObservableHashMap).
 ///
 /// A [HashMapEvent::Set] change event is sent when this reference is dropped and the

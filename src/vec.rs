@@ -9,6 +9,12 @@
 //! subscribers cannot block the observed vector and are shed when their event buffer
 //! exceeds a configurable size.
 //!
+//! # Alternatives
+//!
+//! The [observable append-only list](crate::list) is more memory-efficient as it does not
+//! require a send buffer for each subscriber.
+//! You should prefer it, if you are only appending to the vector.
+//!
 //! # Basic use
 //!
 //! Create a [ObservableVec] and obtain a [subscription](VecSubscription) to it using
@@ -428,6 +434,18 @@ impl<T, Codec> Deref for ObservableVec<T, Codec> {
 
     fn deref(&self) -> &Self::Target {
         &self.v
+    }
+}
+
+impl<T, Codec> Extend<T> for ObservableVec<T, Codec>
+where
+    T: RemoteSend + Clone,
+    Codec: remoc::codec::Codec,
+{
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        for value in iter {
+            self.push(value);
+        }
     }
 }
 
