@@ -73,7 +73,7 @@ enum DistReq<T, Codec> {
 ///
 /// This is clonable and can be sent to other tasks.
 #[derive(Clone)]
-pub struct ObservableListDistributor<T, Codec> {
+pub struct ObservableListDistributor<T, Codec = remoc::codec::Default> {
     tx: mpsc::UnboundedSender<DistReq<T, Codec>>,
     len: Arc<AtomicUsize>,
     subscriber_count: Arc<AtomicUsize>,

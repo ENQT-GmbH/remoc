@@ -1,6 +1,6 @@
 [package]
 name = "remoc-obs"
-version = "0.4.2"
+version = "0.4.3"
 edition = "2021"
 authors = ["Sebastian Urban <surban@surban.net>"]
 readme = "README.md"
