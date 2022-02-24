@@ -1,0 +1,90 @@
+name: Rust
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rustfmt:
+    name: Check formatting
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Run cargo fmt
+        run: cargo fmt --all -- --check
+
+  msrv:
+    name: Check with MSRV
+    runs-on: ubuntu-latest
+    env:
+      minrust: 1.57
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Install Rust ${{ env.minrust }}
+        run: rustup default ${{ env.minrust }}
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v1
+
+      - name: Run cargo check
+        run: cargo check
+
+  # Lints
+  build-docs:
+    name: Build docs
+    needs: [msrv]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v1
+
+      - name: Build docs
+        env:
+          RUSTDOCFLAGS: -D rustdoc::broken_intra_doc_links
+        run: cargo doc --no-deps
+
+  clippy:
+    name: Clippy
+    needs: [msrv]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v1
+
+      - name: Run clippy
+        run: cargo clippy --tests
+
+  # Tests
+  test:
+    name: Test
+    needs: [msrv]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v2
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v1
+
+      - name: Run cargo test
+        run: cargo test
