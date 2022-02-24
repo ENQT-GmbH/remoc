@@ -44,11 +44,7 @@ async fn events() {
 
 #[tokio::test]
 async fn events_incremental() {
-    let mut hs = Vec::new();
-    hs.push(0u32);
-    hs.push(1);
-    hs.push(2);
-
+    let hs = vec![0u32, 1, 2];
     let mut obs: ObservableList<_, remoc::codec::Default> = ObservableList::from(hs.clone());
 
     let mut sub = obs.subscribe();

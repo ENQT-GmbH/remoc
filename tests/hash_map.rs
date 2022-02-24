@@ -208,6 +208,7 @@ async fn incremental() {
 
     loop {
         let mb = mirror.borrow_and_update().await.unwrap();
+        #[allow(clippy::comparison_chain)]
         if mb.len() < len {
             assert!(!mb.is_complete());
         } else if mb.len() > len {

@@ -56,11 +56,7 @@ async fn events() {
 
 #[tokio::test]
 async fn events_incremental() {
-    let mut hs = Vec::new();
-    hs.push(0u32);
-    hs.push(1);
-    hs.push(2);
-
+    let hs = vec![0u32, 1, 2];
     let mut obs: ObservableVec<_, remoc::codec::Default> = ObservableVec::from(hs.clone());
 
     let mut sub = obs.subscribe_incremental(1024);
@@ -217,6 +213,7 @@ async fn incremental() {
 
     loop {
         let mb = mirror.borrow_and_update().await.unwrap();
+        #[allow(clippy::comparison_chain)]
         if mb.len() < len {
             assert!(!mb.is_complete());
         } else if mb.len() > len {
