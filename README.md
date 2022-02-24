@@ -1,12 +1,15 @@
-# Remoc-obs — remotely observable collections for use with [Remoc]
+# Remoc-obs — remotely observable collection types
 
 This crate provides collections that emit an event for each change.
-This event stream can be sent to a remote endpoint via a [Remoc] channel,
-where a mirrored collection can be built from it.
+This event stream can be sent to a local or remote endpoint (using [Remoc]),
+where it can be either processed event-wise or a mirrored collection can
+be built from it.
 
-At the moment the following is implemented:
-  * a remotely observable hash map
-  * a channel buffer that stores and replays all values sent through it
+The following observable types are implemented:
+  * vector
+  * append-only list
+  * hash map
+  * hash set
 
 [Remoc]: https://crates.io/crates/remoc
 [![crates.io page](https://img.shields.io/crates/v/remoc-obs)](https://crates.io/crates/remoc-obs)
