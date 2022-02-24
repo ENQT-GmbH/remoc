@@ -25,7 +25,7 @@ jobs:
     name: Check with MSRV
     runs-on: ubuntu-latest
     env:
-      minrust: 1.57
+      minrust: 1.58
 
     steps:
       - name: Checkout sources

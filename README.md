@@ -19,7 +19,7 @@ The following observable types are implemented:
 ## Supported Rust versions
 
 Remoc-obs is built against the latest stable release.
-The minimum supported Rust version (MSRV) is 1.57.
+The minimum supported Rust version (MSRV) is 1.58.
 
 ## License
 
