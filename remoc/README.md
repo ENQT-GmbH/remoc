@@ -5,7 +5,8 @@ Over a [single underlying transport], it provides:
 
   * [multiple channels] of different types like [MPSC], [oneshot], [watch], etc.,
   * [remote synchronization] primitives,
-  * calling of [remote functions] and [trait methods on a remote object (RPC)].
+  * calling of [remote functions] and [trait methods on a remote object (RPC)],
+  * [remotely observable collections].
 
 Remoc is written in [100% safe Rust], builds upon [Tokio], works with any type
 and data format supported by [Serde] and does not depend on any particular
@@ -18,6 +19,7 @@ transport type.
 [watch]: https://docs.rs/remoc/latest/remoc/rch/watch/index.html
 [remote synchronization]: https://docs.rs/remoc/latest/remoc/robj/index.html
 [remote functions]: https://docs.rs/remoc/latest/remoc/rfn/index.html
+[remotely observable collections]: https://crates.io/crates/remoc-obs
 [trait methods on a remote object (RPC)]: https://docs.rs/remoc/latest/remoc/rtc/index.html
 [100% safe Rust]: https://www.rust-lang.org/
 [Tokio]: https://tokio.rs
@@ -100,9 +102,6 @@ applications, not libraries.
 The feature `full-codecs` enables all codecs.
 
 By default all features are enabled and the JSON codec is used as default.
-
-[`serde_cbor`]: https://crates.io/crates/serde_cbor
-[no longer maintained]: https://rustsec.org/advisories/RUSTSEC-2021-0127
 
 ## Supported Rust versions
 

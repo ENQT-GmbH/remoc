@@ -4,6 +4,10 @@ All notable changes to Remoc will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.9.16 - 2022-02-24
+### Added
+- reference to remoc-obs crate for remotely observable collections
+
 ## 0.9.15 - 2022-02-08
 ### Changed
 - optimize default configuration for higher throughput

@@ -13,7 +13,8 @@
 //!
 //!   * [multiple channels] of different types like [MPSC], [oneshot], [watch], etc.,
 //!   * [remote synchronization] primitives,
-//!   * calling of [remote functions] and [trait methods] on a remote object (RPC).
+//!   * calling of [remote functions] and [trait methods] on a remote object (RPC),
+//!   * [remotely observable collections].
 //!
 //! Remoc is written in 100% safe Rust, builds upon [Tokio], works with any type
 //! and [data format] supported by [Serde] and does not depend on any particular
@@ -31,6 +32,7 @@
 //! [data format]: codec
 //! [Serde]: serde
 //! [transport type]: Connect
+//! [remotely observable collections]: robs
 //!
 //! # Introduction
 //!
@@ -249,6 +251,8 @@ pub mod rfn;
 #[cfg(feature = "robj")]
 #[cfg_attr(docsrs, doc(cfg(feature = "robj")))]
 pub mod robj;
+
+pub mod robs;
 
 #[cfg(feature = "rtc")]
 #[cfg_attr(docsrs, doc(cfg(feature = "rtc")))]
