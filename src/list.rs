@@ -568,6 +568,21 @@ where
             None => Ok(None),
         }
     }
+
+    /// Receives the next item.
+    ///
+    /// `Ok(None)` is returned when all items have been received and the observed
+    /// list has been marked as done.
+    pub async fn recv_item(&mut self) -> Result<Option<T>, RecvError> {
+        loop {
+            match self.recv().await? {
+                Some(ListEvent::InitialComplete) => (),
+                Some(ListEvent::Push(item)) => return Ok(Some(item)),
+                Some(ListEvent::Done) => (),
+                None => return Ok(None),
+            }
+        }
+    }
 }
 
 impl<T, Codec> ListSubscription<T, Codec>
@@ -582,31 +597,31 @@ where
     /// [RecvError::MaxSizeExceeded] is returned.
     pub fn mirror(mut self, max_size: usize) -> MirroredList<T> {
         let (changed_tx, changed_rx) = watch::channel(());
-        let (dropped_tx, mut dropped_rx) = oneshot::channel();
+        let (dropped_tx, mut dropped_rx) = mpsc::channel(1);
 
         // Build initial state.
-        let inner = Arc::new(RwLock::new(Some(MirroredListInner {
+        let inner = Arc::new(RwLock::new(MirroredListInner {
             v: Vec::new(),
             complete: false,
             done: false,
             error: None,
             max_size,
-        })));
-        let inner_task = inner.clone();
+        }));
+        let inner_task = Arc::downgrade(&inner);
 
         // Process change events.
         tokio::spawn(async move {
             loop {
                 let event = tokio::select! {
                     event = self.recv() => event,
-                    _ = &mut dropped_rx => return,
+                    _ = dropped_rx.recv() => return,
                 };
 
-                let mut inner = inner_task.write().await;
-                let mut inner = match inner.as_mut() {
+                let inner = match inner_task.upgrade() {
                     Some(inner) => inner,
                     None => return,
                 };
+                let mut inner = inner.write().await;
 
                 changed_tx.send_replace(());
 
@@ -630,15 +645,18 @@ where
             }
         });
 
-        MirroredList { inner, changed_rx, _dropped_tx: dropped_tx }
+        MirroredList { inner: Some(inner), changed_rx, _dropped_tx: dropped_tx }
     }
 }
 
 /// An append-only list that is mirroring an observable append-only list.
+///
+/// Clones of this are cheap and share the same underlying mirrored list.
+#[derive(Clone)]
 pub struct MirroredList<T> {
-    inner: Arc<RwLock<Option<MirroredListInner<T>>>>,
+    inner: Option<Arc<RwLock<MirroredListInner<T>>>>,
     changed_rx: watch::Receiver<()>,
-    _dropped_tx: oneshot::Sender<()>,
+    _dropped_tx: mpsc::Sender<()>,
 }
 
 impl<T> fmt::Debug for MirroredList<T> {
@@ -649,7 +667,7 @@ impl<T> fmt::Debug for MirroredList<T> {
 
 impl<T> MirroredList<T>
 where
-    T: RemoteSend,
+    T: RemoteSend + Clone,
 {
     /// Returns a reference to the current value of the list.
     ///
@@ -661,8 +679,7 @@ where
     /// In this case the mirrored contents at the point of loss of connection
     /// can be obtained using [detach](Self::detach).
     pub async fn borrow(&self) -> Result<MirroredListRef<'_, T>, RecvError> {
-        let inner = self.inner.read().await;
-        let inner = RwLockReadGuard::map(inner, |inner| inner.as_ref().unwrap());
+        let inner = self.inner.as_ref().unwrap().read().await;
         match &inner.error {
             None => Ok(MirroredListRef(inner)),
             Some(err) => Err(err.clone()),
@@ -682,9 +699,8 @@ where
     /// In this case the mirrored contents at the point of loss of connection
     /// can be obtained using [detach](Self::detach).
     pub async fn borrow_and_update(&mut self) -> Result<MirroredListRef<'_, T>, RecvError> {
-        let inner = self.inner.read().await;
+        let inner = self.inner.as_ref().unwrap().read().await;
         self.changed_rx.borrow_and_update();
-        let inner = RwLockReadGuard::map(inner, |inner| inner.as_ref().unwrap());
         match &inner.error {
             None => Ok(MirroredListRef(inner)),
             Some(err) => Err(err.clone()),
@@ -692,9 +708,13 @@ where
     }
 
     /// Stops updating the list and returns its current contents.
-    pub async fn detach(self) -> Vec<T> {
-        let mut inner = self.inner.write().await;
-        inner.take().unwrap().v
+    ///
+    /// If clones of this mirrored list exist, the cloned contents are returned.
+    pub async fn detach(mut self) -> Vec<T> {
+        match Arc::try_unwrap(self.inner.take().unwrap()) {
+            Ok(inner) => inner.into_inner().v,
+            Err(inner) => inner.read().await.v.clone(),
+        }
     }
 
     /// Waits for a change (append of one or more elements) and marks the newest value as seen.
