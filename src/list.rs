@@ -724,6 +724,17 @@ where
     pub async fn changed(&mut self) {
         let _ = self.changed_rx.changed().await;
     }
+
+    /// Waits for the observed list to be marked as done and for all elements to
+    /// be received by this mirror of it.
+    ///
+    /// This marks changes as seen, even when aborted.
+    pub async fn done(&mut self) -> Result<(), RecvError> {
+        while !self.borrow_and_update().await?.is_done() {
+            self.changed().await;
+        }
+        Ok(())
+    }
 }
 
 impl<T> Drop for MirroredList<T> {
