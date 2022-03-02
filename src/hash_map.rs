@@ -258,7 +258,6 @@ where
     where
         K: std::borrow::Borrow<Q>,
         Q: Hash + Eq,
-        V: Eq,
     {
         self.assert_not_done();
 
