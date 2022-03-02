@@ -536,6 +536,7 @@ where
     }
 }
 
+/// A view into an occupied entry in an observable hash map.
 pub struct OccupiedEntry<'a, K, V, Codec = remoc::codec::Default> {
     inner: std::collections::hash_map::OccupiedEntry<'a, K, V>,
     tx: &'a rch::broadcast::Sender<HashMapEvent<K, V>, Codec>,

@@ -1,3 +1,11 @@
+#![forbid(unsafe_code)]
+#![warn(missing_docs)]
+#![cfg_attr(docsrs, feature(doc_cfg))]
+#![doc(
+    html_logo_url = "https://raw.githubusercontent.com/ENQT-GmbH/remoc/master/.misc/Remoc.png",
+    html_favicon_url = "https://raw.githubusercontent.com/ENQT-GmbH/remoc/master/.misc/Remoc.png"
+)]
+
 //! Remotely observable collections.
 //!
 //! This crate provides collections that emit an event for each change.
