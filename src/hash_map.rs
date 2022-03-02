@@ -231,6 +231,23 @@ where
         });
     }
 
+    /// Gets the given key’s corresponding entry in the map for in-place manipulation.
+    ///
+    /// # Panics
+    /// Panics when [done](Self::done) has been called before.
+    pub fn entry(&mut self, key: K) -> Entry<'_, K, V, Codec> {
+        self.assert_not_done();
+
+        match self.hm.entry(key) {
+            std::collections::hash_map::Entry::Occupied(inner) => {
+                Entry::Occupied(OccupiedEntry { inner, tx: &self.tx, on_err: &*self.on_err })
+            }
+            std::collections::hash_map::Entry::Vacant(inner) => {
+                Entry::Vacant(VacantEntry { inner, tx: &self.tx, on_err: &*self.on_err })
+            }
+        }
+    }
+
     /// Gets a mutable reference to the value under the specified key.
     ///
     /// A [HashMapEvent::Set] change event is sent if the reference is accessed mutably.
@@ -394,7 +411,7 @@ where
 /// A mutable iterator over the key-value pairs in an [observable hash map](ObservableHashMap).
 ///
 /// A [HashMapEvent::Set] change event is sent for each value that is accessed mutably.
-pub struct IterMut<'a, K, V, Codec> {
+pub struct IterMut<'a, K, V, Codec = remoc::codec::Default> {
     inner: std::collections::hash_map::IterMut<'a, K, V>,
     tx: &'a rch::broadcast::Sender<HashMapEvent<K, V>, Codec>,
     on_err: &'a dyn Fn(SendError),
@@ -439,6 +456,205 @@ where
     V: Clone + RemoteSend,
     Codec: remoc::codec::Codec,
 {
+}
+
+/// A view into a single entry in an observable hash map, which may either be
+/// vacant or occupied.
+///
+/// This is returned by [ObservableHashMap::entry].
+#[derive(Debug)]
+pub enum Entry<'a, K, V, Codec = remoc::codec::Default> {
+    /// An occupied entry.
+    Occupied(OccupiedEntry<'a, K, V, Codec>),
+    /// A vacant entry.
+    Vacant(VacantEntry<'a, K, V, Codec>),
+}
+
+impl<'a, K, V, Codec> Entry<'a, K, V, Codec>
+where
+    K: Clone + RemoteSend,
+    V: Clone + RemoteSend,
+    Codec: remoc::codec::Codec,
+{
+    /// Ensures a value is in the entry by inserting the default if empty,
+    /// and returns a mutable reference to the value in the entry.    
+    pub fn or_insert(self, default: V) -> RefMut<'a, K, V, Codec> {
+        match self {
+            Self::Occupied(ocu) => ocu.into_mut(),
+            Self::Vacant(vac) => vac.insert(default),
+        }
+    }
+
+    /// Ensures a value is in the entry by inserting the result of the default
+    /// function if empty, and returns a mutable reference to the value in the entry.    
+    pub fn or_insert_with<F: FnOnce() -> V>(self, default: F) -> RefMut<'a, K, V, Codec> {
+        match self {
+            Self::Occupied(ocu) => ocu.into_mut(),
+            Self::Vacant(vac) => vac.insert(default()),
+        }
+    }
+
+    /// Ensures a value is in the entry by inserting the result of the default
+    /// function with key as argument if empty, and returns a mutable reference to the value in the entry.    
+    pub fn or_insert_with_key<F: FnOnce(&K) -> V>(self, default: F) -> RefMut<'a, K, V, Codec> {
+        match self {
+            Self::Occupied(ocu) => ocu.into_mut(),
+            Self::Vacant(vac) => {
+                let value = default(vac.key());
+                vac.insert(value)
+            }
+        }
+    }
+
+    /// Returns a reference to this entry’s key.
+    pub fn key(&self) -> &K {
+        match self {
+            Self::Occupied(ocu) => ocu.key(),
+            Self::Vacant(vac) => vac.key(),
+        }
+    }
+
+    /// Provides in-place mutable access to an occupied entry before any potential inserts into the map.
+    pub fn and_modify<F: FnOnce(&mut V)>(mut self, f: F) -> Self {
+        if let Self::Occupied(ocu) = &mut self {
+            let mut value = ocu.get_mut();
+            f(&mut *value);
+        }
+        self
+    }
+}
+
+impl<'a, K, V, Codec> Entry<'a, K, V, Codec>
+where
+    K: Clone + RemoteSend,
+    V: Clone + RemoteSend + Default,
+    Codec: remoc::codec::Codec,
+{
+    /// Ensures a value is in the entry by inserting the default value if empty,
+    /// and returns a mutable reference to the value in the entry.    
+    pub fn or_default(self) -> RefMut<'a, K, V, Codec> {
+        self.or_insert_with(V::default)
+    }
+}
+
+pub struct OccupiedEntry<'a, K, V, Codec = remoc::codec::Default> {
+    inner: std::collections::hash_map::OccupiedEntry<'a, K, V>,
+    tx: &'a rch::broadcast::Sender<HashMapEvent<K, V>, Codec>,
+    on_err: &'a dyn Fn(SendError),
+}
+
+impl<'a, K, V, Codec> fmt::Debug for OccupiedEntry<'a, K, V, Codec>
+where
+    K: fmt::Debug,
+    V: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.inner.fmt(f)
+    }
+}
+
+impl<'a, K, V, Codec> OccupiedEntry<'a, K, V, Codec>
+where
+    K: Clone + RemoteSend,
+    V: Clone + RemoteSend,
+    Codec: remoc::codec::Codec,
+{
+    /// Gets a reference to the key in the entry.
+    pub fn key(&self) -> &K {
+        self.inner.key()
+    }
+
+    /// Take the ownership of the key and value from the map.
+    ///
+    /// A [HashMapEvent::Remove] change event is sent.
+    pub fn remove_entry(self) -> (K, V) {
+        let (k, v) = self.inner.remove_entry();
+        send_event(self.tx, &*self.on_err, HashMapEvent::Remove(k.clone()));
+        (k, v)
+    }
+
+    /// Gets a reference to the value in the entry.
+    pub fn get(&self) -> &V {
+        self.inner.get()
+    }
+
+    /// Gets a mutable reference to the value in the entry.
+    pub fn get_mut(&mut self) -> RefMut<'_, K, V, Codec> {
+        RefMut {
+            key: self.inner.key().clone(),
+            value: self.inner.get_mut(),
+            changed: false,
+            tx: self.tx,
+            on_err: &*self.on_err,
+        }
+    }
+
+    /// Converts this into a mutable reference to the value in
+    /// the entry with a lifetime bound to the map itself.
+    pub fn into_mut(self) -> RefMut<'a, K, V, Codec> {
+        let key = self.inner.key().clone();
+        RefMut { key, value: self.inner.into_mut(), changed: false, tx: self.tx, on_err: &*self.on_err }
+    }
+
+    /// Sets the value of the entry, and returns the entry’s old value.
+    ///
+    /// A [HashMapEvent::Set] change event is sent.
+    pub fn insert(&mut self, value: V) -> V {
+        send_event(self.tx, &*self.on_err, HashMapEvent::Set(self.inner.key().clone(), value.clone()));
+        self.inner.insert(value)
+    }
+
+    /// Takes the value out of the entry, and returns it.
+    ///
+    /// A [HashMapEvent::Remove] change event is sent.
+    pub fn remove(self) -> V {
+        let (k, v) = self.inner.remove_entry();
+        send_event(self.tx, &*self.on_err, HashMapEvent::Remove(k));
+        v
+    }
+}
+
+/// A view into a vacant entry in an observable hash map.
+pub struct VacantEntry<'a, K, V, Codec = remoc::codec::Default> {
+    inner: std::collections::hash_map::VacantEntry<'a, K, V>,
+    tx: &'a rch::broadcast::Sender<HashMapEvent<K, V>, Codec>,
+    on_err: &'a dyn Fn(SendError),
+}
+
+impl<'a, K, V, Codec> fmt::Debug for VacantEntry<'a, K, V, Codec>
+where
+    K: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.inner.fmt(f)
+    }
+}
+
+impl<'a, K, V, Codec> VacantEntry<'a, K, V, Codec>
+where
+    K: Clone + RemoteSend,
+    V: Clone + RemoteSend,
+    Codec: remoc::codec::Codec,
+{
+    /// Gets a reference to the key.
+    pub fn key(&self) -> &K {
+        self.inner.key()
+    }
+
+    /// Take ownership of the key.
+    pub fn into_key(self) -> K {
+        self.inner.into_key()
+    }
+
+    /// Sets the value of the entry, and returns a mutable reference to it.
+    ///
+    /// A [HashMapEvent::Set] change event is sent.
+    pub fn insert(self, value: V) -> RefMut<'a, K, V, Codec> {
+        let key = self.inner.key().clone();
+        send_event(self.tx, &*self.on_err, HashMapEvent::Set(key.clone(), value.clone()));
+        let value = self.inner.insert(value);
+        RefMut { key, value, changed: false, tx: self.tx, on_err: &*self.on_err }
+    }
 }
 
 struct MirroredHashMapInner<K, V> {
