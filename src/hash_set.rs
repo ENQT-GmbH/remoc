@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, fmt, hash::Hash, mem::take, ops::Deref, sync::Arc};
 use tokio::sync::{oneshot, watch, RwLock, RwLockReadGuard};
 
-use crate::{default_on_err, send_event, RecvError, SendError};
+use crate::{default_on_err, send_event, ChangeNotifier, ChangeSender, RecvError, SendError};
 
 /// A hash set change event.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -52,6 +52,7 @@ pub enum HashSetEvent<T> {
 pub struct ObservableHashSet<T, Codec = remoc::codec::Default> {
     hs: HashSet<T>,
     tx: rch::broadcast::Sender<HashSetEvent<T>, Codec>,
+    change: ChangeSender,
     on_err: Arc<dyn Fn(SendError) + Send + Sync>,
     done: bool,
 }
@@ -72,7 +73,7 @@ where
 {
     fn from(hs: HashSet<T>) -> Self {
         let (tx, _rx) = rch::broadcast::channel::<_, _, rch::buffer::Default>(1);
-        Self { hs, tx, on_err: Arc::new(default_on_err), done: false }
+        Self { hs, tx, change: ChangeSender::new(), on_err: Arc::new(default_on_err), done: false }
     }
 }
 
@@ -144,6 +145,12 @@ where
         self.tx.receiver_count()
     }
 
+    /// Returns a [change notifier](ChangeNotifier) that can be used *locally* to be
+    /// notified of changes to this collection.
+    pub fn notifier(&self) -> ChangeNotifier {
+        self.change.subscribe()
+    }
+
     /// Adds a value to the set.
     ///
     /// A [HashSetEvent::Set] change event is sent.
@@ -154,6 +161,7 @@ where
     /// Panics when [done](Self::done) has been called before.
     pub fn insert(&mut self, value: T) -> bool {
         self.assert_not_done();
+        self.change.notify();
 
         send_event(&self.tx, &*self.on_err, HashSetEvent::Set(value.clone()));
         self.hs.insert(value)
@@ -169,6 +177,7 @@ where
     /// Panics when [done](Self::done) has been called before.    
     pub fn replace(&mut self, value: T) -> Option<T> {
         self.assert_not_done();
+        self.change.notify();
 
         send_event(&self.tx, &*self.on_err, HashSetEvent::Set(value.clone()));
         self.hs.replace(value)
@@ -191,6 +200,7 @@ where
 
         match self.hs.take(value) {
             Some(v) => {
+                self.change.notify();
                 send_event(&self.tx, &*self.on_err, HashSetEvent::Remove(v));
                 true
             }
@@ -215,6 +225,7 @@ where
 
         match self.hs.take(value) {
             Some(v) => {
+                self.change.notify();
                 send_event(&self.tx, &*self.on_err, HashSetEvent::Remove(v.clone()));
                 Some(v)
             }
@@ -233,6 +244,7 @@ where
 
         if !self.hs.is_empty() {
             self.hs.clear();
+            self.change.notify();
             send_event(&self.tx, &*self.on_err, HashSetEvent::Clear);
         }
     }
@@ -253,6 +265,7 @@ where
             if f(v) {
                 true
             } else {
+                self.change.notify();
                 send_event(&self.tx, &*self.on_err, HashSetEvent::Remove(v.clone()));
                 false
             }

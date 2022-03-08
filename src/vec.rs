@@ -36,7 +36,7 @@ use std::{
 };
 use tokio::sync::{oneshot, watch, RwLock, RwLockReadGuard};
 
-use crate::{default_on_err, send_event, RecvError, SendError};
+use crate::{default_on_err, send_event, ChangeNotifier, ChangeSender, RecvError, SendError};
 
 /// A vector change event.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -89,6 +89,7 @@ pub enum VecEvent<T> {
 pub struct ObservableVec<T, Codec = remoc::codec::Default> {
     v: Vec<T>,
     tx: rch::broadcast::Sender<VecEvent<T>, Codec>,
+    change: ChangeSender,
     on_err: Arc<dyn Fn(SendError) + Send + Sync>,
     done: bool,
 }
@@ -109,7 +110,7 @@ where
 {
     fn from(hs: Vec<T>) -> Self {
         let (tx, _rx) = rch::broadcast::channel::<_, _, rch::buffer::Default>(1);
-        Self { v: hs, tx, on_err: Arc::new(default_on_err), done: false }
+        Self { v: hs, tx, change: ChangeSender::new(), on_err: Arc::new(default_on_err), done: false }
     }
 }
 
@@ -180,6 +181,12 @@ where
         self.tx.receiver_count()
     }
 
+    /// Returns a [change notifier](ChangeNotifier) that can be used *locally* to be
+    /// notified of changes to this collection.
+    pub fn notifier(&self) -> ChangeNotifier {
+        self.change.subscribe()
+    }
+
     /// Appends an element at the end.
     ///
     /// A [VecEvent::Push] change event is sent.
@@ -188,6 +195,7 @@ where
     /// Panics when [done](Self::done) has been called before.
     pub fn push(&mut self, value: T) {
         self.assert_not_done();
+        self.change.notify();
 
         send_event(&self.tx, &*self.on_err, VecEvent::Push(value.clone()));
         self.v.push(value);
@@ -204,6 +212,7 @@ where
 
         match self.v.pop() {
             Some(value) => {
+                self.change.notify();
                 send_event(&self.tx, &*self.on_err, VecEvent::Pop);
                 Some(value)
             }
@@ -221,7 +230,14 @@ where
         self.assert_not_done();
 
         match self.v.get_mut(index) {
-            Some(value) => Some(RefMut { index, value, changed: false, tx: &self.tx, on_err: &*self.on_err }),
+            Some(value) => Some(RefMut {
+                index,
+                value,
+                changed: false,
+                tx: &self.tx,
+                change: &self.change,
+                on_err: &*self.on_err,
+            }),
             None => None,
         }
     }
@@ -235,7 +251,12 @@ where
     pub fn iter_mut(&mut self) -> IterMut<T, Codec> {
         self.assert_not_done();
 
-        IterMut { inner: self.v.iter_mut().enumerate(), tx: &self.tx, on_err: &*self.on_err }
+        IterMut {
+            inner: self.v.iter_mut().enumerate(),
+            tx: &self.tx,
+            change: &self.change,
+            on_err: &*self.on_err,
+        }
     }
 
     /// Inserts an element at the specified position, shift all elements after it to the right.
@@ -249,6 +270,7 @@ where
 
         let value_event = value.clone();
         self.v.insert(index, value);
+        self.change.notify();
         send_event(&self.tx, &*self.on_err, VecEvent::Insert(index, value_event));
     }
 
@@ -264,6 +286,7 @@ where
         self.assert_not_done();
 
         let value = self.v.remove(index);
+        self.change.notify();
         send_event(&self.tx, &*self.on_err, VecEvent::Remove(index));
         value
     }
@@ -280,6 +303,7 @@ where
         self.assert_not_done();
 
         let value = self.v.swap_remove(index);
+        self.change.notify();
         send_event(&self.tx, &*self.on_err, VecEvent::SwapRemove(index));
         value
     }
@@ -293,6 +317,7 @@ where
     pub fn fill(&mut self, value: T) {
         self.assert_not_done();
 
+        self.change.notify();
         send_event(&self.tx, &*self.on_err, VecEvent::Fill(value.clone()));
         self.v.fill(value);
     }
@@ -308,6 +333,7 @@ where
         self.assert_not_done();
 
         if new_len != self.v.len() {
+            self.change.notify();
             send_event(&self.tx, &*self.on_err, VecEvent::Resize(new_len, value.clone()));
             self.v.resize(new_len, value);
         }
@@ -325,6 +351,7 @@ where
         self.assert_not_done();
 
         if new_len < self.len() {
+            self.change.notify();
             send_event(&self.tx, &*self.on_err, VecEvent::Truncate(new_len));
             self.v.truncate(new_len);
         }
@@ -341,6 +368,7 @@ where
 
         if !self.v.is_empty() {
             self.v.clear();
+            self.change.notify();
             send_event(&self.tx, &*self.on_err, VecEvent::Clear);
         }
     }
@@ -374,10 +402,13 @@ where
             keep_this
         });
 
-        if keep.len() < remove.len() {
-            send_event(&self.tx, &*self.on_err, VecEvent::Retain(keep));
-        } else {
-            send_event(&self.tx, &*self.on_err, VecEvent::RetainNot(remove));
+        if !remove.is_empty() {
+            self.change.notify();
+            if keep.len() < remove.len() {
+                send_event(&self.tx, &*self.on_err, VecEvent::Retain(keep));
+            } else {
+                send_event(&self.tx, &*self.on_err, VecEvent::RetainNot(remove));
+            }
         }
     }
 
@@ -462,6 +493,7 @@ where
     value: &'a mut T,
     changed: bool,
     tx: &'a rch::broadcast::Sender<VecEvent<T>, Codec>,
+    change: &'a ChangeSender,
     on_err: &'a dyn Fn(SendError),
 }
 
@@ -495,6 +527,7 @@ where
 {
     fn drop(&mut self) {
         if self.changed {
+            self.change.notify();
             send_event(self.tx, self.on_err, VecEvent::Set(self.index, self.value.clone()));
         }
     }
@@ -506,6 +539,7 @@ where
 pub struct IterMut<'a, T, Codec> {
     inner: Enumerate<std::slice::IterMut<'a, T>>,
     tx: &'a rch::broadcast::Sender<VecEvent<T>, Codec>,
+    change: &'a ChangeSender,
     on_err: &'a dyn Fn(SendError),
 }
 
@@ -518,9 +552,14 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.inner.next() {
-            Some((index, value)) => {
-                Some(RefMut { index, value, changed: false, tx: self.tx, on_err: self.on_err })
-            }
+            Some((index, value)) => Some(RefMut {
+                index,
+                value,
+                changed: false,
+                tx: self.tx,
+                change: self.change,
+                on_err: self.on_err,
+            }),
             None => None,
         }
     }
@@ -547,9 +586,14 @@ where
 {
     fn next_back(&mut self) -> Option<Self::Item> {
         match self.inner.next_back() {
-            Some((index, value)) => {
-                Some(RefMut { index, value, changed: false, tx: self.tx, on_err: self.on_err })
-            }
+            Some((index, value)) => Some(RefMut {
+                index,
+                value,
+                changed: false,
+                tx: self.tx,
+                change: self.change,
+                on_err: self.on_err,
+            }),
             None => None,
         }
     }

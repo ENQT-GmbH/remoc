@@ -22,6 +22,7 @@ pub mod vec;
 use remoc::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt};
+use tokio::sync::watch;
 
 /// An error occurred during sending an event for an observable collection.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -156,4 +157,64 @@ where
 /// Default handler for sending errors.
 pub(crate) fn default_on_err(err: SendError) {
     tracing::warn!("sending failed: {}", err);
+}
+
+/// The observed object has been dropped.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DroppedError;
+
+impl fmt::Display for DroppedError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "dropped")
+    }
+}
+
+/// Sends change notifications.
+pub(crate) struct ChangeSender {
+    tx: watch::Sender<()>,
+    rx: watch::Receiver<()>,
+}
+
+impl ChangeSender {
+    /// Create a new instance.
+    pub fn new() -> Self {
+        let (tx, rx) = watch::channel(());
+        Self { tx, rx }
+    }
+
+    /// Return a subscribed [ChangeNotifier].
+    pub fn subscribe(&self) -> ChangeNotifier {
+        ChangeNotifier(self.rx.clone())
+    }
+
+    /// Notify all subscribed [ChangeNotifier]s.
+    pub fn notify(&self) {
+        self.tx.send_replace(());
+    }
+}
+
+/// Notifies a local observer of changes to an observable collection.
+///
+/// This can be cloned, but not sent to remote endpoints.
+#[derive(Clone)]
+pub struct ChangeNotifier(watch::Receiver<()>);
+
+impl fmt::Debug for ChangeNotifier {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_tuple("ChangeNotifier").finish()
+    }
+}
+
+impl ChangeNotifier {
+    /// Returns when the collection has been changed and marks the
+    /// newest value as seen.
+    pub async fn changed(&mut self) -> Result<(), DroppedError> {
+        self.0.changed().await.map_err(|_| DroppedError)
+    }
+
+    /// Marks the current value as seen, so that [changed](Self::changed)
+    /// will not return immediately.
+    pub fn update(&mut self) {
+        self.0.borrow_and_update();
+    }
 }

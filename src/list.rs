@@ -33,7 +33,7 @@ use std::{
 };
 use tokio::sync::{mpsc, oneshot, watch, Mutex, OwnedMutexGuard, RwLock, RwLockReadGuard};
 
-use crate::{default_on_err, RecvError, SendError};
+use crate::{default_on_err, ChangeNotifier, ChangeSender, RecvError, SendError};
 
 /// A list change event.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -140,6 +140,7 @@ where
 /// that can be used to make subscriptions from other tasks.
 pub struct ObservableList<T, Codec = remoc::codec::Default> {
     tx: mpsc::UnboundedSender<Req<T>>,
+    change: ChangeSender,
     len: Arc<AtomicUsize>,
     done: bool,
     dist: ObservableListDistributor<T, Codec>,
@@ -178,6 +179,7 @@ where
         tokio::spawn(Self::task(initial, rx, sub_rx, subscriber_count.clone()));
         Self {
             tx,
+            change: ChangeSender::new(),
             len: len.clone(),
             done: false,
             dist: ObservableListDistributor { tx: sub_tx, len, subscriber_count },
@@ -236,6 +238,12 @@ where
         self.dist.subscriber_count()
     }
 
+    /// Returns a [change notifier](ChangeNotifier) that can be used *locally* to be
+    /// notified of changes to this collection.
+    pub fn notifier(&self) -> ChangeNotifier {
+        self.change.subscribe()
+    }
+
     /// Returns when all subscribers have quit.
     ///
     /// If no subscribers are currently present, this return immediately.
@@ -260,6 +268,7 @@ where
         self.assert_not_done();
         self.req(Req::Push(value));
         self.len.fetch_add(1, Ordering::Relaxed);
+        self.change.notify();
     }
 
     /// The current number of elements in the observable list.

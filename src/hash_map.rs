@@ -31,7 +31,7 @@ use std::{
 };
 use tokio::sync::{oneshot, watch, RwLock, RwLockReadGuard};
 
-use crate::{default_on_err, send_event, RecvError, SendError};
+use crate::{default_on_err, send_event, ChangeNotifier, ChangeSender, RecvError, SendError};
 
 /// A hash map change event.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -60,6 +60,7 @@ pub enum HashMapEvent<K, V> {
 pub struct ObservableHashMap<K, V, Codec = remoc::codec::Default> {
     hm: HashMap<K, V>,
     tx: rch::broadcast::Sender<HashMapEvent<K, V>, Codec>,
+    change: ChangeSender,
     on_err: Arc<dyn Fn(SendError) + Send + Sync>,
     done: bool,
 }
@@ -82,7 +83,7 @@ where
 {
     fn from(hm: HashMap<K, V>) -> Self {
         let (tx, _rx) = rch::broadcast::channel::<_, _, rch::buffer::Default>(1);
-        Self { hm, tx, on_err: Arc::new(default_on_err), done: false }
+        Self { hm, tx, on_err: Arc::new(default_on_err), change: ChangeSender::new(), done: false }
     }
 }
 
@@ -155,6 +156,12 @@ where
         self.tx.receiver_count()
     }
 
+    /// Returns a [change notifier](ChangeNotifier) that can be used *locally* to be
+    /// notified of changes to this collection.
+    pub fn notifier(&self) -> ChangeNotifier {
+        self.change.subscribe()
+    }
+
     /// Inserts a value under a key.
     ///
     /// A [HashMapEvent::Set] change event is sent.
@@ -165,6 +172,7 @@ where
     /// Panics when [done](Self::done) has been called before.
     pub fn insert(&mut self, k: K, v: V) -> Option<V> {
         self.assert_not_done();
+        self.change.notify();
 
         send_event(&self.tx, &*self.on_err, HashMapEvent::Set(k.clone(), v.clone()));
         self.hm.insert(k, v)
@@ -187,6 +195,7 @@ where
 
         match self.hm.remove_entry(k) {
             Some((k, v)) => {
+                self.change.notify();
                 send_event(&self.tx, &*self.on_err, HashMapEvent::Remove(k));
                 Some(v)
             }
@@ -205,6 +214,7 @@ where
 
         if !self.hm.is_empty() {
             self.hm.clear();
+            self.change.notify();
             send_event(&self.tx, &*self.on_err, HashMapEvent::Clear);
         }
     }
@@ -225,6 +235,7 @@ where
             if f(k, v) {
                 true
             } else {
+                self.change.notify();
                 send_event(&self.tx, &*self.on_err, HashMapEvent::Remove(k.clone()));
                 false
             }
@@ -239,11 +250,14 @@ where
         self.assert_not_done();
 
         match self.hm.entry(key) {
-            std::collections::hash_map::Entry::Occupied(inner) => {
-                Entry::Occupied(OccupiedEntry { inner, tx: &self.tx, on_err: &*self.on_err })
-            }
+            std::collections::hash_map::Entry::Occupied(inner) => Entry::Occupied(OccupiedEntry {
+                inner,
+                tx: &self.tx,
+                change: &self.change,
+                on_err: &*self.on_err,
+            }),
             std::collections::hash_map::Entry::Vacant(inner) => {
-                Entry::Vacant(VacantEntry { inner, tx: &self.tx, on_err: &*self.on_err })
+                Entry::Vacant(VacantEntry { inner, tx: &self.tx, change: &self.change, on_err: &*self.on_err })
             }
         }
     }
@@ -265,7 +279,14 @@ where
             Some((key, _)) => {
                 let key = key.clone();
                 let value = self.hm.get_mut(k).unwrap();
-                Some(RefMut { key, value, changed: false, tx: &self.tx, on_err: &*self.on_err })
+                Some(RefMut {
+                    key,
+                    value,
+                    changed: false,
+                    tx: &self.tx,
+                    change: &self.change,
+                    on_err: &*self.on_err,
+                })
             }
             None => None,
         }
@@ -280,7 +301,7 @@ where
     pub fn iter_mut(&mut self) -> IterMut<'_, K, V, Codec> {
         self.assert_not_done();
 
-        IterMut { inner: self.hm.iter_mut(), tx: &self.tx, on_err: &*self.on_err }
+        IterMut { inner: self.hm.iter_mut(), tx: &self.tx, change: &self.change, on_err: &*self.on_err }
     }
 
     /// Shrinks the capacity of the hash map as much as possible.
@@ -366,6 +387,7 @@ where
     value: &'a mut V,
     changed: bool,
     tx: &'a rch::broadcast::Sender<HashMapEvent<K, V>, Codec>,
+    change: &'a ChangeSender,
     on_err: &'a dyn Fn(SendError),
 }
 
@@ -402,6 +424,7 @@ where
 {
     fn drop(&mut self) {
         if self.changed {
+            self.change.notify();
             send_event(self.tx, self.on_err, HashMapEvent::Set(self.key.clone(), self.value.clone()));
         }
     }
@@ -413,6 +436,7 @@ where
 pub struct IterMut<'a, K, V, Codec = remoc::codec::Default> {
     inner: std::collections::hash_map::IterMut<'a, K, V>,
     tx: &'a rch::broadcast::Sender<HashMapEvent<K, V>, Codec>,
+    change: &'a ChangeSender,
     on_err: &'a dyn Fn(SendError),
 }
 
@@ -426,9 +450,14 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.inner.next() {
-            Some((key, value)) => {
-                Some(RefMut { key: key.clone(), value, changed: false, tx: self.tx, on_err: self.on_err })
-            }
+            Some((key, value)) => Some(RefMut {
+                key: key.clone(),
+                value,
+                changed: false,
+                tx: self.tx,
+                change: self.change,
+                on_err: self.on_err,
+            }),
             None => None,
         }
     }
@@ -540,6 +569,7 @@ where
 pub struct OccupiedEntry<'a, K, V, Codec = remoc::codec::Default> {
     inner: std::collections::hash_map::OccupiedEntry<'a, K, V>,
     tx: &'a rch::broadcast::Sender<HashMapEvent<K, V>, Codec>,
+    change: &'a ChangeSender,
     on_err: &'a dyn Fn(SendError),
 }
 
@@ -585,6 +615,7 @@ where
             value: self.inner.get_mut(),
             changed: false,
             tx: self.tx,
+            change: self.change,
             on_err: &*self.on_err,
         }
     }
@@ -593,7 +624,14 @@ where
     /// the entry with a lifetime bound to the map itself.
     pub fn into_mut(self) -> RefMut<'a, K, V, Codec> {
         let key = self.inner.key().clone();
-        RefMut { key, value: self.inner.into_mut(), changed: false, tx: self.tx, on_err: &*self.on_err }
+        RefMut {
+            key,
+            value: self.inner.into_mut(),
+            changed: false,
+            tx: self.tx,
+            change: self.change,
+            on_err: &*self.on_err,
+        }
     }
 
     /// Sets the value of the entry, and returns the entry’s old value.
@@ -618,6 +656,7 @@ where
 pub struct VacantEntry<'a, K, V, Codec = remoc::codec::Default> {
     inner: std::collections::hash_map::VacantEntry<'a, K, V>,
     tx: &'a rch::broadcast::Sender<HashMapEvent<K, V>, Codec>,
+    change: &'a ChangeSender,
     on_err: &'a dyn Fn(SendError),
 }
 
@@ -653,7 +692,7 @@ where
         let key = self.inner.key().clone();
         send_event(self.tx, &*self.on_err, HashMapEvent::Set(key.clone(), value.clone()));
         let value = self.inner.insert(value);
-        RefMut { key, value, changed: false, tx: self.tx, on_err: &*self.on_err }
+        RefMut { key, value, changed: false, tx: self.tx, change: self.change, on_err: &*self.on_err }
     }
 }
 
