@@ -169,6 +169,8 @@ impl fmt::Display for DroppedError {
     }
 }
 
+impl Error for DroppedError {}
+
 /// Sends change notifications.
 pub(crate) struct ChangeSender {
     tx: watch::Sender<()>,
