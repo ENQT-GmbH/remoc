@@ -599,6 +599,7 @@ where
     /// A [HashMapEvent::Remove] change event is sent.
     pub fn remove_entry(self) -> (K, V) {
         let (k, v) = self.inner.remove_entry();
+        self.change.notify();
         send_event(self.tx, &*self.on_err, HashMapEvent::Remove(k.clone()));
         (k, v)
     }
@@ -638,6 +639,7 @@ where
     ///
     /// A [HashMapEvent::Set] change event is sent.
     pub fn insert(&mut self, value: V) -> V {
+        self.change.notify();
         send_event(self.tx, &*self.on_err, HashMapEvent::Set(self.inner.key().clone(), value.clone()));
         self.inner.insert(value)
     }
@@ -647,6 +649,7 @@ where
     /// A [HashMapEvent::Remove] change event is sent.
     pub fn remove(self) -> V {
         let (k, v) = self.inner.remove_entry();
+        self.change.notify();
         send_event(self.tx, &*self.on_err, HashMapEvent::Remove(k));
         v
     }
@@ -690,6 +693,7 @@ where
     /// A [HashMapEvent::Set] change event is sent.
     pub fn insert(self, value: V) -> RefMut<'a, K, V, Codec> {
         let key = self.inner.key().clone();
+        self.change.notify();
         send_event(self.tx, &*self.on_err, HashMapEvent::Set(key.clone(), value.clone()));
         let value = self.inner.insert(value);
         RefMut { key, value, changed: false, tx: self.tx, change: self.change, on_err: &*self.on_err }

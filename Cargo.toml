@@ -1,6 +1,6 @@
 [package]
 name = "remoc-obs"
-version = "0.4.7"
+version = "0.4.8"
 edition = "2021"
 authors = ["Sebastian Urban <surban@surban.net>"]
 readme = "README.md"
@@ -20,6 +20,6 @@ remoc = { version = "0.9.14", default-features = false, features = ["rch"] }
 tracing = "0.1"
 
 [dev-dependencies]
-remoc = { version = "0.9.11", default-features = false, features = [
+remoc = { version = "0.9", default-features = false, features = [
     "default-codec-json",
 ] }
