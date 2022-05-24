@@ -19,7 +19,7 @@ transport type.
 [watch]: https://docs.rs/remoc/latest/remoc/rch/watch/index.html
 [remote synchronization]: https://docs.rs/remoc/latest/remoc/robj/index.html
 [remote functions]: https://docs.rs/remoc/latest/remoc/rfn/index.html
-[remotely observable collections]: https://crates.io/crates/remoc-obs
+[remotely observable collections]: https://docs.rs/remoc/latest/remoc/robs/index.html
 [trait methods on a remote object (RPC)]: https://docs.rs/remoc/latest/remoc/rtc/index.html
 [100% safe Rust]: https://www.rust-lang.org/
 [Tokio]: https://tokio.rs
