@@ -31,6 +31,9 @@ pub use crate::rfn;
 #[cfg(feature = "robj")]
 pub use crate::robj;
 
+#[cfg(feature = "robs")]
+pub use crate::robs;
+
 #[cfg(feature = "rtc")]
 pub use crate::rtc;
 

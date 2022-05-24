@@ -24,6 +24,9 @@ mod rfn;
 #[cfg(feature = "robj")]
 mod robj;
 
+#[cfg(feature = "robs")]
+mod robs;
+
 #[cfg(feature = "rtc")]
 mod rtc;
 

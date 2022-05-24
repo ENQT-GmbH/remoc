@@ -84,6 +84,7 @@ The following features are available:
   * `rch` enables remote channels provided by the `rch` module.
   * `rfn` enables remote function calling provided by the `rfn` module.
   * `robj` enables remote object utilities provided by the `robj` module.
+  * `robs` enables remotely observable collections provided by the `robs` module.
   * `rtc` enables remote trait calling provided by the `rtc` module.
 
 The meta-feature `full` enables all features from above but no codecs.
@@ -106,7 +107,7 @@ By default all features are enabled and the JSON codec is used as default.
 ## Supported Rust versions
 
 Remoc is built against the latest stable release.
-The minimum supported Rust version (MSRV) is 1.51.
+The minimum supported Rust version (MSRV) is 1.58.
 
 ## Example
 

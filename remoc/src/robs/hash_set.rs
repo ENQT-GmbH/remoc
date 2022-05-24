@@ -5,7 +5,7 @@
 //! The [resulting event stream](HashSetSubscription) can either be processed event-wise
 //! or used to build a [mirrored hash set](MirroredHashSet).
 //!
-//! Changes are sent using a [remote broadcast channel](remoc::rch::broadcast), thus
+//! Changes are sent using a [remote broadcast channel](crate::rch::broadcast), thus
 //! subscribers cannot block the observed hash set and are shed when their event buffer
 //! exceeds a configurable size.
 //!
@@ -13,17 +13,17 @@
 //!
 //! Create a [ObservableHashSet] and obtain a [subscription](HashSetSubscription) to it using
 //! [ObservableHashSet::subscribe].
-//! Send this subscription to a remote endpoint via a [remote channel](remoc::rch) and call
+//! Send this subscription to a remote endpoint via a [remote channel](crate::rch) and call
 //! [HashSetSubscription::mirror] on the remote endpoint to obtain a live mirror of the observed
 //! hash set or process each change event individually using [HashSetSubscription::recv].
 //!
 
-use remoc::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, fmt, hash::Hash, mem::take, ops::Deref, sync::Arc};
 use tokio::sync::{oneshot, watch, RwLock, RwLockReadGuard};
 
-use crate::{default_on_err, send_event, ChangeNotifier, ChangeSender, RecvError, SendError};
+use super::{default_on_err, send_event, ChangeNotifier, ChangeSender, RecvError, SendError};
+use crate::prelude::*;
 
 /// A hash set change event.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -49,7 +49,7 @@ pub enum HashSetEvent<T> {
 ///
 /// Use [subscribe](Self::subscribe) to obtain an event stream
 /// that can be used for building a mirror of this hash set.
-pub struct ObservableHashSet<T, Codec = remoc::codec::Default> {
+pub struct ObservableHashSet<T, Codec = crate::codec::Default> {
     hs: HashSet<T>,
     tx: rch::broadcast::Sender<HashSetEvent<T>, Codec>,
     change: ChangeSender,
@@ -69,7 +69,7 @@ where
 impl<T, Codec> From<HashSet<T>> for ObservableHashSet<T, Codec>
 where
     T: Clone + RemoteSend,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     fn from(hs: HashSet<T>) -> Self {
         let (tx, _rx) = rch::broadcast::channel::<_, _, rch::buffer::Default>(1);
@@ -87,7 +87,7 @@ impl<T, Codec> Default for ObservableHashSet<T, Codec>
 where
     T: Clone + RemoteSend,
 
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     fn default() -> Self {
         Self::from(HashSet::new())
@@ -97,7 +97,7 @@ where
 impl<T, Codec> ObservableHashSet<T, Codec>
 where
     T: Eq + Hash + Clone + RemoteSend,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     /// Creates an empty observable hash set.
     pub fn new() -> Self {
@@ -331,7 +331,7 @@ impl<T, Codec> Deref for ObservableHashSet<T, Codec> {
 impl<T, Codec> Extend<T> for ObservableHashSet<T, Codec>
 where
     T: RemoteSend + Eq + Hash + Clone,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
         for value in iter {
@@ -382,9 +382,9 @@ where
 
 /// Initial value of an observable hash set subscription.
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(bound(serialize = "T: RemoteSend + Eq + Hash, Codec: remoc::codec::Codec"))]
-#[serde(bound(deserialize = "T: RemoteSend + Eq + Hash, Codec: remoc::codec::Codec"))]
-enum HashSetInitialValue<T, Codec = remoc::codec::Default> {
+#[serde(bound(serialize = "T: RemoteSend + Eq + Hash, Codec: crate::codec::Codec"))]
+#[serde(bound(deserialize = "T: RemoteSend + Eq + Hash, Codec: crate::codec::Codec"))]
+enum HashSetInitialValue<T, Codec = crate::codec::Default> {
     /// Initial value is present.
     Value(HashSet<T>),
     /// Initial value is received incrementally.
@@ -399,7 +399,7 @@ enum HashSetInitialValue<T, Codec = remoc::codec::Default> {
 impl<T, Codec> HashSetInitialValue<T, Codec>
 where
     T: RemoteSend + Eq + Hash + Clone,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     /// Transmits the initial value as a whole.
     fn new_value(hs: HashSet<T>) -> Self {
@@ -430,7 +430,7 @@ where
 
 /// Observable hash set subscription.
 ///
-/// This can be sent to a remote endpoint via a [remote channel](remoc::rch).
+/// This can be sent to a remote endpoint via a [remote channel](crate::rch).
 /// Then, on the remote endpoint, [mirror](Self::mirror) can be used to build
 /// and keep up-to-date a mirror of the observed hash set.
 ///
@@ -438,9 +438,9 @@ where
 /// If the subscription is not incremental [take_initial](Self::take_initial) must
 /// be called before the first call to [recv](Self::recv).
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(bound(serialize = "T: RemoteSend + Eq + Hash, Codec: remoc::codec::Codec"))]
-#[serde(bound(deserialize = "T: RemoteSend + Eq + Hash, Codec: remoc::codec::Codec"))]
-pub struct HashSetSubscription<T, Codec = remoc::codec::Default> {
+#[serde(bound(serialize = "T: RemoteSend + Eq + Hash, Codec: crate::codec::Codec"))]
+#[serde(bound(deserialize = "T: RemoteSend + Eq + Hash, Codec: crate::codec::Codec"))]
+pub struct HashSetSubscription<T, Codec = crate::codec::Default> {
     /// Value of hash set at time of subscription.
     initial: HashSetInitialValue<T, Codec>,
     /// Initial value received completely.
@@ -458,7 +458,7 @@ pub struct HashSetSubscription<T, Codec = remoc::codec::Default> {
 impl<T, Codec> HashSetSubscription<T, Codec>
 where
     T: RemoteSend + Eq + Hash + Clone,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     fn new(
         initial: HashSetInitialValue<T, Codec>, events: Option<rch::broadcast::Receiver<HashSetEvent<T>, Codec>>,
@@ -554,7 +554,7 @@ where
 impl<T, Codec> HashSetSubscription<T, Codec>
 where
     T: RemoteSend + Eq + Hash + Clone + RemoteSend + Sync,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     /// Mirror the hash set that this subscription is observing.
     ///
@@ -622,7 +622,7 @@ where
 }
 
 /// A hash set that is mirroring an observable hash set.
-pub struct MirroredHashSet<T, Codec = remoc::codec::Default> {
+pub struct MirroredHashSet<T, Codec = crate::codec::Default> {
     inner: Arc<RwLock<Option<MirroredHashSetInner<T>>>>,
     tx: rch::broadcast::Sender<HashSetEvent<T>, Codec>,
     changed_rx: watch::Receiver<()>,
@@ -638,7 +638,7 @@ impl<T, Codec> fmt::Debug for MirroredHashSet<T, Codec> {
 impl<T, Codec> MirroredHashSet<T, Codec>
 where
     T: RemoteSend + Eq + Hash + Clone,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     /// Returns a reference to the current value of the hash set.
     ///

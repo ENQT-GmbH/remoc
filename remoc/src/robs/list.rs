@@ -7,20 +7,19 @@
 //!
 //! # Alternatives
 //!
-//! The [observable vector](crate::vec) provides most operations of a [vector](Vec),
+//! The [observable vector](super::vec) provides most operations of a [vector](Vec),
 //! but allocates a separate event buffer per subscriber and thus uses more memory.
 //!
 //! # Basic use
 //!
 //! Create a [ObservableList] and obtain a [subscription](ListSubscription) to it using
 //! [ObservableList::subscribe].
-//! Send this subscription to a remote endpoint via a [remote channel](remoc::rch) and call
+//! Send this subscription to a remote endpoint via a [remote channel](crate::rch) and call
 //! [ListSubscription::mirror] on the remote endpoint to obtain a live mirror of the observed
 //! vector or process each change event individually using [ListSubscription::recv].
 //!
 
 use futures::{future, Future, FutureExt};
-use remoc::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt,
@@ -33,7 +32,8 @@ use std::{
 };
 use tokio::sync::{mpsc, oneshot, watch, Mutex, OwnedMutexGuard, RwLock, RwLockReadGuard};
 
-use crate::{default_on_err, ChangeNotifier, ChangeSender, RecvError, SendError};
+use super::{default_on_err, ChangeNotifier, ChangeSender, RecvError, SendError};
+use crate::prelude::*;
 
 /// A list change event.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -73,7 +73,7 @@ enum DistReq<T, Codec> {
 ///
 /// This is clonable and can be sent to other tasks.
 #[derive(Clone)]
-pub struct ObservableListDistributor<T, Codec = remoc::codec::Default> {
+pub struct ObservableListDistributor<T, Codec = crate::codec::Default> {
     tx: mpsc::UnboundedSender<DistReq<T, Codec>>,
     len: Arc<AtomicUsize>,
     subscriber_count: Arc<AtomicUsize>,
@@ -91,7 +91,7 @@ impl<T, Codec> fmt::Debug for ObservableListDistributor<T, Codec> {
 impl<T, Codec> ObservableListDistributor<T, Codec>
 where
     T: RemoteSend + Clone,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     /// Sends a request to the task.
     fn req(&self, req: DistReq<T, Codec>) {
@@ -138,7 +138,7 @@ where
 ///
 /// The [distributor method](Self::distributor) can be used to obtain a clonable object
 /// that can be used to make subscriptions from other tasks.
-pub struct ObservableList<T, Codec = remoc::codec::Default> {
+pub struct ObservableList<T, Codec = crate::codec::Default> {
     tx: mpsc::UnboundedSender<Req<T>>,
     change: ChangeSender,
     len: Arc<AtomicUsize>,
@@ -159,7 +159,7 @@ impl<T, Codec> fmt::Debug for ObservableList<T, Codec> {
 impl<T, Codec> Default for ObservableList<T, Codec>
 where
     T: RemoteSend + Clone,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     fn default() -> Self {
         Self::from(Vec::new())
@@ -169,7 +169,7 @@ where
 impl<T, Codec> From<Vec<T>> for ObservableList<T, Codec>
 where
     T: RemoteSend + Clone,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     fn from(initial: Vec<T>) -> Self {
         let (tx, rx) = mpsc::unbounded_channel();
@@ -190,7 +190,7 @@ where
 impl<T, Codec> ObservableList<T, Codec>
 where
     T: RemoteSend + Clone,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     /// Creates a new, empty observable list.
     pub fn new() -> Self {
@@ -446,7 +446,7 @@ impl<T, Codec> Drop for ObservableList<T, Codec> {
 impl<T, Codec> Extend<T> for ObservableList<T, Codec>
 where
     T: RemoteSend + Clone,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
         for value in iter {
@@ -510,15 +510,15 @@ impl<T> MirroredListInner<T> {
 
 /// Observable list subscription.
 ///
-/// This can be sent to a remote endpoint via a [remote channel](remoc::rch).
+/// This can be sent to a remote endpoint via a [remote channel](crate::rch).
 /// Then, on the remote endpoint, [mirror](Self::mirror) can be used to build
 /// and keep up-to-date a mirror of the observed list.
 ///
 /// The event stream can also be processed event-wise using [recv](Self::recv).
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(bound(serialize = "T: RemoteSend, Codec: remoc::codec::Codec"))]
-#[serde(bound(deserialize = "T: RemoteSend, Codec: remoc::codec::Codec"))]
-pub struct ListSubscription<T, Codec = remoc::codec::Default> {
+#[serde(bound(serialize = "T: RemoteSend, Codec: crate::codec::Codec"))]
+#[serde(bound(deserialize = "T: RemoteSend, Codec: crate::codec::Codec"))]
+pub struct ListSubscription<T, Codec = crate::codec::Default> {
     /// Length of list at time of subscription.
     initial_len: usize,
     /// Initial value received completely.
@@ -533,7 +533,7 @@ pub struct ListSubscription<T, Codec = remoc::codec::Default> {
 impl<T, Codec> ListSubscription<T, Codec>
 where
     T: RemoteSend + Clone,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     fn new(initial_len: usize, events: rch::mpsc::Receiver<ListEvent<T>, Codec>) -> Self {
         Self { initial_len, complete: false, events: Some(events), len: 0 }
@@ -597,7 +597,7 @@ where
 impl<T, Codec> ListSubscription<T, Codec>
 where
     T: RemoteSend + Clone + Sync,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     /// Mirror the list that this subscription is observing.
     ///

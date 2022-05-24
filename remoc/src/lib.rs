@@ -252,6 +252,8 @@ pub mod rfn;
 #[cfg_attr(docsrs, doc(cfg(feature = "robj")))]
 pub mod robj;
 
+#[cfg(feature = "robs")]
+#[cfg_attr(docsrs, doc(cfg(feature = "robs")))]
 pub mod robs;
 
 #[cfg(feature = "rtc")]

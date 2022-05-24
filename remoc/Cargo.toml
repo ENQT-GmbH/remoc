@@ -5,8 +5,8 @@ authors = ["Sebastian Urban <surban@surban.net>", "ENQT GmbH <su@enqt.de>", "Rem
 readme = "README.md"
 repository = "https://github.com/ENQT-GmbH/remoc/"
 documentation = "https://docs.rs/remoc"
-edition = "2018"
-rust-version = "1.51"
+edition = "2021"
+rust-version = "1.58"
 description = "🦑 Remote multiplexed objects, channels and RPC making remote interactions seamless."
 keywords = ["remote", "channel", "rpc", "stream", "multiplexer"]
 categories = ["asynchronous", "network-programming"]
@@ -15,10 +15,11 @@ license = "Apache-2.0"
 
 [features]
 default = ["full", "default-codec-json"]
-full = ["serde", "rch", "rfn", "robj", "rtc"]
+full = ["serde", "rch", "rfn", "robj", "robs", "rtc"]
 rch = ["async-trait", "serde", "tokio-util/codec", "tokio/io-util"]
 rfn = ["rch"]
 robj = ["rch"]
+robs = ["rch"]
 rtc = ["rch", "remoc_macro", "async-trait"]
 
 # Codecs

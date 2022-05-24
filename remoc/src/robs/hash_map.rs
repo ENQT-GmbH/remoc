@@ -5,7 +5,7 @@
 //! The [resulting event stream](HashMapSubscription) can either be processed event-wise
 //! or used to build a [mirrored hash map](MirroredHashMap).
 //!
-//! Changes are sent using a [remote broadcast channel](remoc::rch::broadcast), thus
+//! Changes are sent using a [remote broadcast channel](crate::rch::broadcast), thus
 //! subscribers cannot block the observed hash map and are shed when their event buffer
 //! exceeds a configurable size.
 //!
@@ -13,12 +13,11 @@
 //!
 //! Create a [ObservableHashMap] and obtain a [subscription](HashMapSubscription) to it using
 //! [ObservableHashMap::subscribe].
-//! Send this subscription to a remote endpoint via a [remote channel](remoc::rch) and call
+//! Send this subscription to a remote endpoint via a [remote channel](crate::rch) and call
 //! [HashMapSubscription::mirror] on the remote endpoint to obtain a live mirror of the observed
 //! hash map or process each change event individually using [HashMapSubscription::recv].
 //!
 
-use remoc::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -31,7 +30,8 @@ use std::{
 };
 use tokio::sync::{oneshot, watch, RwLock, RwLockReadGuard};
 
-use crate::{default_on_err, send_event, ChangeNotifier, ChangeSender, RecvError, SendError};
+use super::{default_on_err, send_event, ChangeNotifier, ChangeSender, RecvError, SendError};
+use crate::prelude::*;
 
 /// A hash map change event.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -57,7 +57,7 @@ pub enum HashMapEvent<K, V> {
 ///
 /// Use [subscribe](Self::subscribe) to obtain an event stream
 /// that can be used for building a mirror of this hash map.
-pub struct ObservableHashMap<K, V, Codec = remoc::codec::Default> {
+pub struct ObservableHashMap<K, V, Codec = crate::codec::Default> {
     hm: HashMap<K, V>,
     tx: rch::broadcast::Sender<HashMapEvent<K, V>, Codec>,
     change: ChangeSender,
@@ -79,7 +79,7 @@ impl<K, V, Codec> From<HashMap<K, V>> for ObservableHashMap<K, V, Codec>
 where
     K: Clone + RemoteSend,
     V: Clone + RemoteSend,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     fn from(hm: HashMap<K, V>) -> Self {
         let (tx, _rx) = rch::broadcast::channel::<_, _, rch::buffer::Default>(1);
@@ -97,7 +97,7 @@ impl<K, V, Codec> Default for ObservableHashMap<K, V, Codec>
 where
     K: Clone + RemoteSend,
     V: Clone + RemoteSend,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     fn default() -> Self {
         Self::from(HashMap::new())
@@ -108,7 +108,7 @@ impl<K, V, Codec> ObservableHashMap<K, V, Codec>
 where
     K: Eq + Hash + Clone + RemoteSend,
     V: Clone + RemoteSend,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     /// Creates an empty observable hash map.
     pub fn new() -> Self {
@@ -364,7 +364,7 @@ impl<K, V, Codec> Extend<(K, V)> for ObservableHashMap<K, V, Codec>
 where
     K: Eq + Hash + Clone + RemoteSend,
     V: Clone + RemoteSend,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     fn extend<I: IntoIterator<Item = (K, V)>>(&mut self, iter: I) {
         for (k, v) in iter {
@@ -381,7 +381,7 @@ pub struct RefMut<'a, K, V, Codec>
 where
     K: Clone + RemoteSend,
     V: Clone + RemoteSend,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     key: K,
     value: &'a mut V,
@@ -395,7 +395,7 @@ impl<'a, K, V, Codec> Deref for RefMut<'a, K, V, Codec>
 where
     K: Clone + RemoteSend,
     V: Clone + RemoteSend,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     type Target = V;
 
@@ -408,7 +408,7 @@ impl<'a, K, V, Codec> DerefMut for RefMut<'a, K, V, Codec>
 where
     K: Clone + RemoteSend,
     V: Clone + RemoteSend,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.changed = true;
@@ -420,7 +420,7 @@ impl<'a, K, V, Codec> Drop for RefMut<'a, K, V, Codec>
 where
     K: Clone + RemoteSend,
     V: Clone + RemoteSend,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     fn drop(&mut self) {
         if self.changed {
@@ -433,7 +433,7 @@ where
 /// A mutable iterator over the key-value pairs in an [observable hash map](ObservableHashMap).
 ///
 /// A [HashMapEvent::Set] change event is sent for each value that is accessed mutably.
-pub struct IterMut<'a, K, V, Codec = remoc::codec::Default> {
+pub struct IterMut<'a, K, V, Codec = crate::codec::Default> {
     inner: std::collections::hash_map::IterMut<'a, K, V>,
     tx: &'a rch::broadcast::Sender<HashMapEvent<K, V>, Codec>,
     change: &'a ChangeSender,
@@ -444,7 +444,7 @@ impl<'a, K, V, Codec> Iterator for IterMut<'a, K, V, Codec>
 where
     K: Clone + RemoteSend,
     V: Clone + RemoteSend,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     type Item = RefMut<'a, K, V, Codec>;
 
@@ -471,7 +471,7 @@ impl<'a, K, V, Codec> ExactSizeIterator for IterMut<'a, K, V, Codec>
 where
     K: Clone + RemoteSend,
     V: Clone + RemoteSend,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     fn len(&self) -> usize {
         self.inner.len()
@@ -482,7 +482,7 @@ impl<'a, K, V, Codec> FusedIterator for IterMut<'a, K, V, Codec>
 where
     K: Clone + RemoteSend,
     V: Clone + RemoteSend,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
 }
 
@@ -491,7 +491,7 @@ where
 ///
 /// This is returned by [ObservableHashMap::entry].
 #[derive(Debug)]
-pub enum Entry<'a, K, V, Codec = remoc::codec::Default> {
+pub enum Entry<'a, K, V, Codec = crate::codec::Default> {
     /// An occupied entry.
     Occupied(OccupiedEntry<'a, K, V, Codec>),
     /// A vacant entry.
@@ -502,7 +502,7 @@ impl<'a, K, V, Codec> Entry<'a, K, V, Codec>
 where
     K: Clone + RemoteSend,
     V: Clone + RemoteSend,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     /// Ensures a value is in the entry by inserting the default if empty,
     /// and returns a mutable reference to the value in the entry.    
@@ -556,7 +556,7 @@ impl<'a, K, V, Codec> Entry<'a, K, V, Codec>
 where
     K: Clone + RemoteSend,
     V: Clone + RemoteSend + Default,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     /// Ensures a value is in the entry by inserting the default value if empty,
     /// and returns a mutable reference to the value in the entry.    
@@ -566,7 +566,7 @@ where
 }
 
 /// A view into an occupied entry in an observable hash map.
-pub struct OccupiedEntry<'a, K, V, Codec = remoc::codec::Default> {
+pub struct OccupiedEntry<'a, K, V, Codec = crate::codec::Default> {
     inner: std::collections::hash_map::OccupiedEntry<'a, K, V>,
     tx: &'a rch::broadcast::Sender<HashMapEvent<K, V>, Codec>,
     change: &'a ChangeSender,
@@ -587,7 +587,7 @@ impl<'a, K, V, Codec> OccupiedEntry<'a, K, V, Codec>
 where
     K: Clone + RemoteSend,
     V: Clone + RemoteSend,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     /// Gets a reference to the key in the entry.
     pub fn key(&self) -> &K {
@@ -656,7 +656,7 @@ where
 }
 
 /// A view into a vacant entry in an observable hash map.
-pub struct VacantEntry<'a, K, V, Codec = remoc::codec::Default> {
+pub struct VacantEntry<'a, K, V, Codec = crate::codec::Default> {
     inner: std::collections::hash_map::VacantEntry<'a, K, V>,
     tx: &'a rch::broadcast::Sender<HashMapEvent<K, V>, Codec>,
     change: &'a ChangeSender,
@@ -676,7 +676,7 @@ impl<'a, K, V, Codec> VacantEntry<'a, K, V, Codec>
 where
     K: Clone + RemoteSend,
     V: Clone + RemoteSend,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     /// Gets a reference to the key.
     pub fn key(&self) -> &K {
@@ -742,9 +742,9 @@ where
 
 /// Initial value of an observable hash map subscription.
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(bound(serialize = "K: RemoteSend + Eq + Hash, V: RemoteSend, Codec: remoc::codec::Codec"))]
-#[serde(bound(deserialize = "K: RemoteSend + Eq + Hash, V: RemoteSend, Codec: remoc::codec::Codec"))]
-enum HashMapInitialValue<K, V, Codec = remoc::codec::Default> {
+#[serde(bound(serialize = "K: RemoteSend + Eq + Hash, V: RemoteSend, Codec: crate::codec::Codec"))]
+#[serde(bound(deserialize = "K: RemoteSend + Eq + Hash, V: RemoteSend, Codec: crate::codec::Codec"))]
+enum HashMapInitialValue<K, V, Codec = crate::codec::Default> {
     /// Initial value is present.
     Value(HashMap<K, V>),
     /// Initial value is received incrementally.
@@ -760,7 +760,7 @@ impl<K, V, Codec> HashMapInitialValue<K, V, Codec>
 where
     K: RemoteSend + Eq + Hash + Clone,
     V: RemoteSend + Clone,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     /// Transmits the initial value as a whole.
     fn new_value(hm: HashMap<K, V>) -> Self {
@@ -791,7 +791,7 @@ where
 
 /// Observable hash map subscription.
 ///
-/// This can be sent to a remote endpoint via a [remote channel](remoc::rch).
+/// This can be sent to a remote endpoint via a [remote channel](crate::rch).
 /// Then, on the remote endpoint, [mirror](Self::mirror) can be used to build
 /// and keep up-to-date a mirror of the observed hash map.
 ///
@@ -799,9 +799,9 @@ where
 /// If the subscription is not incremental [take_initial](Self::take_initial) must
 /// be called before the first call to [recv](Self::recv).
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(bound(serialize = "K: RemoteSend + Eq + Hash, V: RemoteSend, Codec: remoc::codec::Codec"))]
-#[serde(bound(deserialize = "K: RemoteSend + Eq + Hash, V: RemoteSend, Codec: remoc::codec::Codec"))]
-pub struct HashMapSubscription<K, V, Codec = remoc::codec::Default> {
+#[serde(bound(serialize = "K: RemoteSend + Eq + Hash, V: RemoteSend, Codec: crate::codec::Codec"))]
+#[serde(bound(deserialize = "K: RemoteSend + Eq + Hash, V: RemoteSend, Codec: crate::codec::Codec"))]
+pub struct HashMapSubscription<K, V, Codec = crate::codec::Default> {
     /// Value of hash map at time of subscription.
     initial: HashMapInitialValue<K, V, Codec>,
     /// Initial value received completely.
@@ -820,7 +820,7 @@ impl<K, V, Codec> HashMapSubscription<K, V, Codec>
 where
     K: RemoteSend + Eq + Hash + Clone,
     V: RemoteSend + Clone,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     fn new(
         initial: HashMapInitialValue<K, V, Codec>,
@@ -918,7 +918,7 @@ impl<K, V, Codec> HashMapSubscription<K, V, Codec>
 where
     K: RemoteSend + Eq + Hash + Clone + Sync,
     V: RemoteSend + Clone + Sync,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     /// Mirror the hash map that this subscription is observing.
     ///
@@ -986,7 +986,7 @@ where
 }
 
 /// A hash map that is mirroring an observable hash map.
-pub struct MirroredHashMap<K, V, Codec = remoc::codec::Default> {
+pub struct MirroredHashMap<K, V, Codec = crate::codec::Default> {
     inner: Arc<RwLock<Option<MirroredHashMapInner<K, V>>>>,
     tx: rch::broadcast::Sender<HashMapEvent<K, V>, Codec>,
     changed_rx: watch::Receiver<()>,
@@ -1003,7 +1003,7 @@ impl<K, V, Codec> MirroredHashMap<K, V, Codec>
 where
     K: RemoteSend + Eq + Hash + Clone,
     V: RemoteSend + Clone,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     /// Returns a reference to the current value of the hash map.
     ///

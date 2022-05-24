@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use remoc_obs::{
+use remoc::robs::{
     hash_set::{HashSetEvent, ObservableHashSet},
     RecvError,
 };

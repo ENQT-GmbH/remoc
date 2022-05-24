@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use remoc_obs::{
+use remoc::robs::{
     list::{ListEvent, ObservableList},
     RecvError,
 };

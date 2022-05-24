@@ -28,7 +28,7 @@ jobs:
     name: Check with MSRV
     runs-on: ubuntu-latest
     env:
-      minrust: 1.51
+      minrust: 1.58
 
     steps:
       - name: Checkout sources
@@ -147,6 +147,7 @@ jobs:
           - rch
           - rfn
           - robj
+          - robs
           - rtc
 
     steps:
@@ -172,6 +173,7 @@ jobs:
           - rch
           - rfn
           - robj
+          - robs
           - rtc
 
     steps:

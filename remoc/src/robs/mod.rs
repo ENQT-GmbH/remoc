@@ -1,15 +1,7 @@
-#![forbid(unsafe_code)]
-#![warn(missing_docs)]
-#![cfg_attr(docsrs, feature(doc_cfg))]
-#![doc(
-    html_logo_url = "https://raw.githubusercontent.com/ENQT-GmbH/remoc/master/.misc/Remoc.png",
-    html_favicon_url = "https://raw.githubusercontent.com/ENQT-GmbH/remoc/master/.misc/Remoc.png"
-)]
-
 //! Remotely observable collections.
 //!
-//! This crate provides collections that emit an event for each change.
-//! This event stream can be sent to a local or remote endpoint (using [remoc]),
+//! This module provides collections that emit an event for each change.
+//! This event stream can be sent to a local or remote endpoint,
 //! where it can be either processed event-wise or a mirrored collection can
 //! be built from it.
 //!
@@ -19,10 +11,11 @@ pub mod hash_set;
 pub mod list;
 pub mod vec;
 
-use remoc::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt};
 use tokio::sync::watch;
+
+use crate::prelude::*;
 
 /// An error occurred during sending an event for an observable collection.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -141,7 +134,7 @@ impl From<rch::mpsc::RecvError> for RecvError {
 /// Sends an event.
 pub(crate) fn send_event<E, Codec>(tx: &rch::broadcast::Sender<E, Codec>, on_err: &dyn Fn(SendError), event: E)
 where
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
     E: RemoteSend + Clone,
 {
     match tx.send(event) {

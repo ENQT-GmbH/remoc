@@ -5,13 +5,13 @@
 //! The [resulting event stream](VecSubscription) can either be processed event-wise
 //! or used to build a [mirrored vector](MirroredVec).
 //!
-//! Changes are sent using a [remote broadcast channel](remoc::rch::broadcast), thus
+//! Changes are sent using a [remote broadcast channel](crate::rch::broadcast), thus
 //! subscribers cannot block the observed vector and are shed when their event buffer
 //! exceeds a configurable size.
 //!
 //! # Alternatives
 //!
-//! The [observable append-only list](crate::list) is more memory-efficient as it does not
+//! The [observable append-only list](super::list) is more memory-efficient as it does not
 //! require a send buffer for each subscriber.
 //! You should prefer it, if you are only appending to the vector.
 //!
@@ -19,12 +19,11 @@
 //!
 //! Create a [ObservableVec] and obtain a [subscription](VecSubscription) to it using
 //! [ObservableVec::subscribe].
-//! Send this subscription to a remote endpoint via a [remote channel](remoc::rch) and call
+//! Send this subscription to a remote endpoint via a [remote channel](crate::rch) and call
 //! [VecSubscription::mirror] on the remote endpoint to obtain a live mirror of the observed
 //! vector or process each change event individually using [VecSubscription::recv].
 //!
 
-use remoc::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
@@ -36,7 +35,8 @@ use std::{
 };
 use tokio::sync::{oneshot, watch, RwLock, RwLockReadGuard};
 
-use crate::{default_on_err, send_event, ChangeNotifier, ChangeSender, RecvError, SendError};
+use super::{default_on_err, send_event, ChangeNotifier, ChangeSender, RecvError, SendError};
+use crate::prelude::*;
 
 /// A vector change event.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -86,7 +86,7 @@ pub enum VecEvent<T> {
 /// the indexing notation.
 /// Also, mutable slicing is not supported and updates must be done
 /// element-wise.
-pub struct ObservableVec<T, Codec = remoc::codec::Default> {
+pub struct ObservableVec<T, Codec = crate::codec::Default> {
     v: Vec<T>,
     tx: rch::broadcast::Sender<VecEvent<T>, Codec>,
     change: ChangeSender,
@@ -106,7 +106,7 @@ where
 impl<T, Codec> From<Vec<T>> for ObservableVec<T, Codec>
 where
     T: Clone + RemoteSend,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     fn from(hs: Vec<T>) -> Self {
         let (tx, _rx) = rch::broadcast::channel::<_, _, rch::buffer::Default>(1);
@@ -123,7 +123,7 @@ impl<T, Codec> From<ObservableVec<T, Codec>> for Vec<T> {
 impl<T, Codec> Default for ObservableVec<T, Codec>
 where
     T: Clone + RemoteSend,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     fn default() -> Self {
         Self::from(Vec::new())
@@ -133,7 +133,7 @@ where
 impl<T, Codec> ObservableVec<T, Codec>
 where
     T: Clone + RemoteSend,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     /// Creates an empty observable vector.
     pub fn new() -> Self {
@@ -471,7 +471,7 @@ impl<T, Codec> Deref for ObservableVec<T, Codec> {
 impl<T, Codec> Extend<T> for ObservableVec<T, Codec>
 where
     T: RemoteSend + Clone,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
         for value in iter {
@@ -487,7 +487,7 @@ where
 pub struct RefMut<'a, T, Codec>
 where
     T: Clone + RemoteSend,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     index: usize,
     value: &'a mut T,
@@ -500,7 +500,7 @@ where
 impl<'a, T, Codec> Deref for RefMut<'a, T, Codec>
 where
     T: Clone + RemoteSend,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     type Target = T;
 
@@ -512,7 +512,7 @@ where
 impl<'a, T, Codec> DerefMut for RefMut<'a, T, Codec>
 where
     T: Clone + RemoteSend,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.changed = true;
@@ -523,7 +523,7 @@ where
 impl<'a, T, Codec> Drop for RefMut<'a, T, Codec>
 where
     T: Clone + RemoteSend,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     fn drop(&mut self) {
         if self.changed {
@@ -546,7 +546,7 @@ pub struct IterMut<'a, T, Codec> {
 impl<'a, T, Codec> Iterator for IterMut<'a, T, Codec>
 where
     T: Clone + RemoteSend,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     type Item = RefMut<'a, T, Codec>;
 
@@ -572,7 +572,7 @@ where
 impl<'a, T, Codec> ExactSizeIterator for IterMut<'a, T, Codec>
 where
     T: Clone + RemoteSend,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     fn len(&self) -> usize {
         self.inner.len()
@@ -582,7 +582,7 @@ where
 impl<'a, T, Codec> DoubleEndedIterator for IterMut<'a, T, Codec>
 where
     T: Clone + RemoteSend,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     fn next_back(&mut self) -> Option<Self::Item> {
         match self.inner.next_back() {
@@ -602,7 +602,7 @@ where
 impl<'a, T, Codec> FusedIterator for IterMut<'a, T, Codec>
 where
     T: Clone + RemoteSend,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
 }
 
@@ -697,9 +697,9 @@ where
 
 /// Initial value of an observable vector subscription.
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(bound(serialize = "T: RemoteSend, Codec: remoc::codec::Codec"))]
-#[serde(bound(deserialize = "T: RemoteSend, Codec: remoc::codec::Codec"))]
-enum VecInitialValue<T, Codec = remoc::codec::Default> {
+#[serde(bound(serialize = "T: RemoteSend, Codec: crate::codec::Codec"))]
+#[serde(bound(deserialize = "T: RemoteSend, Codec: crate::codec::Codec"))]
+enum VecInitialValue<T, Codec = crate::codec::Default> {
     /// Initial value is present.
     Value(Vec<T>),
     /// Initial value is received incrementally.
@@ -714,7 +714,7 @@ enum VecInitialValue<T, Codec = remoc::codec::Default> {
 impl<T, Codec> VecInitialValue<T, Codec>
 where
     T: RemoteSend + Clone,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     /// Transmits the initial value as a whole.
     fn new_value(hs: Vec<T>) -> Self {
@@ -745,7 +745,7 @@ where
 
 /// Observable vector subscription.
 ///
-/// This can be sent to a remote endpoint via a [remote channel](remoc::rch).
+/// This can be sent to a remote endpoint via a [remote channel](crate::rch).
 /// Then, on the remote endpoint, [mirror](Self::mirror) can be used to build
 /// and keep up-to-date a mirror of the observed vector.
 ///
@@ -753,9 +753,9 @@ where
 /// If the subscription is not incremental [take_initial](Self::take_initial) must
 /// be called before the first call to [recv](Self::recv).
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(bound(serialize = "T: RemoteSend, Codec: remoc::codec::Codec"))]
-#[serde(bound(deserialize = "T: RemoteSend, Codec: remoc::codec::Codec"))]
-pub struct VecSubscription<T, Codec = remoc::codec::Default> {
+#[serde(bound(serialize = "T: RemoteSend, Codec: crate::codec::Codec"))]
+#[serde(bound(deserialize = "T: RemoteSend, Codec: crate::codec::Codec"))]
+pub struct VecSubscription<T, Codec = crate::codec::Default> {
     /// Value of vector at time of subscription.
     initial: VecInitialValue<T, Codec>,
     /// Initial value received completely.
@@ -773,7 +773,7 @@ pub struct VecSubscription<T, Codec = remoc::codec::Default> {
 impl<T, Codec> VecSubscription<T, Codec>
 where
     T: RemoteSend + Clone,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     fn new(
         initial: VecInitialValue<T, Codec>, events: Option<rch::broadcast::Receiver<VecEvent<T>, Codec>>,
@@ -869,7 +869,7 @@ where
 impl<T, Codec> VecSubscription<T, Codec>
 where
     T: RemoteSend + Clone + Sync,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     /// Mirror the vector that this subscription is observing.
     ///
@@ -937,7 +937,7 @@ where
 }
 
 /// A vector that is mirroring an observable vector.
-pub struct MirroredVec<T, Codec = remoc::codec::Default> {
+pub struct MirroredVec<T, Codec = crate::codec::Default> {
     inner: Arc<RwLock<Option<MirroredVecInner<T>>>>,
     tx: rch::broadcast::Sender<VecEvent<T>, Codec>,
     changed_rx: watch::Receiver<()>,
@@ -953,7 +953,7 @@ impl<T, Codec> fmt::Debug for MirroredVec<T, Codec> {
 impl<T, Codec> MirroredVec<T, Codec>
 where
     T: RemoteSend + Clone,
-    Codec: remoc::codec::Codec,
+    Codec: crate::codec::Codec,
 {
     /// Returns a reference to the current value of the vector.
     ///

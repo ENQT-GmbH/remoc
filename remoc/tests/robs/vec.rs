@@ -1,4 +1,4 @@
-use remoc_obs::{
+use remoc::robs::{
     vec::{ObservableVec, VecEvent},
     RecvError,
 };

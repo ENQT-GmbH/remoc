@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use remoc_obs::{
+use remoc::robs::{
     hash_map::{HashMapEvent, ObservableHashMap},
     RecvError,
 };
