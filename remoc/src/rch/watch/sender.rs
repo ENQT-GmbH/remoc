@@ -161,6 +161,21 @@ where
         }
     }
 
+    /// Modifies the watched value and notifies all receivers.
+    ///
+    /// This method never fails, even if all receivers have been dropped or become
+    /// disconnected.
+    ///
+    /// # Panics
+    /// This method panics if calling `func` results in a panic.
+    #[inline]
+    pub fn send_modify<F>(&self, func: F)
+    where
+        F: FnOnce(&mut T),
+    {
+        self.inner.as_ref().unwrap().tx.send_modify(move |v| func(v.as_mut().unwrap()))
+    }
+
     /// Sends a new value via the channel, notifying all receivers and returning the
     /// previous value in the channel.
     ///

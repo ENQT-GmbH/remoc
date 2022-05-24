@@ -87,6 +87,10 @@ async fn simple_stream() {
 
         if value % 10 == 0 {
             sleep(Duration::from_millis(20)).await;
+
+            println!("Modifying");
+            tx.send_modify(|v| *v -= 1);
+            prev_value -= 1;
         }
     }
     drop(tx);
