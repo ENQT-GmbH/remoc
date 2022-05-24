@@ -173,7 +173,7 @@ where
     ///
     /// The [CallError] type must be convertible to the functions error type.
     async fn call_int(&mut self, argument: A) -> Result<RT, RE> {
-        Ok(self.try_call_int(argument).await??)
+        self.try_call_int(argument).await?
     }
 }
 

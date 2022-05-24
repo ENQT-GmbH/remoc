@@ -68,7 +68,7 @@ impl Serialize for Sender {
 
         let interlock_confirm = {
             let mut interlock = self.interlock.lock().unwrap();
-            if !interlock.receiver.is_local() {
+            if !interlock.receiver.check_local() {
                 return Err(ser::Error::custom("cannot send sender because receiver has been sent"));
             }
             interlock.receiver.start_send()

@@ -152,7 +152,7 @@ where
 
         let interlock_confirm = {
             let mut interlock = self.interlock.lock().unwrap();
-            if !interlock.sender.is_local() {
+            if !interlock.sender.check_local() {
                 return Err(ser::Error::custom("cannot send receiver because sender has been sent"));
             }
             interlock.sender.start_send()

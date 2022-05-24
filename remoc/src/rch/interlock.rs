@@ -13,7 +13,7 @@ pub(crate) enum Location {
 
 impl Location {
     /// True if location is local.
-    pub fn is_local(&mut self) -> bool {
+    pub fn check_local(&mut self) -> bool {
         match self {
             Self::Local => true,
             Self::Sending(rx) => match rx.try_recv() {

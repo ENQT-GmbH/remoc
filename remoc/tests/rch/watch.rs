@@ -19,6 +19,11 @@ async fn simple() {
     println!("Receiving remote mpsc channel receiver");
     let mut rx = b_rx.recv().await.unwrap().unwrap();
 
+    {
+        let value = rx.borrow().unwrap();
+        println!("Initial value: {:?}", value);
+    }
+
     let recv_task = tokio::spawn(async move {
         let mut value = *rx.borrow().unwrap();
         assert_eq!(value, start_value);
