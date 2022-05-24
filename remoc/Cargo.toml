@@ -45,7 +45,7 @@ rand = "0.8"
 tracing = "0.1.29"
 bytes = "1"
 byteorder = "1.4"
-uuid = { version = "0.8", features = ["serde", "v4"] }
+uuid = { version = "1", features = ["serde", "v4"] }
 async-trait = { version = "0.1", optional = true }
 serde = { version = "1.0", features = ["derive"], optional = true }
 

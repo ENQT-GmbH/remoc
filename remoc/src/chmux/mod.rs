@@ -35,6 +35,9 @@ pub use port_allocator::{PortAllocator, PortNumber};
 pub use receiver::{DataBuf, Received, Receiver, ReceiverStream, RecvAnyError, RecvChunkError, RecvError};
 pub use sender::{ChunkSender, Closed, SendError, Sender, SenderSink, TrySendError};
 
+#[doc(no_inline)]
+pub use uuid::Uuid;
+
 /// Channel multiplexer protocol version.
 pub const PROTOCOL_VERSION: u8 = 2;
 

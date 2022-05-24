@@ -79,10 +79,9 @@ use std::{
     sync::Arc,
 };
 use tokio::sync::{OwnedRwLockMappedWriteGuard, OwnedRwLockReadGuard, OwnedRwLockWriteGuard};
-use uuid::Uuid;
 
 use crate::{
-    chmux::{AnyBox, AnyEntry},
+    chmux::{AnyBox, AnyEntry, Uuid},
     codec,
     rch::{
         base::{PortDeserializer, PortSerializer},

@@ -6,7 +6,8 @@ use std::{
     fmt,
     sync::Arc,
 };
-use uuid::Uuid;
+
+use super::Uuid;
 
 /// Box containing any value that is Send, Sync and static.
 pub type AnyBox = Box<dyn Any + Send + Sync + 'static>;
