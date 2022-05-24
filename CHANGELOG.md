@@ -4,6 +4,19 @@ All notable changes to Remoc will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.0 - 2022-05-25
+## Added
+- move remotely observable collections from remoc-obs crate into robs module
+- rch::watch::Receiver::send_modify method
+- chmux errors can now be converted into std::io::Error
+## Changed
+- minimum supported Rust version (MSRV) is 1.59
+- remove rch::buffer types and use const generics directly to specify
+  buffer sizes of received channel halves
+- update uuid to 1.0
+## Fixed
+- fix infinite recursion in fmt::Debug implementation on some types
+
 ## 0.9.16 - 2022-02-24
 ### Added
 - reference to remoc-obs crate for remotely observable collections
