@@ -3,7 +3,7 @@ use remoc::{
     codec,
     rch::{
         broadcast::{self, ReceiverStream},
-        buffer, mpsc,
+        mpsc,
     },
 };
 
@@ -13,14 +13,12 @@ use crate::loop_channel_with_cfg;
 async fn simple() {
     crate::init();
     let cfg = remoc::chmux::Cfg { chunk_size: 4, receive_buffer: 4, ..Default::default() };
-    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel_with_cfg::<
-        broadcast::Receiver<(i16, mpsc::Sender<()>), codec::Default, buffer::Custom<16>>,
-    >(cfg)
-    .await;
+    let ((mut a_tx, _), (_, mut b_rx)) =
+        loop_channel_with_cfg::<broadcast::Receiver<(i16, mpsc::Sender<()>), codec::Default, 16>>(cfg).await;
 
-    let (tx, rx1) = broadcast::channel::<_, _, buffer::Custom<16>>(16);
-    let rx2 = tx.subscribe::<buffer::Custom<16>>(16);
-    let rx3 = tx.subscribe::<buffer::Custom<16>>(16);
+    let (tx, rx1) = broadcast::channel::<_, _, 16>(16);
+    let rx2 = tx.subscribe::<16>(16);
+    let rx3 = tx.subscribe::<16>(16);
 
     let send_task = tokio::spawn(async move {
         println!("Sending remote broadcast channel receivers");
@@ -115,14 +113,12 @@ async fn simple() {
 async fn simple_stream() {
     crate::init();
     let cfg = remoc::chmux::Cfg { chunk_size: 4, receive_buffer: 4, ..Default::default() };
-    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel_with_cfg::<
-        broadcast::Receiver<(i16, mpsc::Sender<()>), codec::Default, buffer::Custom<16>>,
-    >(cfg)
-    .await;
+    let ((mut a_tx, _), (_, mut b_rx)) =
+        loop_channel_with_cfg::<broadcast::Receiver<(i16, mpsc::Sender<()>), codec::Default, 16>>(cfg).await;
 
-    let (tx, rx1) = broadcast::channel::<_, _, buffer::Custom<16>>(16);
-    let rx2 = tx.subscribe::<buffer::Custom<16>>(16);
-    let rx3 = tx.subscribe::<buffer::Custom<16>>(16);
+    let (tx, rx1) = broadcast::channel::<_, _, 16>(16);
+    let rx2 = tx.subscribe::<16>(16);
+    let rx3 = tx.subscribe::<16>(16);
 
     let send_task = tokio::spawn(async move {
         println!("Sending remote broadcast channel receivers");

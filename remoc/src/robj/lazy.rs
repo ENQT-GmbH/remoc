@@ -53,7 +53,7 @@ use tokio::sync::Mutex;
 
 use crate::{
     chmux, codec,
-    rch::{base, buffer, mpsc, oneshot},
+    rch::{base, mpsc, oneshot},
     RemoteSend,
 };
 
@@ -142,7 +142,7 @@ impl Drop for Provider {
 #[serde(bound(serialize = "T: RemoteSend, Codec: codec::Codec"))]
 #[serde(bound(deserialize = "T: RemoteSend, Codec: codec::Codec"))]
 pub struct Lazy<T, Codec = codec::Default> {
-    request_tx: mpsc::Sender<oneshot::Sender<T, Codec>, Codec, buffer::Custom<1>>,
+    request_tx: mpsc::Sender<oneshot::Sender<T, Codec>, Codec, 1>,
     #[serde(skip)]
     #[serde(default)]
     #[allow(clippy::type_complexity)]
@@ -194,8 +194,8 @@ where
         F: Future<Output = T> + Send + 'static,
     {
         let (request_tx, request_rx) = mpsc::channel::<oneshot::Sender<T, Codec>, _>(1);
-        let request_tx = request_tx.set_buffer::<buffer::Custom<1>>();
-        let mut request_rx = request_rx.set_buffer::<buffer::Custom<1>>();
+        let request_tx = request_tx.set_buffer::<1>();
+        let mut request_rx = request_rx.set_buffer::<1>();
         let (keep_tx, keep_rx) = tokio::sync::oneshot::channel();
 
         tokio::spawn(async move {

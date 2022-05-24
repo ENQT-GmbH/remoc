@@ -12,7 +12,8 @@ use std::{
 use super::{
     super::{
         base::{self, PortDeserializer, PortSerializer},
-        buffer, ClosedReason, RemoteSendError, SendErrorExt, BACKCHANNEL_MSG_CLOSE, BACKCHANNEL_MSG_ERROR,
+        ClosedReason, RemoteSendError, SendErrorExt, BACKCHANNEL_MSG_CLOSE, BACKCHANNEL_MSG_ERROR,
+        DEFAULT_BUFFER,
     },
     receiver::RecvError,
     recv_impl, send_impl,
@@ -224,22 +225,21 @@ impl<T> Error for TrySendError<T> where T: fmt::Debug {}
 /// Send values to the associated [Receiver](super::Receiver), which may be located on a remote endpoint.
 ///
 /// Instances are created by the [channel](super::channel) function.
-pub struct Sender<T, Codec = codec::Default, Buffer = buffer::Default> {
+pub struct Sender<T, Codec = codec::Default, const BUFFER: usize = DEFAULT_BUFFER> {
     tx: Weak<tokio::sync::mpsc::Sender<Result<T, RecvError>>>,
     closed_rx: tokio::sync::watch::Receiver<Option<ClosedReason>>,
     remote_send_err_rx: tokio::sync::watch::Receiver<Option<RemoteSendError>>,
     dropped_tx: tokio::sync::mpsc::Sender<()>,
     _codec: PhantomData<Codec>,
-    _buffer: PhantomData<Buffer>,
 }
 
-impl<T, Codec, Buffer> fmt::Debug for Sender<T, Codec, Buffer> {
+impl<T, Codec, const BUFFER: usize> fmt::Debug for Sender<T, Codec, BUFFER> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Sender").finish()
     }
 }
 
-impl<T, Codec, Buffer> Clone for Sender<T, Codec, Buffer> {
+impl<T, Codec, const BUFFER: usize> Clone for Sender<T, Codec, BUFFER> {
     fn clone(&self) -> Self {
         Self {
             tx: self.tx.clone(),
@@ -247,7 +247,6 @@ impl<T, Codec, Buffer> Clone for Sender<T, Codec, Buffer> {
             remote_send_err_rx: self.remote_send_err_rx.clone(),
             dropped_tx: self.dropped_tx.clone(),
             _codec: PhantomData,
-            _buffer: PhantomData,
         }
     }
 }
@@ -263,10 +262,9 @@ pub(crate) struct TransportedSender<T, Codec> {
     codec: PhantomData<Codec>,
 }
 
-impl<T, Codec, Buffer> Sender<T, Codec, Buffer>
+impl<T, Codec, const BUFFER: usize> Sender<T, Codec, BUFFER>
 where
     T: Send + 'static,
-    Buffer: buffer::Size,
 {
     /// Creates a new sender.
     pub(crate) fn new(
@@ -283,7 +281,6 @@ where
             remote_send_err_rx,
             dropped_tx,
             _codec: PhantomData,
-            _buffer: PhantomData,
         };
 
         // Drop strong reference to sender when channel is closed.
@@ -315,7 +312,6 @@ where
             remote_send_err_rx: tokio::sync::watch::channel(None).1,
             dropped_tx: tokio::sync::mpsc::channel(1).0,
             _codec: PhantomData,
-            _buffer: PhantomData,
         }
     }
 
@@ -432,30 +428,25 @@ where
     }
 
     /// Sets the codec that will be used when sending this sender to a remote endpoint.
-    pub fn set_codec<NewCodec>(self) -> Sender<T, NewCodec, Buffer> {
+    pub fn set_codec<NewCodec>(self) -> Sender<T, NewCodec, BUFFER> {
         Sender {
             tx: self.tx.clone(),
             closed_rx: self.closed_rx.clone(),
             remote_send_err_rx: self.remote_send_err_rx.clone(),
             dropped_tx: self.dropped_tx.clone(),
             _codec: PhantomData,
-            _buffer: PhantomData,
         }
     }
 
     /// Sets the buffer size that will be used when sending this sender to a remote endpoint.
-    pub fn set_buffer<NewBuffer>(self) -> Sender<T, Codec, NewBuffer>
-    where
-        NewBuffer: buffer::Size,
-    {
-        assert!(NewBuffer::size() > 0, "buffer size must not be zero");
+    pub fn set_buffer<const NEW_BUFFER: usize>(self) -> Sender<T, Codec, NEW_BUFFER> {
+        assert!(NEW_BUFFER > 0, "buffer size must not be zero");
         Sender {
             tx: self.tx.clone(),
             closed_rx: self.closed_rx.clone(),
             remote_send_err_rx: self.remote_send_err_rx.clone(),
             dropped_tx: self.dropped_tx.clone(),
             _codec: PhantomData,
-            _buffer: PhantomData,
         }
     }
 }
@@ -474,17 +465,16 @@ where
     }
 }
 
-impl<T, Codec, Buffer> Drop for Sender<T, Codec, Buffer> {
+impl<T, Codec, const BUFFER: usize> Drop for Sender<T, Codec, BUFFER> {
     fn drop(&mut self) {
         // empty
     }
 }
 
-impl<T, Codec, Buffer> Serialize for Sender<T, Codec, Buffer>
+impl<T, Codec, const BUFFER: usize> Serialize for Sender<T, Codec, BUFFER>
 where
     T: RemoteSend,
     Codec: codec::Codec,
-    Buffer: buffer::Size,
 {
     /// Serializes this sender for sending over a chmux channel.
     #[inline]
@@ -527,11 +517,10 @@ where
     }
 }
 
-impl<'de, T, Codec, Buffer> Deserialize<'de> for Sender<T, Codec, Buffer>
+impl<'de, T, Codec, const BUFFER: usize> Deserialize<'de> for Sender<T, Codec, BUFFER>
 where
     T: RemoteSend,
     Codec: codec::Codec,
-    Buffer: buffer::Size,
 {
     /// Deserializes this sender after it has been received over a chmux channel.
     #[inline]
@@ -539,7 +528,7 @@ where
     where
         D: serde::Deserializer<'de>,
     {
-        assert!(Buffer::size() > 0, "BUFFER must not be zero");
+        assert!(BUFFER > 0, "BUFFER must not be zero");
 
         // Get chmux port number from deserialized transport type.
         let TransportedSender { port, .. } = TransportedSender::<T, Codec>::deserialize(deserializer)?;
@@ -548,7 +537,7 @@ where
             // Received channel is open.
             Some(port) => {
                 // Create internal communication channels.
-                let (tx, mut rx) = tokio::sync::mpsc::channel(Buffer::size());
+                let (tx, mut rx) = tokio::sync::mpsc::channel(BUFFER);
                 let (closed_tx, closed_rx) = tokio::sync::watch::channel(None);
                 let (remote_send_err_tx, remote_send_err_rx) = tokio::sync::watch::channel(None);
 

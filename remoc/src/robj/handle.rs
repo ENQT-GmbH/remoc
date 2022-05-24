@@ -85,7 +85,7 @@ use crate::{
     codec,
     rch::{
         base::{PortDeserializer, PortSerializer},
-        buffer, mpsc,
+        mpsc,
     },
 };
 
@@ -164,14 +164,14 @@ enum State<Codec> {
         /// Id in local handle storage.
         id: Uuid,
         /// Dropped notification.
-        dropped_tx: mpsc::Sender<(), Codec, buffer::Custom<1>>,
+        dropped_tx: mpsc::Sender<(), Codec, 1>,
     },
     /// Value is stored on a remote endpoint.
     Remote {
         /// Id in remote handle storage.
         id: Uuid,
         /// Dropped notification.
-        dropped_tx: mpsc::Sender<(), Codec, buffer::Custom<1>>,
+        dropped_tx: mpsc::Sender<(), Codec, 1>,
     },
 }
 
@@ -348,7 +348,7 @@ pub(crate) struct TransportedHandle<T, Codec> {
     /// Handle id.
     id: Uuid,
     /// Dropped notification.
-    dropped_tx: mpsc::Sender<(), Codec, buffer::Custom<1>>,
+    dropped_tx: mpsc::Sender<(), Codec, 1>,
     /// Data type.
     data: PhantomData<T>,
     /// Codec
@@ -370,8 +370,8 @@ where
                 let id = handle_storage.insert(entry.clone());
 
                 let (dropped_tx, dropped_rx) = mpsc::channel(1);
-                let dropped_tx = dropped_tx.set_buffer::<buffer::Custom<1>>();
-                let mut dropped_rx = dropped_rx.set_buffer::<buffer::Custom<1>>();
+                let dropped_tx = dropped_tx.set_buffer::<1>();
+                let mut dropped_rx = dropped_rx.set_buffer::<1>();
 
                 tokio::spawn(async move {
                     loop {

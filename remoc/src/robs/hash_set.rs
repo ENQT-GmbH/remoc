@@ -72,7 +72,7 @@ where
     Codec: crate::codec::Codec,
 {
     fn from(hs: HashSet<T>) -> Self {
-        let (tx, _rx) = rch::broadcast::channel::<_, _, rch::buffer::Default>(1);
+        let (tx, _rx) = rch::broadcast::channel::<_, _, { rch::DEFAULT_BUFFER }>(1);
         Self { hs, tx, change: ChangeSender::new(), on_err: Arc::new(default_on_err), done: false }
     }
 }
@@ -562,7 +562,7 @@ where
     /// If this size is reached, processing of events is stopped and
     /// [RecvError::MaxSizeExceeded] is returned.
     pub fn mirror(mut self, max_size: usize) -> MirroredHashSet<T, Codec> {
-        let (tx, _rx) = rch::broadcast::channel::<_, _, rch::buffer::Default>(1);
+        let (tx, _rx) = rch::broadcast::channel::<_, _, { rch::DEFAULT_BUFFER }>(1);
         let (changed_tx, changed_rx) = watch::channel(());
         let (dropped_tx, mut dropped_rx) = oneshot::channel();
 

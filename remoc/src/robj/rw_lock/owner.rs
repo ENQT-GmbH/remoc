@@ -6,8 +6,8 @@ use super::{
     ReadLock, RwLock,
 };
 use crate::{
-    codec::{self},
-    rch::{buffer, mpsc, watch},
+    codec,
+    rch::{mpsc, watch},
     RemoteSend,
 };
 
@@ -59,12 +59,12 @@ where
 
     /// Message handler for lock owner.
     async fn owner_task(
-        value: &mut T, mut read_req_rx: mpsc::Receiver<ReadRequest<T, Codec>, Codec, buffer::Custom<1>>,
-        mut write_req_rx: mpsc::Receiver<WriteRequest<T, Codec>, Codec, buffer::Custom<1>>,
+        value: &mut T, mut read_req_rx: mpsc::Receiver<ReadRequest<T, Codec>, Codec, 1>,
+        mut write_req_rx: mpsc::Receiver<WriteRequest<T, Codec>, Codec, 1>,
     ) {
         let (dropped_tx, dropped_rx) = mpsc::channel(1);
         let mut dropped_tx = dropped_tx.set_buffer();
-        let mut dropped_rx = dropped_rx.set_buffer::<buffer::Custom<1>>();
+        let mut dropped_rx = dropped_rx.set_buffer::<1>();
         let (mut invalid_tx, mut invalid_rx) = watch::channel(false);
 
         loop {

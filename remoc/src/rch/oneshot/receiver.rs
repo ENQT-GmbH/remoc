@@ -8,7 +8,7 @@ use std::{
     task::{Context, Poll},
 };
 
-use super::super::{base, buffer, mpsc};
+use super::super::{base, mpsc};
 use crate::{
     chmux,
     codec::{self},
@@ -133,7 +133,7 @@ impl Error for TryRecvError {}
 #[derive(Serialize, Deserialize)]
 #[serde(bound(serialize = "T: RemoteSend, Codec: codec::Codec"))]
 #[serde(bound(deserialize = "T: RemoteSend, Codec: codec::Codec"))]
-pub struct Receiver<T, Codec = codec::Default>(pub(crate) mpsc::Receiver<T, Codec, buffer::Custom<1>>);
+pub struct Receiver<T, Codec = codec::Default>(pub(crate) mpsc::Receiver<T, Codec, 1>);
 
 impl<T, Codec> fmt::Debug for Receiver<T, Codec> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

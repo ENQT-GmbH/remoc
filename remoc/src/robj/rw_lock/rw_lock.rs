@@ -9,7 +9,7 @@ use std::{
 use super::msg::{ReadRequest, Value, WriteRequest};
 use crate::{
     chmux, codec,
-    rch::{base, buffer, mpsc, oneshot},
+    rch::{base, mpsc, oneshot},
     RemoteSend,
 };
 
@@ -94,7 +94,7 @@ impl Error for CommitError {}
 #[serde(bound(serialize = "T: RemoteSend, Codec: codec::Codec"))]
 #[serde(bound(deserialize = "T: RemoteSend, Codec: codec::Codec"))]
 pub struct ReadLock<T, Codec = codec::Default> {
-    req_tx: mpsc::Sender<ReadRequest<T, Codec>, Codec, buffer::Custom<1>>,
+    req_tx: mpsc::Sender<ReadRequest<T, Codec>, Codec, 1>,
     #[serde(skip)]
     #[serde(default = "empty_cache")]
     cache: Arc<tokio::sync::RwLock<Option<Value<T, Codec>>>>,
@@ -121,7 +121,7 @@ where
     T: RemoteSend + Sync,
     Codec: codec::Codec,
 {
-    pub(crate) fn new(read_req_tx: mpsc::Sender<ReadRequest<T, Codec>, Codec, buffer::Custom<1>>) -> Self {
+    pub(crate) fn new(read_req_tx: mpsc::Sender<ReadRequest<T, Codec>, Codec, 1>) -> Self {
         Self { req_tx: read_req_tx, cache: empty_cache() }
     }
 
@@ -260,7 +260,7 @@ impl<'a, T, Codec> Drop for ReadGuard<'a, T, Codec> {
 #[serde(bound(deserialize = "T: RemoteSend, Codec: codec::Codec"))]
 pub struct RwLock<T, Codec = codec::Default> {
     read: ReadLock<T, Codec>,
-    req_tx: mpsc::Sender<WriteRequest<T, Codec>, Codec, buffer::Custom<1>>,
+    req_tx: mpsc::Sender<WriteRequest<T, Codec>, Codec, 1>,
 }
 
 impl<T, Codec> Clone for RwLock<T, Codec> {
@@ -281,8 +281,7 @@ where
     Codec: codec::Codec,
 {
     pub(crate) fn new(
-        read_lock: ReadLock<T, Codec>,
-        write_req_tx: mpsc::Sender<WriteRequest<T, Codec>, Codec, buffer::Custom<1>>,
+        read_lock: ReadLock<T, Codec>, write_req_tx: mpsc::Sender<WriteRequest<T, Codec>, Codec, 1>,
     ) -> Self {
         Self { read: read_lock, req_tx: write_req_tx }
     }

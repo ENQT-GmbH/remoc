@@ -9,7 +9,7 @@ use std::{
 };
 
 use super::{
-    super::{base, buffer, mpsc, SendErrorExt},
+    super::{base, mpsc, SendErrorExt},
     BroadcastMsg, Receiver,
 };
 use crate::{chmux, codec, RemoteSend};
@@ -113,9 +113,9 @@ pub struct Sender<T, Codec = codec::Default> {
 }
 
 struct SenderInner<T, Codec> {
-    subs: Vec<mpsc::Sender<BroadcastMsg<T>, Codec, buffer::Custom<1>>>,
-    ready_tx: tokio::sync::mpsc::UnboundedSender<mpsc::Sender<BroadcastMsg<T>, Codec, buffer::Custom<1>>>,
-    ready_rx: tokio::sync::mpsc::UnboundedReceiver<mpsc::Sender<BroadcastMsg<T>, Codec, buffer::Custom<1>>>,
+    subs: Vec<mpsc::Sender<BroadcastMsg<T>, Codec, 1>>,
+    ready_tx: tokio::sync::mpsc::UnboundedSender<mpsc::Sender<BroadcastMsg<T>, Codec, 1>>,
+    ready_rx: tokio::sync::mpsc::UnboundedReceiver<mpsc::Sender<BroadcastMsg<T>, Codec, 1>>,
     not_ready: usize,
 }
 
@@ -193,10 +193,9 @@ where
     }
 
     /// Creates a new receiver that will receive values sent after this call to subscribe.
-    pub fn subscribe<ReceiveBuffer>(&self, send_buffer: usize) -> Receiver<T, Codec, ReceiveBuffer>
-    where
-        ReceiveBuffer: buffer::Size,
-    {
+    pub fn subscribe<const RECEIVE_BUFFER: usize>(
+        &self, send_buffer: usize,
+    ) -> Receiver<T, Codec, RECEIVE_BUFFER> {
         let mut inner = self.inner.lock().unwrap();
 
         let (tx, rx) = mpsc::channel(send_buffer);
@@ -210,13 +209,10 @@ where
     ///
     /// The mpsc sender can be sent over a remote channel.
     /// All feeders are disconnected once all receivers are disconnected.
-    pub fn feeder<SendBuffer>(&self) -> mpsc::Sender<T, Codec, SendBuffer>
-    where
-        SendBuffer: buffer::Size,
-    {
+    pub fn feeder<const SEND_BUFFER: usize>(&self) -> mpsc::Sender<T, Codec, SEND_BUFFER> {
         let (tx, rx) = mpsc::channel(1);
         let tx = tx.set_buffer();
-        let mut rx = rx.set_buffer::<buffer::Custom<1>>();
+        let mut rx = rx.set_buffer::<1>();
         let this = self.clone();
 
         tokio::spawn(async move {

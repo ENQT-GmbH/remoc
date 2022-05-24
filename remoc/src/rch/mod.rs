@@ -75,6 +75,17 @@
 //! in your data structure or limit their maximum size during deserialization by applying
 //! the `#[serde(deserialize_with="...")]` attribute to the fields containing them.
 //!
+//! # Static buffer size configuration for received channel-halves
+//!
+//! This is used to specify the local buffer size (in items) via a const generic type parameter
+//! when the sender or receiver half of a channel *is received*.
+//!
+//! The default buffer size is [DEFAULT_BUFFER], which is currently 2 items.
+//! It can be increased to improve performance, but this will also increase
+//! the maximum amount of memory used per channel.
+//! Setting the buffer size too high must be avoided, since this can lead to
+//! the program running out of memory.
+//!
 //! # Error handling
 //!
 //! During sending it is often useful to treat errors that occur due to the disconnection, either graceful
@@ -94,7 +105,7 @@ mod interlock;
 pub mod base;
 pub mod bin;
 pub mod broadcast;
-pub mod buffer;
+//pub mod buffer;
 pub mod lr;
 pub mod mpsc;
 pub mod oneshot;
@@ -299,3 +310,10 @@ where
         }
     }
 }
+
+/// Default buffer size in items, when the sender or receiver half of a channel *is received*.
+///
+/// This can be changed via a const generic type parameter of a sender or receiver.
+///
+/// The current default buffer size is 2.
+pub const DEFAULT_BUFFER: usize = 2;

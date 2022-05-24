@@ -10,7 +10,6 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::buffer;
 use crate::{codec, RemoteSend};
 
 mod receiver;
@@ -29,13 +28,12 @@ pub(crate) enum BroadcastMsg<T> {
 }
 
 /// Create a bounded, multi-producer, multi-consumer channel where each sent value is broadcasted to all active receivers.
-pub fn channel<T, Codec, ReceiveBuffer>(
+pub fn channel<T, Codec, const RECEIVE_BUFFER: usize>(
     send_buffer: usize,
-) -> (Sender<T, Codec>, Receiver<T, Codec, ReceiveBuffer>)
+) -> (Sender<T, Codec>, Receiver<T, Codec, RECEIVE_BUFFER>)
 where
     T: RemoteSend + Clone,
     Codec: codec::Codec,
-    ReceiveBuffer: buffer::Size,
 {
     let sender = Sender::new();
     let receiver = sender.subscribe(send_buffer);

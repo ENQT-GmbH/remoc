@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     codec,
-    rch::{buffer, mpsc, oneshot, watch},
+    rch::{mpsc, oneshot, watch},
     RemoteSend,
 };
 
@@ -38,7 +38,7 @@ pub struct Value<T, Codec> {
     /// The shared value.
     pub(crate) value: T,
     /// Notification channel that all instances of this value have been dropped.
-    pub(crate) dropped_tx: mpsc::Sender<(), Codec, buffer::Custom<1>>,
+    pub(crate) dropped_tx: mpsc::Sender<(), Codec, 1>,
     /// Notification channel that value has been invalidated by the owner.
     pub(crate) invalid_rx: watch::Receiver<bool, Codec>,
 }

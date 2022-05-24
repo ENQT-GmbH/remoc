@@ -10,7 +10,7 @@ use std::{
 use tokio_util::sync::ReusableBoxFuture;
 
 use super::{
-    super::{base, buffer, mpsc},
+    super::{base, mpsc, DEFAULT_BUFFER},
     BroadcastMsg,
 };
 use crate::{chmux, codec, RemoteSend};
@@ -181,24 +181,24 @@ impl Error for TryRecvError {}
 /// This can be converted into a [Stream](futures::Stream) of values by wrapping it into
 /// a [ReceiverStream].
 #[derive(Serialize, Deserialize)]
-#[serde(bound(serialize = "T: RemoteSend, Codec: codec::Codec, Buffer: buffer::Size"))]
-#[serde(bound(deserialize = "T: RemoteSend, Codec: codec::Codec, Buffer: buffer::Size"))]
-pub struct Receiver<T, Codec = codec::Default, Buffer = buffer::Default> {
-    rx: mpsc::Receiver<BroadcastMsg<T>, Codec, Buffer>,
+#[serde(bound(serialize = "T: RemoteSend, Codec: codec::Codec"))]
+#[serde(bound(deserialize = "T: RemoteSend, Codec: codec::Codec"))]
+pub struct Receiver<T, Codec = codec::Default, const BUFFER: usize = { DEFAULT_BUFFER }> {
+    rx: mpsc::Receiver<BroadcastMsg<T>, Codec, BUFFER>,
 }
 
-impl<T, Codec, Buffer> fmt::Debug for Receiver<T, Codec, Buffer> {
+impl<T, Codec, const BUFFER: usize> fmt::Debug for Receiver<T, Codec, BUFFER> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Receiver").finish()
     }
 }
 
-impl<T, Codec, Buffer> Receiver<T, Codec, Buffer>
+impl<T, Codec, const BUFFER: usize> Receiver<T, Codec, BUFFER>
 where
     T: RemoteSend,
     Codec: codec::Codec,
 {
-    pub(crate) fn new(rx: mpsc::Receiver<BroadcastMsg<T>, Codec, Buffer>) -> Self {
+    pub(crate) fn new(rx: mpsc::Receiver<BroadcastMsg<T>, Codec, BUFFER>) -> Self {
         Self { rx }
     }
 
@@ -229,7 +229,7 @@ where
     }
 }
 
-impl<T, Codec, Buffer> Drop for Receiver<T, Codec, Buffer> {
+impl<T, Codec, const BUFFER: usize> Drop for Receiver<T, Codec, BUFFER> {
     fn drop(&mut self) {
         // empty
     }
@@ -293,9 +293,9 @@ impl TryFrom<RecvError> for StreamError {
 impl Error for StreamError {}
 
 /// A wrapper around a broadcast [Receiver] that implements [Stream](futures::Stream).
-pub struct ReceiverStream<T, Codec = codec::Default, Buffer = buffer::Default> {
+pub struct ReceiverStream<T, Codec = codec::Default, const BUFFER: usize = DEFAULT_BUFFER> {
     #[allow(clippy::type_complexity)]
-    inner: ReusableBoxFuture<'static, (Result<T, RecvError>, Receiver<T, Codec, Buffer>)>,
+    inner: ReusableBoxFuture<'static, (Result<T, RecvError>, Receiver<T, Codec, BUFFER>)>,
 }
 
 impl<T, Codec> fmt::Debug for ReceiverStream<T, Codec> {
@@ -304,30 +304,28 @@ impl<T, Codec> fmt::Debug for ReceiverStream<T, Codec> {
     }
 }
 
-impl<T, Codec, Buffer> ReceiverStream<T, Codec, Buffer>
+impl<T, Codec, const BUFFER: usize> ReceiverStream<T, Codec, BUFFER>
 where
     T: RemoteSend + Sync,
     Codec: codec::Codec,
-    Buffer: buffer::Size,
 {
     /// Creates a new `ReceiverStream`.
-    pub fn new(rx: Receiver<T, Codec, Buffer>) -> Self {
+    pub fn new(rx: Receiver<T, Codec, BUFFER>) -> Self {
         Self { inner: ReusableBoxFuture::new(Self::make_future(rx)) }
     }
 
     async fn make_future(
-        mut rx: Receiver<T, Codec, Buffer>,
-    ) -> (Result<T, RecvError>, Receiver<T, Codec, Buffer>) {
+        mut rx: Receiver<T, Codec, BUFFER>,
+    ) -> (Result<T, RecvError>, Receiver<T, Codec, BUFFER>) {
         let result = rx.recv().await;
         (result, rx)
     }
 }
 
-impl<T: Clone, Codec, Buffer> Stream for ReceiverStream<T, Codec, Buffer>
+impl<T: Clone, Codec, const BUFFER: usize> Stream for ReceiverStream<T, Codec, BUFFER>
 where
     T: RemoteSend + Sync,
     Codec: codec::Codec,
-    Buffer: buffer::Size,
 {
     type Item = Result<T, StreamError>;
 
@@ -342,15 +340,14 @@ where
     }
 }
 
-impl<T, Codec, Buffer> Unpin for ReceiverStream<T, Codec, Buffer> {}
+impl<T, Codec, const BUFFER: usize> Unpin for ReceiverStream<T, Codec, BUFFER> {}
 
-impl<T, Codec, Buffer> From<Receiver<T, Codec, Buffer>> for ReceiverStream<T, Codec, Buffer>
+impl<T, Codec, const BUFFER: usize> From<Receiver<T, Codec, BUFFER>> for ReceiverStream<T, Codec, BUFFER>
 where
     T: RemoteSend + Sync,
     Codec: codec::Codec,
-    Buffer: buffer::Size,
 {
-    fn from(recv: Receiver<T, Codec, Buffer>) -> Self {
+    fn from(recv: Receiver<T, Codec, BUFFER>) -> Self {
         Self::new(recv)
     }
 }
