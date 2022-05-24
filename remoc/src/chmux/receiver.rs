@@ -591,6 +591,11 @@ impl Drop for Receiver {
 /// A stream receiving byte data over a channel.
 ///
 /// No ports or data exceeding the maximum buffer size can be received.
+///
+/// This can be used together with [tokio_util::io::StreamReader] to obtain an
+/// [AsyncRead](tokio::io::AsyncRead).
+///
+/// [tokio_util::io::StreamReader]: https://docs.rs/tokio-util/latest/tokio_util/io/struct.StreamReader.html
 pub struct ReceiverStream {
     inner: ReusableBoxFuture<'static, (Result<Option<DataBuf>, RecvError>, Receiver)>,
     close: bool,
