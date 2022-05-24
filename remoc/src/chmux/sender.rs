@@ -78,6 +78,17 @@ impl<T> From<mpsc::error::SendError<T>> for SendError {
     }
 }
 
+impl From<SendError> for std::io::Error {
+    fn from(err: SendError) -> Self {
+        use std::io::ErrorKind;
+        match err {
+            SendError::ChMux => Self::new(ErrorKind::ConnectionReset, err.to_string()),
+            SendError::Closed { gracefully: false } => Self::new(ErrorKind::ConnectionReset, err.to_string()),
+            SendError::Closed { gracefully: true } => Self::new(ErrorKind::ConnectionAborted, err.to_string()),
+        }
+    }
+}
+
 /// An error occurred during sending of a message.
 #[derive(Debug)]
 pub enum TrySendError {

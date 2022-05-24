@@ -54,6 +54,17 @@ impl fmt::Display for RecvError {
 
 impl Error for RecvError {}
 
+impl From<RecvError> for std::io::Error {
+    fn from(err: RecvError) -> Self {
+        use std::io::ErrorKind;
+        match err {
+            RecvError::ChMux => Self::new(ErrorKind::ConnectionReset, err.to_string()),
+            RecvError::ExceedsMaxDataSize(_) => Self::new(ErrorKind::InvalidData, err.to_string()),
+            RecvError::ExceedsMaxPortCount(_) => Self::new(ErrorKind::InvalidData, err.to_string()),
+        }
+    }
+}
+
 /// An error occurred during receiving a message.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

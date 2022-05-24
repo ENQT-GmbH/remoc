@@ -82,3 +82,17 @@ where
     StreamError: Error,
 {
 }
+
+impl From<ChMuxError<std::io::Error, std::io::Error>> for std::io::Error {
+    fn from(err: ChMuxError<std::io::Error, std::io::Error>) -> Self {
+        use std::io::ErrorKind;
+        match err {
+            ChMuxError::SinkError(err) => err,
+            ChMuxError::StreamError(err) => err,
+            ChMuxError::StreamClosed => std::io::Error::new(ErrorKind::ConnectionReset, err.to_string()),
+            ChMuxError::Reset => std::io::Error::new(ErrorKind::ConnectionReset, err.to_string()),
+            ChMuxError::Timeout => std::io::Error::new(ErrorKind::TimedOut, err.to_string()),
+            ChMuxError::Protocol(_) => std::io::Error::new(ErrorKind::InvalidData, err.to_string()),
+        }
+    }
+}

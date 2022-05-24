@@ -36,6 +36,16 @@ impl fmt::Display for ListenerError {
 
 impl Error for ListenerError {}
 
+impl From<ListenerError> for std::io::Error {
+    fn from(err: ListenerError) -> Self {
+        use std::io::ErrorKind;
+        match err {
+            ListenerError::LocalPortsExhausted => Self::new(ErrorKind::AddrInUse, err.to_string()),
+            ListenerError::MultiplexerError => Self::new(ErrorKind::ConnectionReset, err.to_string()),
+        }
+    }
+}
+
 /// A connection request by the remote endpoint.
 ///
 /// Dropping the request rejects it.

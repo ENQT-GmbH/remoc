@@ -51,6 +51,19 @@ impl fmt::Display for ConnectError {
 
 impl Error for ConnectError {}
 
+impl From<ConnectError> for std::io::Error {
+    fn from(err: ConnectError) -> Self {
+        use std::io::ErrorKind;
+        match err {
+            ConnectError::LocalPortsExhausted => Self::new(ErrorKind::AddrInUse, err.to_string()),
+            ConnectError::RemotePortsExhausted => Self::new(ErrorKind::AddrInUse, err.to_string()),
+            ConnectError::TooManyPendingConnectionRequests => Self::new(ErrorKind::AddrInUse, err.to_string()),
+            ConnectError::Rejected => Self::new(ErrorKind::ConnectionRefused, err.to_string()),
+            ConnectError::ChMux => Self::new(ErrorKind::ConnectionReset, err.to_string()),
+        }
+    }
+}
+
 /// Accounts connection request credits.
 #[derive(Clone)]
 struct ConntectRequestCrediter(Arc<Mutex<ConntectRequestCrediterInner>>);
