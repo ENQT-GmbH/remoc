@@ -581,7 +581,7 @@ impl Drop for Receiver {
 ///
 /// No ports or data exceeding the maximum buffer size can be received.
 pub struct ReceiverStream {
-    inner: ReusableBoxFuture<(Result<Option<DataBuf>, RecvError>, Receiver)>,
+    inner: ReusableBoxFuture<'static, (Result<Option<DataBuf>, RecvError>, Receiver)>,
     close: bool,
 }
 

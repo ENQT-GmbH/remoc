@@ -233,7 +233,7 @@ where
 ///
 /// Note that intermediate values may be missed due to the nature of watch channels.
 pub struct ReceiverStream<T, Codec = codec::Default> {
-    inner: ReusableBoxFuture<(Result<(), ChangedError>, Receiver<T, Codec>)>,
+    inner: ReusableBoxFuture<'static, (Result<(), ChangedError>, Receiver<T, Codec>)>,
 }
 
 impl<T, Codec> fmt::Debug for ReceiverStream<T, Codec> {

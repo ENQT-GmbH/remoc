@@ -295,7 +295,7 @@ impl Error for StreamError {}
 /// A wrapper around a broadcast [Receiver] that implements [Stream](futures::Stream).
 pub struct ReceiverStream<T, Codec = codec::Default, Buffer = buffer::Default> {
     #[allow(clippy::type_complexity)]
-    inner: ReusableBoxFuture<(Result<T, RecvError>, Receiver<T, Codec, Buffer>)>,
+    inner: ReusableBoxFuture<'static, (Result<T, RecvError>, Receiver<T, Codec, Buffer>)>,
 }
 
 impl<T, Codec> fmt::Debug for ReceiverStream<T, Codec> {
