@@ -112,6 +112,11 @@ pub struct Cfg {
     /// By default this is 128.
     /// This must not be zero.
     pub connect_queue: u16,
+    /// Time to wait when no data is available for sending before flushing the send buffer
+    /// of the connection.
+    ///
+    /// By default this is 20 milliseconds.
+    pub flush_delay: Duration,
     #[doc(hidden)]
     pub _non_exhaustive: (),
 }
@@ -132,6 +137,7 @@ impl Default for Cfg {
             transport_send_queue: 16,
             transport_receive_queue: 16,
             connect_queue: 128,
+            flush_delay: Duration::from_millis(20),
             _non_exhaustive: (),
         }
     }

@@ -700,7 +700,7 @@ where
                     }
 
                     // Flush transport sink if no requests are queued.
-                    () = future::ready(()), if !flushed => {
+                    () = sleep(self.local_cfg.flush_delay), if !flushed => {
                         flushed = true;
                         GlobalEvt::Flush
                     },
