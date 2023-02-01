@@ -4,6 +4,11 @@ All notable changes to Remoc will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+# 0.10.1 - 2023-02-01
+## Added
+- configuration option `flush_delay` to configure flush delay when no data
+  to send is available
+
 ## 0.10.0 - 2022-05-25
 ## Added
 - move remotely observable collections from remoc-obs crate into `robs` module

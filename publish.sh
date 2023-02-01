@@ -14,9 +14,6 @@ VERSION=$(grep "^version = " remoc/Cargo.toml | cut -d ' ' -f 3 | tr -d \")
 echo "Publishing remoc_macro $VERSION"
 cargo publish --manifest-path remoc_macro/Cargo.toml
 
-# Required for crates.io index update.
-sleep 20
-
 echo "Publishing remoc $VERSION"
 cargo publish --manifest-path remoc/Cargo.toml
 
