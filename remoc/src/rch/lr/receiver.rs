@@ -51,14 +51,14 @@ impl From<ConnectError> for RecvError {
 impl fmt::Display for RecvError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::Receive(err) => write!(f, "receive error: {}", err),
-            Self::Deserialize(err) => write!(f, "deserialization error: {}", err),
+            Self::Receive(err) => write!(f, "receive error: {err}"),
+            Self::Deserialize(err) => write!(f, "deserialization error: {err}"),
             Self::MissingPorts(ports) => write!(
                 f,
                 "missing chmux ports: {}",
                 ports.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", ")
             ),
-            Self::Connect(err) => write!(f, "connect error: {}", err),
+            Self::Connect(err) => write!(f, "connect error: {err}"),
         }
     }
 }

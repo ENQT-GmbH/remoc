@@ -33,9 +33,9 @@ pub enum SendError {
 impl fmt::Display for SendError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::RemoteSend(err) => write!(f, "send error: {}", err),
-            Self::RemoteConnect(err) => write!(f, "connect error: {}", err),
-            Self::RemoteListen(err) => write!(f, "listen error: {}", err),
+            Self::RemoteSend(err) => write!(f, "send error: {err}"),
+            Self::RemoteConnect(err) => write!(f, "connect error: {err}"),
+            Self::RemoteListen(err) => write!(f, "listen error: {err}"),
             Self::RemoteForward => write!(f, "forwarding error"),
         }
     }
@@ -98,10 +98,10 @@ impl fmt::Display for RecvError {
         match self {
             Self::Closed => write!(f, "observed collection was dropped"),
             Self::Lagged => write!(f, "observation lagged behind"),
-            Self::MaxSizeExceeded(size) => write!(f, "mirrored collection reached it maximum size of {}", size),
-            Self::RemoteReceive(err) => write!(f, "receive error: {}", err),
-            Self::RemoteConnect(err) => write!(f, "connect error: {}", err),
-            Self::RemoteListen(err) => write!(f, "listen error: {}", err),
+            Self::MaxSizeExceeded(size) => write!(f, "mirrored collection reached it maximum size of {size}"),
+            Self::RemoteReceive(err) => write!(f, "receive error: {err}"),
+            Self::RemoteConnect(err) => write!(f, "connect error: {err}"),
+            Self::RemoteListen(err) => write!(f, "listen error: {err}"),
             Self::InvalidIndex(idx) => write!(f, "index {idx} is invalid"),
         }
     }

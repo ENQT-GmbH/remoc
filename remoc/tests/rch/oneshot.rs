@@ -14,11 +14,11 @@ async fn simple() {
     let (tx, rx) = b_rx.recv().await.unwrap().unwrap();
 
     let i = 512;
-    println!("Sending {}", i);
+    println!("Sending {i}");
     tx.send(i).unwrap();
 
     let r = rx.await.unwrap();
-    println!("Received {}", r);
+    println!("Received {r}");
     assert_eq!(i, r, "send/receive mismatch");
 }
 
@@ -45,6 +45,6 @@ async fn close() {
         Ok(()) => panic!("send after close succeeded"),
         #[allow(deprecated)]
         Err(err) if err.is_closed() => (),
-        Err(err) => panic!("wrong error after close: {}", err),
+        Err(err) => panic!("wrong error after close: {err}"),
     }
 }

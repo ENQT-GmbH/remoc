@@ -81,16 +81,16 @@ async fn basic() {
             });
 
             for i in 0..N_MSG {
-                let msg = format!("message no {}", i);
+                let msg = format!("message no {i}");
                 match tx.send(msg.clone().into()).await {
                     Ok(()) => (),
                     Err(SendError::Closed { gracefully }) => {
-                        println!("Client closed connection with gracefully={}", gracefully);
+                        println!("Client closed connection with gracefully={gracefully}");
                         break;
                     }
                     other => other.unwrap(),
                 }
-                println!("Server sent: {}", msg);
+                println!("Server sent: {msg}");
             }
 
             drop(tx);
@@ -196,12 +196,12 @@ async fn receiver_stream() {
 
     let mut n = 0;
     loop {
-        let s = format!("{}", n);
+        let s = format!("{n}");
         let data = s.as_bytes().to_vec();
         match tx.send(data.clone().into()).await {
             Ok(()) => (),
             Err(err) if err.is_closed() => break,
-            Err(err) => panic!("send error: {}", err),
+            Err(err) => panic!("send error: {err}"),
         }
 
         n += 1;
@@ -290,9 +290,9 @@ async fn hangup() {
     loop {
         let msg = vec![i as u8];
         match tx.send(msg.into()).await {
-            Ok(()) => println!("A client sent: {}", i),
+            Ok(()) => println!("A client sent: {i}"),
             Err(err) => {
-                println!("A client send error: {:?}", err);
+                println!("A client send error: {err:?}");
                 break;
             }
         }

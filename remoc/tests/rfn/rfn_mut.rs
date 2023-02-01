@@ -20,11 +20,11 @@ async fn simple() {
 
     println!("calling function");
     let result = rfn.call(12, 13).await.unwrap();
-    println!("rfn(12, 13) = {}", result);
+    println!("rfn(12, 13) = {result}");
     assert_eq!(result, 25);
 
     println!("calling function");
     let result = rfn.call(33, 0).await.unwrap();
-    println!("rfn(33, 0) = {}", result);
+    println!("rfn(33, 0) = {result}");
     assert_eq!(result, 58);
 }

@@ -73,8 +73,8 @@ pub enum ConnectError {
 impl fmt::Display for ConnectError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ConnectError::Connect(err) => write!(f, "connect error: {}", err),
-            ConnectError::Listen(err) => write!(f, "listen error: {}", err),
+            ConnectError::Connect(err) => write!(f, "connect error: {err}"),
+            ConnectError::Listen(err) => write!(f, "listen error: {err}"),
             ConnectError::NoConnectRequest => write!(f, "no connect request received"),
         }
     }

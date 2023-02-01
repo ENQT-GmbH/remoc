@@ -79,9 +79,9 @@ impl fmt::Display for CallError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::Dropped => write!(f, "provider dropped or function panicked"),
-            Self::RemoteReceive(err) => write!(f, "receive error: {}", err),
-            Self::RemoteConnect(err) => write!(f, "connect error: {}", err),
-            Self::RemoteListen(err) => write!(f, "listen error: {}", err),
+            Self::RemoteReceive(err) => write!(f, "receive error: {err}"),
+            Self::RemoteConnect(err) => write!(f, "connect error: {err}"),
+            Self::RemoteListen(err) => write!(f, "listen error: {err}"),
         }
     }
 }

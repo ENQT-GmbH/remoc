@@ -30,9 +30,9 @@ impl fmt::Display for LockError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::Dropped => write!(f, "owner dropped"),
-            Self::RemoteReceive(err) => write!(f, "receive error: {}", err),
-            Self::RemoteConnect(err) => write!(f, "connect error: {}", err),
-            Self::RemoteListen(err) => write!(f, "listen error: {}", err),
+            Self::RemoteReceive(err) => write!(f, "receive error: {err}"),
+            Self::RemoteConnect(err) => write!(f, "connect error: {err}"),
+            Self::RemoteListen(err) => write!(f, "listen error: {err}"),
         }
     }
 }

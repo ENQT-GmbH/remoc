@@ -44,8 +44,8 @@ impl From<DeserializationError> for RecvError {
 impl fmt::Display for RecvError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::Receive(err) => write!(f, "receive error: {}", err),
-            Self::Deserialize(err) => write!(f, "deserialization error: {}", err),
+            Self::Receive(err) => write!(f, "receive error: {err}"),
+            Self::Deserialize(err) => write!(f, "deserialization error: {err}"),
             Self::MissingPorts(ports) => write!(
                 f,
                 "missing chmux ports: {}",
@@ -336,7 +336,7 @@ where
 
                 // But error on ports that we expect but that are missing.
                 if !pds.expected.is_empty() {
-                    return Err(RecvError::MissingPorts(pds.expected.iter().map(|(port, _)| *port).collect()));
+                    return Err(RecvError::MissingPorts(pds.expected.keys().copied().collect()));
                 }
             }
 

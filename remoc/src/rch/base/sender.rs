@@ -103,8 +103,8 @@ impl<T> SendErrorExt for SendError<T> {
 impl fmt::Display for SendErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::Serialize(err) => write!(f, "serialization error: {}", err),
-            Self::Send(err) => write!(f, "send error: {}", err),
+            Self::Serialize(err) => write!(f, "serialization error: {err}"),
+            Self::Send(err) => write!(f, "send error: {err}"),
         }
     }
 }

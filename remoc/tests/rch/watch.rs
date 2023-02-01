@@ -21,7 +21,7 @@ async fn simple() {
 
     {
         let value = rx.borrow().unwrap();
-        println!("Initial value: {:?}", value);
+        println!("Initial value: {value:?}");
     }
 
     let recv_task = tokio::spawn(async move {
@@ -30,7 +30,7 @@ async fn simple() {
 
         while rx.changed().await.is_ok() {
             value = *rx.borrow_and_update().unwrap();
-            println!("Received value change: {}", value);
+            println!("Received value change: {value}");
         }
 
         value = *rx.borrow_and_update().unwrap();
@@ -38,7 +38,7 @@ async fn simple() {
     });
 
     for value in start_value..=end_value {
-        println!("Sending {}", value);
+        println!("Sending {value}");
         tx.send(value).unwrap();
         assert_eq!(*tx.borrow(), value);
 
@@ -71,7 +71,7 @@ async fn simple_stream() {
         let mut value = 0;
         while let Some(rxed_value) = rx.next().await {
             value = rxed_value.unwrap();
-            println!("Received value change: {}", value);
+            println!("Received value change: {value}");
         }
 
         assert_eq!(value, end_value);
@@ -79,7 +79,7 @@ async fn simple_stream() {
 
     let mut prev_value = start_value;
     for value in start_value..=end_value {
-        println!("Sending {}", value);
+        println!("Sending {value}");
         let last_value = tx.send_replace(value);
         assert_eq!(last_value, prev_value);
         assert_eq!(*tx.borrow(), value);
@@ -130,7 +130,7 @@ async fn close() {
     match tx.send(15) {
         Ok(()) => panic!("send succeeded after close"),
         Err(err) if err.is_closed() => (),
-        Err(err) => panic!("wrong error after close: {}", err),
+        Err(err) => panic!("wrong error after close: {err}"),
     }
 }
 
@@ -161,6 +161,6 @@ async fn conn_failure() {
     match tx.send(15) {
         Ok(()) => panic!("send succeeded after close"),
         Err(err) if err.is_closed() => (),
-        Err(err) => panic!("wrong error after close: {}", err),
+        Err(err) => panic!("wrong error after close: {err}"),
     }
 }

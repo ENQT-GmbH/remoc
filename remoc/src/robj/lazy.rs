@@ -74,9 +74,9 @@ impl fmt::Display for FetchError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::Dropped => write!(f, "lazy provider dropped"),
-            Self::RemoteReceive(err) => write!(f, "receive error: {}", err),
-            Self::RemoteConnect(err) => write!(f, "connect error: {}", err),
-            Self::RemoteListen(err) => write!(f, "listen error: {}", err),
+            Self::RemoteReceive(err) => write!(f, "receive error: {err}"),
+            Self::RemoteConnect(err) => write!(f, "connect error: {err}"),
+            Self::RemoteListen(err) => write!(f, "listen error: {err}"),
         }
     }
 }
@@ -284,7 +284,7 @@ impl<'a, T> Deref for Ref<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        &*self.value
+        &self.value
     }
 }
 

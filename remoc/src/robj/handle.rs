@@ -104,7 +104,7 @@ impl fmt::Display for HandleError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             HandleError::Unknown => write!(f, "unknown, taken or non-local handle"),
-            HandleError::MismatchedType(ty) => write!(f, "mismatched handle type: {}", ty),
+            HandleError::MismatchedType(ty) => write!(f, "mismatched handle type: {ty}"),
         }
     }
 }
@@ -434,7 +434,7 @@ impl<T> Deref for Ref<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        &*self.0
+        &self.0
     }
 }
 
@@ -454,13 +454,13 @@ impl<T> Deref for RefMut<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
-        &*self.0
+        &self.0
     }
 }
 
 impl<T> DerefMut for RefMut<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut *self.0
+        &mut self.0
     }
 }
 

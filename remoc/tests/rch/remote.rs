@@ -14,16 +14,16 @@ async fn negation() {
             match b_tx.send(-i).await {
                 Ok(()) => (),
                 Err(err) if err.is_closed() => break,
-                Err(err) => panic!("reply sending failed: {}", err),
+                Err(err) => panic!("reply sending failed: {err}"),
             }
         }
     });
 
     for i in 1..1024 {
-        println!("Sending {}", i);
+        println!("Sending {i}");
         a_tx.send(i).await.unwrap();
         let r = a_rx.recv().await.unwrap().unwrap();
-        println!("Received {}", r);
+        println!("Received {r}");
         assert_eq!(i, -r, "wrong reply");
     }
     drop(a_tx);
@@ -42,7 +42,7 @@ async fn big_msg() {
             match b_tx.send(msg).await {
                 Ok(()) => (),
                 Err(err) if err.is_closed() => break,
-                Err(err) => panic!("reply sending failed: {}", err),
+                Err(err) => panic!("reply sending failed: {err}"),
             }
         }
     });
@@ -78,7 +78,7 @@ async fn tcp_big_msg() {
             match b_tx.send(msg).await {
                 Ok(()) => (),
                 Err(err) if err.is_closed() => break,
-                Err(err) => panic!("reply sending failed: {}", err),
+                Err(err) => panic!("reply sending failed: {err}"),
             }
         }
     });

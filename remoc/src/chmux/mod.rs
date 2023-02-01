@@ -63,12 +63,12 @@ where
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::SinkError(err) => write!(f, "send error: {}", err),
-            Self::StreamError(err) => write!(f, "receive error: {}", err),
+            Self::SinkError(err) => write!(f, "send error: {err}"),
+            Self::StreamError(err) => write!(f, "receive error: {err}"),
             Self::StreamClosed => write!(f, "end of receive stream"),
             Self::Reset => write!(f, "connection reset"),
             Self::Timeout => write!(f, "connection timeout"),
-            Self::Protocol(err) => write!(f, "protocol error: {}", err),
+            Self::Protocol(err) => write!(f, "protocol error: {err}"),
         }
     }
 }

@@ -476,7 +476,7 @@ impl<'a, T> Deref for ObservableListRef<'a, T> {
     type Target = Vec<T>;
 
     fn deref(&self) -> &Self::Target {
-        &*self.buffer
+        &self.buffer
     }
 }
 

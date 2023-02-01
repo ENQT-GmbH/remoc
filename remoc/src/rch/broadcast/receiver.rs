@@ -58,9 +58,9 @@ impl fmt::Display for RecvError {
         match self {
             Self::Closed => write!(f, "channel closed"),
             Self::Lagged => write!(f, "receiver lagged behind"),
-            Self::RemoteReceive(err) => write!(f, "receive error: {}", err),
-            Self::RemoteConnect(err) => write!(f, "connect error: {}", err),
-            Self::RemoteListen(err) => write!(f, "listen error: {}", err),
+            Self::RemoteReceive(err) => write!(f, "receive error: {err}"),
+            Self::RemoteConnect(err) => write!(f, "connect error: {err}"),
+            Self::RemoteListen(err) => write!(f, "listen error: {err}"),
         }
     }
 }
@@ -143,9 +143,9 @@ impl fmt::Display for TryRecvError {
             Self::Empty => write!(f, "channel empty"),
             Self::Closed => write!(f, "channel closed"),
             Self::Lagged => write!(f, "receiver lagged behind"),
-            Self::RemoteReceive(err) => write!(f, "receive error: {}", err),
-            Self::RemoteConnect(err) => write!(f, "connect error: {}", err),
-            Self::RemoteListen(err) => write!(f, "listen error: {}", err),
+            Self::RemoteReceive(err) => write!(f, "receive error: {err}"),
+            Self::RemoteConnect(err) => write!(f, "connect error: {err}"),
+            Self::RemoteListen(err) => write!(f, "listen error: {err}"),
         }
     }
 }
@@ -270,9 +270,9 @@ impl fmt::Display for StreamError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::Lagged => write!(f, "receiver lagged behind"),
-            Self::RemoteReceive(err) => write!(f, "receive error: {}", err),
-            Self::RemoteConnect(err) => write!(f, "connect error: {}", err),
-            Self::RemoteListen(err) => write!(f, "listen error: {}", err),
+            Self::RemoteReceive(err) => write!(f, "receive error: {err}"),
+            Self::RemoteConnect(err) => write!(f, "connect error: {err}"),
+            Self::RemoteListen(err) => write!(f, "listen error: {err}"),
         }
     }
 }

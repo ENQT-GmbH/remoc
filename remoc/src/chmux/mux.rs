@@ -468,8 +468,7 @@ where
             },
         ) {
             panic!(
-                "create_port called for local port {} already connected to remote port {}",
-                local_port_num, remote_port
+                "create_port called for local port {local_port_num} already connected to remote port {remote_port}"
             );
         }
 
@@ -748,7 +747,7 @@ where
                 if !self.remote_listener_dropped.load(Ordering::SeqCst) {
                     let local_port_num = *local_port;
                     if self.ports.insert(local_port, PortState::Connecting { response_tx }).is_some() {
-                        panic!("ConnectRequest for already used local port {}", local_port_num);
+                        panic!("ConnectRequest for already used local port {local_port_num}");
                     }
                     send_msg(permit, MultiplexMsg::OpenPort { client_port: local_port_num, wait });
                 } else {
@@ -759,7 +758,7 @@ where
             // Remote connect request was accepted by local listener.
             GlobalEvt::Port(PortEvt::Accepted { local_port, remote_port, port_tx }) => {
                 if !self.outstanding_remote_port_requests.remove(&remote_port) {
-                    panic!("Accepted non-outstanding remote port {} request", remote_port);
+                    panic!("Accepted non-outstanding remote port {remote_port} request");
                 }
                 let local_port_num = *local_port;
                 send_msg(
@@ -773,7 +772,7 @@ where
             // Remote connect request was rejected by local listener.
             GlobalEvt::Port(PortEvt::Rejected { remote_port, no_ports }) => {
                 if !self.outstanding_remote_port_requests.remove(&remote_port) {
-                    panic!("Rejected non-outstanding remote port {} request", remote_port);
+                    panic!("Rejected non-outstanding remote port {remote_port} request");
                 }
                 send_msg(permit, MultiplexMsg::Rejected { client_port: remote_port, no_ports });
             }
@@ -791,7 +790,7 @@ where
                 for (port, response_tx) in ports {
                     let port_num = *port;
                     if self.ports.insert(port, PortState::Connecting { response_tx }).is_some() {
-                        panic!("SendPorts with already used local port {}", port_num);
+                        panic!("SendPorts with already used local port {port_num}");
                     }
                     port_nums.push(port_num);
                 }
@@ -909,8 +908,7 @@ where
             MultiplexMsg::OpenPort { client_port, wait } => {
                 if !self.outstanding_remote_port_requests.insert(client_port) {
                     return Err(protocol_err!(format!(
-                        "remote endpoint sent OpenPort request for same remote port {} twice",
-                        client_port
+                        "remote endpoint sent OpenPort request for same remote port {client_port} twice"
                     )));
                 }
                 let req = RemoteConnectMsg::Request(Request::new(
@@ -936,8 +934,7 @@ where
                     let _ = response_tx.send(ConnectResponse::Accepted(sender, receiver));
                 } else {
                     return Err(protocol_err!(format!(
-                        "received PortOpened message for port {} not in connecting state",
-                        client_port
+                        "received PortOpened message for port {client_port} not in connecting state"
                     )));
                 }
             }
@@ -948,8 +945,7 @@ where
                     let _ = response_tx.send(ConnectResponse::Rejected { no_ports });
                 } else {
                     return Err(protocol_err!(format!(
-                        "received Rejected message for port {} not in connecting state",
-                        client_port
+                        "received Rejected message for port {client_port} not in connecting state"
                     )));
                 }
             }
@@ -999,8 +995,7 @@ where
                     for port in &ports {
                         if !self.outstanding_remote_port_requests.insert(*port) {
                             return Err(protocol_err!(format!(
-                                "remote endpoint sent PortData request for same remote port {} twice",
-                                port
+                                "remote endpoint sent PortData request for same remote port {port} twice"
                             )));
                         }
                     }

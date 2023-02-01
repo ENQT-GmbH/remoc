@@ -18,11 +18,11 @@ async fn simple() {
     let mut rx = b_rx.recv().await.unwrap().unwrap();
 
     for i in 1..1024 {
-        println!("Sending {}", i);
+        println!("Sending {i}");
         let tx = tx.clone();
         tx.send(i).await.unwrap();
         let r = rx.recv().await.unwrap().unwrap();
-        println!("Received {}", r);
+        println!("Received {r}");
         assert_eq!(i, r, "send/receive mismatch");
     }
 
@@ -57,11 +57,11 @@ async fn simple_stream() {
     let mut rx = b_rx.recv().await.unwrap().unwrap();
 
     for i in 1..1024 {
-        println!("Sending {}", i);
+        println!("Sending {i}");
         let tx = tx.clone();
         tx.send(i).await.unwrap();
         let r = rx.next().await.unwrap().unwrap();
-        println!("Received {}", r);
+        println!("Received {r}");
         assert_eq!(i, r, "send/receive mismatch");
     }
 
@@ -96,7 +96,7 @@ async fn simple_close() {
     let mut rx = b_rx.recv().await.unwrap().unwrap();
 
     for i in 1..1024 {
-        println!("Sending {}", i);
+        println!("Sending {i}");
         let tx = tx.clone();
 
         if tx.send(i).await.into_closed().unwrap() {
@@ -105,7 +105,7 @@ async fn simple_close() {
         }
 
         let r = rx.recv().await.unwrap().unwrap();
-        println!("Received {}", r);
+        println!("Received {r}");
         assert_eq!(i, r, "send/receive mismatch");
 
         if r == 512 {
@@ -139,11 +139,11 @@ async fn simple_drop() {
     let mut rx = b_rx.recv().await.unwrap().unwrap();
 
     for i in 1..1024 {
-        println!("Sending {}", i);
+        println!("Sending {i}");
         let tx = tx.clone();
         tx.send(i).await.unwrap();
         let r = rx.recv().await.unwrap().unwrap();
-        println!("Received {}", r);
+        println!("Received {r}");
         assert_eq!(i, r, "send/receive mismatch");
     }
 
@@ -180,11 +180,11 @@ async fn simple_conn_failure() {
     let mut rx = b_rx.recv().await.unwrap().unwrap();
 
     for i in 1..1024 {
-        println!("Sending {}", i);
+        println!("Sending {i}");
         let tx = tx.clone();
         tx.send(i).await.unwrap();
         let r = rx.recv().await.unwrap().unwrap();
-        println!("Received {}", r);
+        println!("Received {r}");
         assert_eq!(i, r, "send/receive mismatch");
     }
 
@@ -226,7 +226,7 @@ async fn two_sender_conn_failure() {
     let tx2 = d_rx.recv().await.unwrap().unwrap();
 
     for i in 1..100 {
-        println!("Sending {} over connection 1", i);
+        println!("Sending {i} over connection 1");
         match tx1.send(i).await {
             Ok(()) => println!("Send ok"),
             Err(err) => {
@@ -238,7 +238,7 @@ async fn two_sender_conn_failure() {
             }
         }
 
-        println!("Sending {} over connection 2", i);
+        println!("Sending {i} over connection 2");
         tx2.send(i).await.unwrap();
 
         if i == 50 {
@@ -248,18 +248,18 @@ async fn two_sender_conn_failure() {
 
         if conn1.is_some() {
             let r = rx.recv().await.unwrap().unwrap();
-            println!("Received {} first time", r);
+            println!("Received {r} first time");
             assert_eq!(i, r, "send/receive mismatch");
 
             let r = rx.recv().await.unwrap().unwrap();
-            println!("Received {} second time", r);
+            println!("Received {r} second time");
             assert_eq!(i, r, "send/receive mismatch");
         } else {
             let r = rx.recv().await.unwrap().unwrap();
-            println!("Received {} first time", r);
+            println!("Received {r} first time");
 
             if let Ok(r) = rx.try_recv() {
-                println!("Received {} second time", r);
+                println!("Received {r} second time");
             }
         }
     }
@@ -321,10 +321,10 @@ async fn multiple() {
         let task = tokio::spawn(async move {
             sleep(dur).await;
 
-            println!("Sending {}", i);
+            println!("Sending {i}");
             n_tx.send(i).await.unwrap();
             let r = n_rx.recv().await.unwrap().unwrap();
-            println!("Received {}", r);
+            println!("Received {r}");
             assert_eq!(i, r, "send/receive mismatch");
 
             drop(n_tx);
@@ -367,11 +367,11 @@ async fn forward() {
     let mut rx = b3_rx.recv().await.unwrap().unwrap();
 
     for i in 1..1024 {
-        println!("Sending {}", i);
+        println!("Sending {i}");
         let tx = tx.clone();
         tx.send(i).await.unwrap();
         let r = rx.recv().await.unwrap().unwrap();
-        println!("Received {}", r);
+        println!("Received {r}");
         assert_eq!(i, r, "send/receive mismatch");
     }
 

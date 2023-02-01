@@ -33,9 +33,9 @@ impl<T> fmt::Display for SendError<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::Closed(_) => write!(f, "no subscribers"),
-            Self::RemoteSend(err) => write!(f, "send error: {}", err),
-            Self::RemoteConnect(err) => write!(f, "connect error: {}", err),
-            Self::RemoteListen(err) => write!(f, "listen error: {}", err),
+            Self::RemoteSend(err) => write!(f, "send error: {err}"),
+            Self::RemoteConnect(err) => write!(f, "connect error: {err}"),
+            Self::RemoteListen(err) => write!(f, "listen error: {err}"),
             Self::RemoteForward => write!(f, "forwarding error"),
         }
     }

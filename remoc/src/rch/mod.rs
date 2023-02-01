@@ -126,8 +126,8 @@ impl fmt::Display for ConnectError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::Dropped => write!(f, "other part was dropped"),
-            Self::Connect(err) => write!(f, "connect error: {}", err),
-            Self::Listen(err) => write!(f, "listen error: {}", err),
+            Self::Connect(err) => write!(f, "connect error: {err}"),
+            Self::Listen(err) => write!(f, "listen error: {err}"),
         }
     }
 }

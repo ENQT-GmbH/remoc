@@ -39,13 +39,13 @@ async fn simple() {
         loop {
             match rx1.recv().await {
                 Ok((msg, reply_tx)) => {
-                    println!("RX1: {}", msg);
+                    println!("RX1: {msg}");
                     assert_eq!(msg, i);
                     reply_tx.send(()).await.unwrap();
                     i += 1;
                 }
                 Err(err) if err.is_closed() => break,
-                Err(err) => panic!("RX1 error: {}", err),
+                Err(err) => panic!("RX1 error: {err}"),
             }
         }
     });
@@ -55,13 +55,13 @@ async fn simple() {
         loop {
             match rx2.recv().await {
                 Ok((msg, reply_tx)) => {
-                    println!("RX2: {}", msg);
+                    println!("RX2: {msg}");
                     assert_eq!(msg, i);
                     reply_tx.send(()).await.unwrap();
                     i += 1;
                 }
                 Err(err) if err.is_closed() => break,
-                Err(err) => panic!("RX2 error: {}", err),
+                Err(err) => panic!("RX2 error: {err}"),
             }
         }
     });
@@ -74,14 +74,14 @@ async fn simple() {
         loop {
             match rx3.recv().await {
                 Ok((msg, _reply_tx)) => {
-                    println!("RX3: {}", msg);
+                    println!("RX3: {msg}");
                 }
                 Err(err) if err.is_closed() => break,
                 Err(err) if err.is_lagged() => {
                     lagged = true;
                     println!("RX3 lagged");
                 }
-                Err(err) => panic!("RX3 error: {}", err),
+                Err(err) => panic!("RX3 error: {err}"),
             }
         }
         assert!(lagged, "RX3 did not lag behind");
@@ -89,7 +89,7 @@ async fn simple() {
 
     let mut rx3_go_tx = Some(rx3_go_tx);
     for i in 0..128 {
-        println!("Sending {}", i);
+        println!("Sending {i}");
         let (reply_tx, mut reply_rx) = mpsc::channel(1);
         let tx = tx.clone();
         tx.send((i, reply_tx)).unwrap();
@@ -99,7 +99,7 @@ async fn simple() {
         }
 
         for r in 1..=2 {
-            println!("Waiting for reply {}/2", r);
+            println!("Waiting for reply {r}/2");
             reply_rx.recv().await.unwrap();
         }
     }
@@ -139,13 +139,13 @@ async fn simple_stream() {
         loop {
             match rx1.next().await {
                 Some(Ok((msg, reply_tx))) => {
-                    println!("RX1: {}", msg);
+                    println!("RX1: {msg}");
                     assert_eq!(msg, i);
                     reply_tx.send(()).await.unwrap();
                     i += 1;
                 }
                 None => break,
-                Some(Err(err)) => panic!("RX1 error: {}", err),
+                Some(Err(err)) => panic!("RX1 error: {err}"),
             }
         }
     });
@@ -155,13 +155,13 @@ async fn simple_stream() {
         loop {
             match rx2.next().await {
                 Some(Ok((msg, reply_tx))) => {
-                    println!("RX2: {}", msg);
+                    println!("RX2: {msg}");
                     assert_eq!(msg, i);
                     reply_tx.send(()).await.unwrap();
                     i += 1;
                 }
                 None => break,
-                Some(Err(err)) => panic!("RX2 error: {}", err),
+                Some(Err(err)) => panic!("RX2 error: {err}"),
             }
         }
     });
@@ -174,14 +174,14 @@ async fn simple_stream() {
         loop {
             match rx3.next().await {
                 Some(Ok((msg, _reply_tx))) => {
-                    println!("RX3: {}", msg);
+                    println!("RX3: {msg}");
                 }
                 None => break,
                 Some(Err(err)) if err.is_lagged() => {
                     lagged = true;
                     println!("RX3 lagged");
                 }
-                Some(Err(err)) => panic!("RX3 error: {}", err),
+                Some(Err(err)) => panic!("RX3 error: {err}"),
             }
         }
         assert!(lagged, "RX3 did not lag behind");
@@ -189,7 +189,7 @@ async fn simple_stream() {
 
     let mut rx3_go_tx = Some(rx3_go_tx);
     for i in 0..128 {
-        println!("Sending {}", i);
+        println!("Sending {i}");
         let (reply_tx, mut reply_rx) = mpsc::channel(1);
         let tx = tx.clone();
         tx.send((i, reply_tx)).unwrap();
@@ -199,7 +199,7 @@ async fn simple_stream() {
         }
 
         for r in 1..=2 {
-            println!("Waiting for reply {}/2", r);
+            println!("Waiting for reply {r}/2");
             reply_rx.recv().await.unwrap();
         }
     }

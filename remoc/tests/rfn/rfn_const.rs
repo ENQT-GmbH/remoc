@@ -17,12 +17,12 @@ async fn simple() {
     println!("calling function");
     let value = 123;
     let result = rfn.call(value).await.unwrap();
-    println!("rfn({}) = {}", value, result);
+    println!("rfn({value}) = {result}");
     assert_eq!(result, -value);
 
     println!("calling function");
     let value = 331;
     let result = rfn.call(value).await.unwrap();
-    println!("rfn({}) = {}", value, result);
+    println!("rfn({value}) = {result}");
     assert_eq!(result, -value);
 }

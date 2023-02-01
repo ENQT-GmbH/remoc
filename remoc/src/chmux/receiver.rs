@@ -43,10 +43,10 @@ impl fmt::Display for RecvError {
         match self {
             Self::ChMux => write!(f, "multiplexer terminated"),
             Self::ExceedsMaxDataSize(max_size) => {
-                write!(f, "data exceeds maximum allowed size of {} bytes", max_size)
+                write!(f, "data exceeds maximum allowed size of {max_size} bytes")
             }
             Self::ExceedsMaxPortCount(max_count) => {
-                write!(f, "port message exceeds maximum allowed count of {} ports", max_count)
+                write!(f, "port message exceeds maximum allowed count of {max_count} ports")
             }
         }
     }

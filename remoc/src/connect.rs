@@ -37,8 +37,8 @@ where
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::ChMux(err) => write!(f, "chmux error: {}", err),
-            Self::RemoteConnect(err) => write!(f, "channel connect failed: {}", err),
+            Self::ChMux(err) => write!(f, "chmux error: {err}"),
+            Self::RemoteConnect(err) => write!(f, "channel connect failed: {err}"),
         }
     }
 }

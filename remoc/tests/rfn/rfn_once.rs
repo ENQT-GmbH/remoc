@@ -21,6 +21,6 @@ async fn simple() {
 
     println!("calling function");
     let result = rfn.call(123).await.unwrap();
-    println!("result: {}", result);
+    println!("result: {result}");
     assert_eq!(result, reply_value);
 }

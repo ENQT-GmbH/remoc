@@ -14,10 +14,10 @@ async fn send_sender() {
     let mut tx = b_rx.recv().await.unwrap().unwrap();
 
     for i in 1..1024 {
-        println!("Sending {}", i);
+        println!("Sending {i}");
         tx.send(i).await.unwrap();
         let r = rx.recv().await.unwrap().unwrap();
-        println!("Received {}", r);
+        println!("Received {r}");
         assert_eq!(i, r, "send/receive mismatch");
     }
 
@@ -49,10 +49,10 @@ async fn send_receiver() {
     let mut rx = b_rx.recv().await.unwrap().unwrap();
 
     for i in 1..1024 {
-        println!("Sending {}", i);
+        println!("Sending {i}");
         tx.send(i).await.unwrap();
         let r = rx.recv().await.unwrap().unwrap();
-        println!("Received {}", r);
+        println!("Received {r}");
         assert_eq!(i, r, "send/receive mismatch");
     }
 

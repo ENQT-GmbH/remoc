@@ -122,7 +122,7 @@ impl fmt::Display for TrySendError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::Full => write!(f, "channel queue is full"),
-            Self::Send(err) => write!(f, "{}", err),
+            Self::Send(err) => write!(f, "{err}"),
         }
     }
 }
