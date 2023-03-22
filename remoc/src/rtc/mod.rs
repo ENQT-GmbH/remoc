@@ -38,15 +38,22 @@
 //!
 //! The purpose of these server types is as follows:
 //!
-//!   * `TraitServer` implements [Server] and takes the target object by value. It will
-//!     consume the target value when a trait method taking the receiver by value is invoked.
-//!   * `TraitServerRef` implements [ServerRef] and takes a reference to the target value.
-//!   * `TraitServerRefMut` implements [ServerRefMut] and takes a mutable reference to the target value.
-//!   * `TraitServerShared` implements [ServerShared] and takes an [Arc] to the target value.
-//!     It can execute client requests in parallel.
-//!   * `TraitServerSharedMut` implements [ServerSharedMut] and takes an [Arc] to a local
-//!     [RwLock](LocalRwLock) holding the target object.
-//!     It can execute const client requests in parallel and mutable requests sequentially.
+//!   * server implementations with no [`Send`] + [`Sync`] requirement on the target object:
+//!     * `TraitServer` implements [Server] and takes the target object by value. It will
+//!       consume the target value when a trait method taking the receiver by value is invoked.
+//!     * `TraitServerRef` implements [ServerRef] and takes a reference to the target value.
+//!     * `TraitServerRefMut` implements [ServerRefMut] and takes a mutable reference to the target value.
+//!   * server implementations with [`Send`] + [`Sync`] requirement on the target object:
+//!     * `TraitServerShared` implements [ServerShared] and takes an [Arc] to the target value.
+//!       It can execute client requests in parallel.
+//!       The generated [`ServerShared::serve`] implementation returns a future that implements [`Send`].
+//!     * `TraitServerSharedMut` implements [ServerSharedMut] and takes an [Arc] to a local
+//!       [RwLock](LocalRwLock) holding the target object.
+//!       It can execute const client requests in parallel and mutable requests sequentially.
+//!       The generated [`ServerSharedMut::serve`] implementation returns a future that implements [`Send`].
+//!
+//! If unsure, you probably want to use `TraitServerSharedMut`, even when the target object will
+//! only be accessed by a single client.
 //!
 //! # Usage
 //!
