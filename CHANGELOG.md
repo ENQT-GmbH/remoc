@@ -4,22 +4,30 @@ All notable changes to Remoc will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-# 0.10.1 - 2023-02-01
-## Added
+## 0.10.2 - 2023-03-22
+### Added
+- Add argument `clone` to `rtc::remote` attribute. When present, this
+  forces the generated client to be clonable, even if the trait contains
+  methods taking the receiver by mutable reference.
+### Changed
+- clarify Send+Sync requirements in RTC docs
+
+## 0.10.1 - 2023-02-01
+### Added
 - configuration option `flush_delay` to configure flush delay when no data
   to send is available
 
 ## 0.10.0 - 2022-05-25
-## Added
+### Added
 - move remotely observable collections from remoc-obs crate into `robs` module
 - `rch::watch::Receiver::send_modify` method
 - `chmux` errors can now be converted into `std::io::Error`
-## Changed
+### Changed
 - minimum supported Rust version (MSRV) is 1.59
 - remove `rch::buffer` types and use const generics directly to specify
   buffer sizes of received channel halves
 - update `uuid` to 1.0
-## Fixed
+### Fixed
 - fix infinite recursion in `std::fmt::Debug` implementation on some types
 
 ## 0.9.16 - 2022-02-24
