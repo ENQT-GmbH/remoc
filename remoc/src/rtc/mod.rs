@@ -22,6 +22,8 @@
 //! when the connection to the server has been lost.
 //!
 //! If the trait takes the receiver only by reference (`&self`) the client is [clonable](Clone).
+//! To force the client to be clonable, even if it takes the receiver by mutable reference (`&mut self`),
+//! specify the `clone` argument to the [remote attribute](remote).
 //!
 //! # Server types
 //!
@@ -261,6 +263,12 @@ pub use async_trait::async_trait;
 /// Lifetimes are not allowed on remote traits and their methods.
 ///
 /// # Attributes
+///
+/// If the `clone` argument is specified (by invoking the attribute as `#[remoc::rtc::remote(clone)]`),
+/// the generated `TraitClient` will even be [clonable](std::clone::Clone) when the trait contains
+/// methods taking the receiver by mutable reference (`&mut self`).
+/// In this case the client can invoke more than one mutable method simultaneously; however,
+/// the execution on the server will be serialized through locking.
 ///
 /// If the `#[no_cancel]` attribute is applied on a trait method, it will run to completion,
 /// even if the client cancels the request by dropping the future.

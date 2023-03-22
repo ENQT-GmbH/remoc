@@ -1,11 +1,12 @@
 //! Trait parsing and client and server generation.
 
-use proc_macro2::TokenStream;
+use proc_macro2::{Span, TokenStream};
 use quote::{format_ident, quote, TokenStreamExt};
 use syn::{
     braced,
     parse::{Parse, ParseStream},
-    Attribute, GenericParam, Generics, Ident, Lifetime, LifetimeDef, Token, TypeParam, Visibility, WhereClause,
+    Attribute, AttributeArgs, Error, GenericParam, Generics, Ident, Lifetime, LifetimeDef, Meta, NestedMeta,
+    Token, TypeParam, Visibility, WhereClause,
 };
 
 use crate::{
@@ -27,6 +28,8 @@ pub struct TraitDef {
     generics: Generics,
     /// Methods.
     methods: Vec<TraitMethod>,
+    /// Whether the `clone` attribute is present.
+    clone: bool,
 }
 
 impl Parse for TraitDef {
@@ -62,11 +65,35 @@ impl Parse for TraitDef {
             methods.push(content.parse()?);
         }
 
-        Ok(Self { attrs, vis, ident, generics, methods })
+        Ok(Self { attrs, vis, ident, generics, methods, clone: false })
     }
 }
 
 impl TraitDef {
+    /// Applies attributes specified by the procedural macro invocation.
+    pub fn apply_attrs(&mut self, attrs: AttributeArgs) -> syn::Result<()> {
+        for attr in attrs {
+            if let NestedMeta::Meta(Meta::Path(path)) = attr {
+                if path.is_ident("clone") {
+                    if self.is_taking_value() {
+                        return Err(Error::new(
+                            Span::call_site(),
+                            "the client cannot be clonable if a method takes self by value",
+                        ));
+                    }
+                    self.clone = true;
+                } else {
+                    return Err(Error::new(
+                        Span::call_site(),
+                        format!("unknown attribute: {}", path.get_ident().unwrap().to_string()),
+                    ));
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// True, if any trait method takes self by value.
     fn is_taking_value(&self) -> bool {
         self.methods.iter().any(|m| m.self_ref == SelfRef::Value)
@@ -638,7 +665,7 @@ impl TraitDef {
         }
 
         // Allowing cloning if object is accessed by reference only.
-        let clone = if !self.is_taking_ref_mut() && !self.is_taking_value() {
+        let clone = if (!self.is_taking_ref_mut() || self.clone) && !self.is_taking_value() {
             quote! {#[derive(Clone)]}
         } else {
             quote! {}
