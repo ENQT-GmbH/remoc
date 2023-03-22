@@ -4,6 +4,10 @@ All notable changes to Remoc will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.10.3 - 2023-03-22
+### Fixed
+- do not panic when observable list task terminates
+
 ## 0.10.2 - 2023-03-22
 ### Added
 - Add argument `clone` to `rtc::remote` attribute. When present, this
