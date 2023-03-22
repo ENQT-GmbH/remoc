@@ -96,7 +96,7 @@ where
     /// Sends a request to the task.
     fn req(&self, req: DistReq<T, Codec>) {
         if self.tx.send(req).is_err() {
-            panic!("observable list task was terminated");
+            tracing::warn!("observable list task was terminated");
         }
     }
 
@@ -200,7 +200,7 @@ where
     /// Sends a request to the task.
     fn req(&self, req: Req<T>) {
         if self.tx.send(req).is_err() {
-            panic!("observable list task was terminated");
+            tracing::warn!("observable list task was terminated");
         }
     }
 
