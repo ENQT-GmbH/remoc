@@ -1,7 +1,7 @@
 max_width = 114
 use_small_heuristics = "Max"
 
-fn_args_layout = "Compressed"
+fn_params_layout = "Compressed"
 
 #wrap_comments = true
 #comment_width = 100
