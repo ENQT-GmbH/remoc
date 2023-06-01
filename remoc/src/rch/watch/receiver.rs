@@ -168,7 +168,7 @@ impl<T, Codec, const MAX_ITEM_SIZE: usize> Receiver<T, Codec, MAX_ITEM_SIZE> {
     ///
     /// If this is larger than [max_item_size](Self::max_item_size) sending of oversized
     /// items will succeed but receiving will fail with a
-    /// [MaxItemSizeExceeded error](RecvError::MaxItemSizeExceeded).
+    /// [MaxItemSizeExceeded error](base::RecvError::MaxItemSizeExceeded).
     pub fn remote_max_item_size(&self) -> Option<usize> {
         self.remote_max_item_size
     }
