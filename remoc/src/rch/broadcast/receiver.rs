@@ -10,7 +10,7 @@ use std::{
 use tokio_util::sync::ReusableBoxFuture;
 
 use super::{
-    super::{base, mpsc, DEFAULT_BUFFER},
+    super::{base, mpsc, DEFAULT_BUFFER, DEFAULT_MAX_ITEM_SIZE},
     BroadcastMsg,
 };
 use crate::{chmux, codec, RemoteSend};
@@ -183,22 +183,29 @@ impl Error for TryRecvError {}
 #[derive(Serialize, Deserialize)]
 #[serde(bound(serialize = "T: RemoteSend, Codec: codec::Codec"))]
 #[serde(bound(deserialize = "T: RemoteSend, Codec: codec::Codec"))]
-pub struct Receiver<T, Codec = codec::Default, const BUFFER: usize = { DEFAULT_BUFFER }> {
-    rx: mpsc::Receiver<BroadcastMsg<T>, Codec, BUFFER>,
+pub struct Receiver<
+    T,
+    Codec = codec::Default,
+    const BUFFER: usize = DEFAULT_BUFFER,
+    const MAX_ITEM_SIZE: usize = DEFAULT_MAX_ITEM_SIZE,
+> {
+    rx: mpsc::Receiver<BroadcastMsg<T>, Codec, BUFFER, MAX_ITEM_SIZE>,
 }
 
-impl<T, Codec, const BUFFER: usize> fmt::Debug for Receiver<T, Codec, BUFFER> {
+impl<T, Codec, const BUFFER: usize, const MAX_ITEM_SIZE: usize> fmt::Debug
+    for Receiver<T, Codec, BUFFER, MAX_ITEM_SIZE>
+{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Receiver").finish()
     }
 }
 
-impl<T, Codec, const BUFFER: usize> Receiver<T, Codec, BUFFER>
+impl<T, Codec, const BUFFER: usize, const MAX_ITEM_SIZE: usize> Receiver<T, Codec, BUFFER, MAX_ITEM_SIZE>
 where
     T: RemoteSend,
     Codec: codec::Codec,
 {
-    pub(crate) fn new(rx: mpsc::Receiver<BroadcastMsg<T>, Codec, BUFFER>) -> Self {
+    pub(crate) fn new(rx: mpsc::Receiver<BroadcastMsg<T>, Codec, BUFFER, MAX_ITEM_SIZE>) -> Self {
         Self { rx }
     }
 
@@ -227,11 +234,26 @@ where
             Poll::Pending => Err(TryRecvError::Empty),
         }
     }
-}
 
-impl<T, Codec, const BUFFER: usize> Drop for Receiver<T, Codec, BUFFER> {
-    fn drop(&mut self) {
-        // empty
+    /// The maximum item size in bytes.
+    pub const fn max_item_size(&self) -> usize {
+        self.rx.max_item_size()
+    }
+
+    /// Sets the maximum item size in bytes.
+    pub fn set_max_item_size<const NEW_MAX_ITEM_SIZE: usize>(
+        self,
+    ) -> Receiver<T, Codec, BUFFER, NEW_MAX_ITEM_SIZE> {
+        Receiver { rx: self.rx.set_max_item_size() }
+    }
+
+    /// The maximum item size of the remote sender.
+    ///
+    /// If this is larger than [max_item_size](Self::max_item_size) sending of oversized
+    /// items will succeed but receiving will fail with a
+    /// [MaxItemSizeExceeded error](RecvError::MaxItemSizeExceeded).
+    pub fn remote_max_item_size(&self) -> Option<usize> {
+        self.rx.remote_max_item_size()
     }
 }
 

@@ -13,7 +13,7 @@ use std::{
 use super::{
     super::{
         base::{self, PortDeserializer, PortSerializer},
-        ClosedReason, RemoteSendError, DEFAULT_BUFFER,
+        ClosedReason, RemoteSendError, DEFAULT_BUFFER, DEFAULT_MAX_ITEM_SIZE,
     },
     Distributor,
 };
@@ -121,15 +121,23 @@ impl TryRecvError {
 /// which may be located on a remote endpoint.
 ///
 /// Instances are created by the [channel](super::channel) function.
-pub struct Receiver<T, Codec = codec::Default, const BUFFER: usize = DEFAULT_BUFFER> {
+pub struct Receiver<
+    T,
+    Codec = codec::Default,
+    const BUFFER: usize = DEFAULT_BUFFER,
+    const MAX_ITEM_SIZE: usize = DEFAULT_MAX_ITEM_SIZE,
+> {
     inner: Option<ReceiverInner<T>>,
     #[allow(clippy::type_complexity)]
     successor_tx: Mutex<Option<tokio::sync::oneshot::Sender<ReceiverInner<T>>>>,
     final_err: Option<RecvError>,
+    remote_max_item_size: Option<usize>,
     _codec: PhantomData<Codec>,
 }
 
-impl<T, Codec, const BUFFER: usize> fmt::Debug for Receiver<T, Codec, BUFFER> {
+impl<T, Codec, const BUFFER: usize, const MAX_ITEM_SIZE: usize> fmt::Debug
+    for Receiver<T, Codec, BUFFER, MAX_ITEM_SIZE>
+{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Receiver").finish()
     }
@@ -154,18 +162,23 @@ pub(crate) struct TransportedReceiver<T, Codec> {
     /// Receiver has been closed.
     #[serde(default)]
     closed: bool,
+    /// Maximum item size.
+    #[serde(default)]
+    max_item_size: u64,
 }
 
-impl<T, Codec, const BUFFER: usize> Receiver<T, Codec, BUFFER> {
+impl<T, Codec, const BUFFER: usize, const MAX_ITEM_SIZE: usize> Receiver<T, Codec, BUFFER, MAX_ITEM_SIZE> {
     pub(crate) fn new(
         rx: tokio::sync::mpsc::Receiver<Result<T, RecvError>>,
         closed_tx: tokio::sync::watch::Sender<Option<ClosedReason>>, closed: bool,
         remote_send_err_tx: tokio::sync::watch::Sender<Option<RemoteSendError>>,
+        remote_max_item_size: Option<usize>,
     ) -> Self {
         Self {
             inner: Some(ReceiverInner { rx, closed_tx, remote_send_err_tx, closed }),
             successor_tx: Mutex::new(None),
             final_err: None,
+            remote_max_item_size,
             _codec: PhantomData,
         }
     }
@@ -301,28 +314,57 @@ impl<T, Codec, const BUFFER: usize> Receiver<T, Codec, BUFFER> {
     }
 
     /// Sets the codec that will be used when sending this receiver to a remote endpoint.
-    pub fn set_codec<NewCodec>(mut self) -> Receiver<T, NewCodec, BUFFER> {
+    pub fn set_codec<NewCodec>(mut self) -> Receiver<T, NewCodec, BUFFER, MAX_ITEM_SIZE> {
         Receiver {
             inner: self.inner.take(),
             successor_tx: Mutex::new(None),
             final_err: self.final_err.clone(),
+            remote_max_item_size: self.remote_max_item_size,
             _codec: PhantomData,
         }
     }
 
     /// Sets the buffer size that will be used when sending this receiver to a remote endpoint.
-    pub fn set_buffer<const NEW_BUFFER: usize>(mut self) -> Receiver<T, Codec, NEW_BUFFER> {
+    pub fn set_buffer<const NEW_BUFFER: usize>(mut self) -> Receiver<T, Codec, NEW_BUFFER, MAX_ITEM_SIZE> {
         assert!(NEW_BUFFER > 0, "buffer size must not be zero");
         Receiver {
             inner: self.inner.take(),
             successor_tx: Mutex::new(None),
             final_err: self.final_err.clone(),
+            remote_max_item_size: self.remote_max_item_size,
             _codec: PhantomData,
         }
     }
+
+    /// The maximum item size in bytes.
+    pub const fn max_item_size(&self) -> usize {
+        MAX_ITEM_SIZE
+    }
+
+    /// Sets the maximum item size in bytes.
+    pub fn set_max_item_size<const NEW_MAX_ITEM_SIZE: usize>(
+        mut self,
+    ) -> Receiver<T, Codec, BUFFER, NEW_MAX_ITEM_SIZE> {
+        Receiver {
+            inner: self.inner.take(),
+            successor_tx: Mutex::new(None),
+            final_err: self.final_err.clone(),
+            remote_max_item_size: self.remote_max_item_size,
+            _codec: PhantomData,
+        }
+    }
+
+    /// The maximum item size of the remote sender.
+    ///
+    /// If this is larger than [max_item_size](Self::max_item_size) sending of oversized
+    /// items will succeed but receiving will fail with a
+    /// [MaxItemSizeExceeded error](RecvError::MaxItemSizeExceeded).
+    pub fn remote_max_item_size(&self) -> Option<usize> {
+        self.remote_max_item_size
+    }
 }
 
-impl<T, Codec, const BUFFER: usize> Receiver<T, Codec, BUFFER>
+impl<T, Codec, const BUFFER: usize, const MAX_ITEM_SIZE: usize> Receiver<T, Codec, BUFFER, MAX_ITEM_SIZE>
 where
     T: RemoteSend + Clone,
     Codec: codec::Codec,
@@ -333,12 +375,14 @@ where
     ///
     /// If `wait_on_empty` is true, the distributor waits if all subscribers are closed.
     /// Otherwise it terminates.
-    pub fn distribute(self, wait_on_empty: bool) -> Distributor<T, Codec, BUFFER> {
+    pub fn distribute(self, wait_on_empty: bool) -> Distributor<T, Codec, BUFFER, MAX_ITEM_SIZE> {
         Distributor::new(self, wait_on_empty)
     }
 }
 
-impl<T, Codec, const BUFFER: usize> Drop for Receiver<T, Codec, BUFFER> {
+impl<T, Codec, const BUFFER: usize, const MAX_ITEM_SIZE: usize> Drop
+    for Receiver<T, Codec, BUFFER, MAX_ITEM_SIZE>
+{
     fn drop(&mut self) {
         if let Some(inner) = self.inner.take() {
             let mut successor_tx = self.successor_tx.lock().unwrap();
@@ -351,7 +395,8 @@ impl<T, Codec, const BUFFER: usize> Drop for Receiver<T, Codec, BUFFER> {
     }
 }
 
-impl<T, Codec, const BUFFER: usize> Serialize for Receiver<T, Codec, BUFFER>
+impl<T, Codec, const BUFFER: usize, const MAX_ITEM_SIZE: usize> Serialize
+    for Receiver<T, Codec, BUFFER, MAX_ITEM_SIZE>
 where
     T: RemoteSend,
     Codec: codec::Codec,
@@ -383,7 +428,8 @@ where
                     }
                 };
 
-                super::send_impl::<T, Codec>(rx, raw_tx, raw_rx, remote_send_err_tx, closed_tx).await;
+                super::send_impl::<T, Codec>(rx, raw_tx, raw_rx, remote_send_err_tx, closed_tx, MAX_ITEM_SIZE)
+                    .await;
             }
             .boxed()
         })?;
@@ -394,12 +440,14 @@ where
             data: PhantomData,
             codec: PhantomData,
             closed: self.inner.as_ref().unwrap().closed,
+            max_item_size: self.max_item_size().try_into().unwrap_or(u64::MAX),
         };
         transported.serialize(serializer)
     }
 }
 
-impl<'de, T, Codec, const BUFFER: usize> Deserialize<'de> for Receiver<T, Codec, BUFFER>
+impl<'de, T, Codec, const BUFFER: usize, const MAX_ITEM_SIZE: usize> Deserialize<'de>
+    for Receiver<T, Codec, BUFFER, MAX_ITEM_SIZE>
 where
     T: RemoteSend,
     Codec: codec::Codec,
@@ -413,8 +461,16 @@ where
         assert!(BUFFER > 0, "BUFFER must not be zero");
 
         // Get chmux port number from deserialized transport type.
-        let TransportedReceiver { port, closed, .. } =
+        let TransportedReceiver { port, closed, max_item_size, .. } =
             TransportedReceiver::<T, Codec>::deserialize(deserializer)?;
+
+        let max_item_size = usize::try_from(max_item_size).unwrap_or(usize::MAX);
+        if max_item_size > MAX_ITEM_SIZE {
+            tracing::debug!(
+                "MPSC receiver maximum item size is {MAX_ITEM_SIZE} bytes, \
+                 but remote endpoint expects at least {max_item_size} bytes"
+            );
+        }
 
         // Create channels.
         let (tx, rx) = tokio::sync::mpsc::channel(BUFFER);
@@ -432,16 +488,19 @@ where
                     }
                 };
 
-                super::recv_impl::<T, Codec>(&tx, raw_tx, raw_rx, remote_send_err_rx, closed_rx).await;
+                super::recv_impl::<T, Codec>(&tx, raw_tx, raw_rx, remote_send_err_rx, closed_rx, MAX_ITEM_SIZE)
+                    .await;
             }
             .boxed()
         })?;
 
-        Ok(Self::new(rx, closed_tx, closed, remote_send_err_tx))
+        Ok(Self::new(rx, closed_tx, closed, remote_send_err_tx, Some(max_item_size)))
     }
 }
 
-impl<T, Codec, const BUFFER: usize> Stream for Receiver<T, Codec, BUFFER> {
+impl<T, Codec, const BUFFER: usize, const MAX_ITEM_SIZE: usize> Stream
+    for Receiver<T, Codec, BUFFER, MAX_ITEM_SIZE>
+{
     type Item = Result<T, RecvError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
@@ -450,4 +509,7 @@ impl<T, Codec, const BUFFER: usize> Stream for Receiver<T, Codec, BUFFER> {
     }
 }
 
-impl<T, Codec, const BUFFER: usize> Unpin for Receiver<T, Codec, BUFFER> {}
+impl<T, Codec, const BUFFER: usize, const MAX_ITEM_SIZE: usize> Unpin
+    for Receiver<T, Codec, BUFFER, MAX_ITEM_SIZE>
+{
+}

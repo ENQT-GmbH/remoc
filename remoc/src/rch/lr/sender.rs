@@ -39,6 +39,8 @@ pub enum SendErrorKind {
     Send(chmux::SendError),
     /// Connecting to remote channel failed.
     Connect(ConnectError),
+    /// Maximum item size was exceeded.
+    MaxItemSizeExceeded,
 }
 
 impl<T> SendError<T> {
@@ -87,6 +89,7 @@ impl fmt::Display for SendErrorKind {
             Self::Serialize(err) => write!(f, "serialization error: {err}"),
             Self::Send(err) => write!(f, "send error: {err}"),
             Self::Connect(err) => write!(f, "connect error: {err}"),
+            Self::MaxItemSizeExceeded => write!(f, "maximum item size exceeded"),
         }
     }
 }
@@ -96,6 +99,7 @@ impl From<base::SendErrorKind> for SendErrorKind {
         match err {
             base::SendErrorKind::Serialize(err) => Self::Serialize(err),
             base::SendErrorKind::Send(err) => Self::Send(err),
+            base::SendErrorKind::MaxItemSizeExceeded => Self::MaxItemSizeExceeded,
         }
     }
 }
@@ -121,6 +125,7 @@ pub struct Sender<T, Codec = codec::Default> {
     pub(super) receiver_tx:
         Option<tokio::sync::mpsc::UnboundedSender<Result<base::Receiver<T, Codec>, ConnectError>>>,
     pub(super) interlock: Arc<Mutex<Interlock>>,
+    pub(super) max_item_size: usize,
 }
 
 impl<T, Codec> fmt::Debug for Sender<T, Codec> {
@@ -138,6 +143,13 @@ pub(crate) struct TransportedSender<T, Codec> {
     data: PhantomData<T>,
     /// Data codec.
     codec: PhantomData<Codec>,
+    /// Maximum item size in bytes.
+    #[serde(default = "default_max_item_size")]
+    max_item_size: u64,
+}
+
+const fn default_max_item_size() -> u64 {
+    u64::MAX
 }
 
 impl<T, Codec> Sender<T, Codec>
@@ -149,6 +161,9 @@ where
     async fn get(&mut self) -> Result<&mut base::Sender<T, Codec>, ConnectError> {
         if self.sender.is_none() {
             self.sender = Some(self.sender_rx.recv().await.unwrap_or(Err(ConnectError::Dropped)));
+            if let Some(Ok(sender)) = &mut self.sender {
+                sender.set_max_item_size(self.max_item_size);
+            }
         }
 
         self.sender.as_mut().unwrap().as_mut().map_err(|err| err.clone())
@@ -171,6 +186,22 @@ where
     pub async fn closed(&mut self) -> Result<Closed, ConnectError> {
         Ok(self.get().await?.closed())
     }
+
+    /// Maximum allowed item size in bytes.
+    pub fn max_item_size(&self) -> usize {
+        self.max_item_size
+    }
+
+    /// Sets the maximum allowed item size in bytes.
+    ///
+    /// This does not change the maximum allowed item size on the remote endpoint
+    /// if the sender or receiver has already been sent to or received from the remote endpoint.
+    pub fn set_max_item_size(&mut self, max_item_size: usize) {
+        self.max_item_size = max_item_size;
+        if let Some(Ok(sender)) = &mut self.sender {
+            sender.set_max_item_size(self.max_item_size);
+        }
+    }
 }
 
 impl<T, Codec> Serialize for Sender<T, Codec>
@@ -183,6 +214,7 @@ where
     where
         S: serde::Serializer,
     {
+        let max_item_size = self.max_item_size;
         let receiver_tx =
             self.receiver_tx.clone().ok_or_else(|| ser::Error::custom("cannot forward received sender"))?;
 
@@ -194,13 +226,14 @@ where
             interlock.receiver.start_send()
         };
 
-        let port = PortSerializer::connect(|connect| {
+        let port = PortSerializer::connect(move |connect| {
             async move {
                 let _ = interlock_confirm.send(());
 
                 match connect.await {
                     Ok((_, raw_rx)) => {
-                        let rx = base::Receiver::new(raw_rx);
+                        let mut rx = base::Receiver::new(raw_rx);
+                        rx.set_max_item_size(max_item_size);
                         let _ = receiver_tx.send(Ok(rx));
                     }
                     Err(err) => {
@@ -211,7 +244,13 @@ where
             .boxed()
         })?;
 
-        TransportedSender::<T, Codec> { port, data: PhantomData, codec: PhantomData }.serialize(serializer)
+        TransportedSender::<T, Codec> {
+            port,
+            data: PhantomData,
+            max_item_size: max_item_size.try_into().unwrap_or(u64::MAX),
+            codec: PhantomData,
+        }
+        .serialize(serializer)
     }
 }
 
@@ -225,14 +264,17 @@ where
     where
         D: serde::Deserializer<'de>,
     {
-        let TransportedSender::<T, Codec> { port, .. } = TransportedSender::deserialize(deserializer)?;
+        let TransportedSender::<T, Codec> { port, max_item_size, .. } =
+            TransportedSender::deserialize(deserializer)?;
+        let max_item_size = usize::try_from(max_item_size).unwrap_or(usize::MAX);
 
         let (sender_tx, sender_rx) = tokio::sync::mpsc::unbounded_channel();
-        PortDeserializer::accept(port, |local_port, request| {
+        PortDeserializer::accept(port, move |local_port, request| {
             async move {
                 match request.accept_from(local_port).await {
                     Ok((raw_tx, _)) => {
-                        let tx = base::Sender::new(raw_tx);
+                        let mut tx = base::Sender::new(raw_tx);
+                        tx.set_max_item_size(max_item_size);
                         let _ = sender_tx.send(Ok(tx));
                     }
                     Err(err) => {
@@ -248,6 +290,7 @@ where
             sender_rx,
             receiver_tx: None,
             interlock: Arc::new(Mutex::new(Interlock { sender: Location::Local, receiver: Location::Remote })),
+            max_item_size,
         })
     }
 }

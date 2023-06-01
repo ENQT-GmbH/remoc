@@ -3,6 +3,10 @@ use std::time::Duration;
 use tokio::time::timeout;
 
 use crate::{loop_channel, tcp_loop_channel};
+use remoc::rch::{
+    base::{RecvError, SendError, SendErrorKind},
+    DEFAULT_MAX_ITEM_SIZE,
+};
 
 #[tokio::test]
 async fn negation() {
@@ -126,4 +130,38 @@ async fn close_notify() {
     if a_tx.send(1).await.is_ok() {
         panic!("send succeeded after closure");
     }
+}
+
+#[tokio::test]
+async fn oversized_msg_send_error() {
+    crate::init();
+    let ((mut a_tx, _a_rx), (_b_tx, mut b_rx)) = loop_channel::<Vec<u8>>().await;
+
+    tokio::spawn(async move {
+        let _ = b_rx.recv().await;
+    });
+
+    let data: Vec<u8> = vec![1u8; 2 * DEFAULT_MAX_ITEM_SIZE];
+    println!("Sending message of length {}", data.len());
+    let res = a_tx.send(data).await;
+    assert!(
+        matches!(res, Err(SendError { kind: SendErrorKind::MaxItemSizeExceeded, .. })),
+        "sending oversized item must fail"
+    )
+}
+
+#[tokio::test]
+async fn oversized_msg_recv_error() {
+    crate::init();
+    let ((mut a_tx, _a_rx), (_b_tx, mut b_rx)) = loop_channel::<Vec<u8>>().await;
+
+    tokio::spawn(async move {
+        let data: Vec<u8> = vec![1u8; 100];
+        println!("Sending message of length {}", data.len());
+        a_tx.send(data).await.unwrap();
+    });
+
+    b_rx.set_max_item_size(10);
+    let res = b_rx.recv().await;
+    assert!(matches!(res, Err(RecvError::MaxItemSizeExceeded)), "receiving oversized item must fail")
 }

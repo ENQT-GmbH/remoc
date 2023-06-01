@@ -11,7 +11,7 @@ use std::{
 use super::{
     super::{
         base::{self, PortDeserializer, PortSerializer},
-        ClosedReason, RemoteSendError, SendErrorExt, DEFAULT_BUFFER,
+        ClosedReason, RemoteSendError, SendErrorExt, DEFAULT_BUFFER, DEFAULT_MAX_ITEM_SIZE,
     },
     receiver::RecvError,
 };
@@ -227,6 +227,7 @@ pub struct Sender<T, Codec = codec::Default, const BUFFER: usize = DEFAULT_BUFFE
     closed_rx: tokio::sync::watch::Receiver<Option<ClosedReason>>,
     remote_send_err_rx: tokio::sync::watch::Receiver<Option<RemoteSendError>>,
     dropped_tx: tokio::sync::mpsc::Sender<()>,
+    max_item_size: usize,
     _codec: PhantomData<Codec>,
 }
 
@@ -243,6 +244,7 @@ impl<T, Codec, const BUFFER: usize> Clone for Sender<T, Codec, BUFFER> {
             closed_rx: self.closed_rx.clone(),
             remote_send_err_rx: self.remote_send_err_rx.clone(),
             dropped_tx: self.dropped_tx.clone(),
+            max_item_size: self.max_item_size,
             _codec: PhantomData,
         }
     }
@@ -257,6 +259,13 @@ pub(crate) struct TransportedSender<T, Codec> {
     data: PhantomData<T>,
     /// Data codec.
     codec: PhantomData<Codec>,
+    /// Maximum item size in bytes.
+    #[serde(default = "default_max_item_size")]
+    max_item_size: u64,
+}
+
+const fn default_max_item_size() -> u64 {
+    u64::MAX
 }
 
 impl<T, Codec, const BUFFER: usize> Sender<T, Codec, BUFFER>
@@ -277,6 +286,7 @@ where
             closed_rx: closed_rx.clone(),
             remote_send_err_rx,
             dropped_tx,
+            max_item_size: DEFAULT_MAX_ITEM_SIZE,
             _codec: PhantomData,
         };
 
@@ -308,6 +318,7 @@ where
             closed_rx: tokio::sync::watch::channel(Some(ClosedReason::Closed)).1,
             remote_send_err_rx: tokio::sync::watch::channel(None).1,
             dropped_tx: tokio::sync::mpsc::channel(1).0,
+            max_item_size: DEFAULT_MAX_ITEM_SIZE,
             _codec: PhantomData,
         }
     }
@@ -431,6 +442,7 @@ where
             closed_rx: self.closed_rx.clone(),
             remote_send_err_rx: self.remote_send_err_rx.clone(),
             dropped_tx: self.dropped_tx.clone(),
+            max_item_size: self.max_item_size,
             _codec: PhantomData,
         }
     }
@@ -443,8 +455,19 @@ where
             closed_rx: self.closed_rx.clone(),
             remote_send_err_rx: self.remote_send_err_rx.clone(),
             dropped_tx: self.dropped_tx.clone(),
+            max_item_size: self.max_item_size,
             _codec: PhantomData,
         }
+    }
+
+    /// The maximum allowed item size in bytes.
+    pub fn max_item_size(&self) -> usize {
+        self.max_item_size
+    }
+
+    /// Sets the maximum allowed item size in bytes.
+    pub fn set_max_item_size(&mut self, max_item_size: usize) {
+        self.max_item_size = max_item_size;
     }
 }
 
@@ -485,8 +508,9 @@ where
                 // Prepare channel for takeover.
                 let closed_rx = self.closed_rx.clone();
                 let remote_send_err_rx = self.remote_send_err_rx.clone();
+                let max_item_size = self.max_item_size;
 
-                Some(PortSerializer::connect(|connect| {
+                Some(PortSerializer::connect(move |connect| {
                     async move {
                         // Establish chmux channel.
                         let (raw_tx, raw_rx) = match connect.await {
@@ -497,7 +521,15 @@ where
                             }
                         };
 
-                        super::recv_impl::<T, Codec>(&tx, raw_tx, raw_rx, remote_send_err_rx, closed_rx).await;
+                        super::recv_impl::<T, Codec>(
+                            &tx,
+                            raw_tx,
+                            raw_rx,
+                            remote_send_err_rx,
+                            closed_rx,
+                            max_item_size,
+                        )
+                        .await;
                     }
                     .boxed()
                 })?)
@@ -509,7 +541,12 @@ where
         };
 
         // Encode chmux port number in transport type and serialize it.
-        let transported = TransportedSender::<T, Codec> { port, data: PhantomData, codec: PhantomData };
+        let transported = TransportedSender::<T, Codec> {
+            port,
+            data: PhantomData,
+            codec: PhantomData,
+            max_item_size: self.max_item_size.try_into().unwrap_or(u64::MAX),
+        };
         transported.serialize(serializer)
     }
 }
@@ -528,7 +565,9 @@ where
         assert!(BUFFER > 0, "BUFFER must not be zero");
 
         // Get chmux port number from deserialized transport type.
-        let TransportedSender { port, .. } = TransportedSender::<T, Codec>::deserialize(deserializer)?;
+        let TransportedSender { port, max_item_size, .. } =
+            TransportedSender::<T, Codec>::deserialize(deserializer)?;
+        let max_item_size = usize::try_from(max_item_size).unwrap_or(usize::MAX);
 
         match port {
             // Received channel is open.
@@ -539,7 +578,7 @@ where
                 let (remote_send_err_tx, remote_send_err_rx) = tokio::sync::watch::channel(None);
 
                 // Accept chmux port request.
-                PortDeserializer::accept(port, |local_port, request| {
+                PortDeserializer::accept(port, move |local_port, request| {
                     async move {
                         // Accept chmux connection request.
                         let (raw_tx, raw_rx) = match request.accept_from(local_port).await {
@@ -550,7 +589,15 @@ where
                             }
                         };
 
-                        super::send_impl::<T, Codec>(rx, raw_tx, raw_rx, remote_send_err_tx, closed_tx).await;
+                        super::send_impl::<T, Codec>(
+                            rx,
+                            raw_tx,
+                            raw_rx,
+                            remote_send_err_tx,
+                            closed_tx,
+                            max_item_size,
+                        )
+                        .await;
                     }
                     .boxed()
                 })?;

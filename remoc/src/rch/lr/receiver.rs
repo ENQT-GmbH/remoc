@@ -30,6 +30,8 @@ pub enum RecvError {
     MissingPorts(Vec<u32>),
     /// Connecting to remote channel failed.
     Connect(ConnectError),
+    /// Maximum item size was exceeded.
+    MaxItemSizeExceeded,
 }
 
 impl From<base::RecvError> for RecvError {
@@ -38,6 +40,7 @@ impl From<base::RecvError> for RecvError {
             base::RecvError::Receive(err) => Self::Receive(err),
             base::RecvError::Deserialize(err) => Self::Deserialize(err),
             base::RecvError::MissingPorts(ports) => Self::MissingPorts(ports),
+            base::RecvError::MaxItemSizeExceeded => Self::MaxItemSizeExceeded,
         }
     }
 }
@@ -59,6 +62,7 @@ impl fmt::Display for RecvError {
                 ports.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", ")
             ),
             Self::Connect(err) => write!(f, "connect error: {err}"),
+            Self::MaxItemSizeExceeded => write!(f, "maximum item size exceeded"),
         }
     }
 }
@@ -71,7 +75,7 @@ impl RecvError {
         match self {
             Self::Receive(err) => err.is_final(),
             Self::Connect(_) => true,
-            Self::Deserialize(_) | Self::MissingPorts(_) => false,
+            Self::Deserialize(_) | Self::MissingPorts(_) | Self::MaxItemSizeExceeded => false,
         }
     }
 }
@@ -83,6 +87,7 @@ pub struct Receiver<T, Codec = codec::Default> {
         Option<tokio::sync::mpsc::UnboundedSender<Result<base::Sender<T, Codec>, ConnectError>>>,
     pub(super) receiver_rx: tokio::sync::mpsc::UnboundedReceiver<Result<base::Receiver<T, Codec>, ConnectError>>,
     pub(super) interlock: Arc<Mutex<Interlock>>,
+    pub(super) max_item_size: usize,
 }
 
 impl<T, Codec> fmt::Debug for Receiver<T, Codec> {
@@ -100,6 +105,13 @@ pub(crate) struct TransportedReceiver<T, Codec> {
     data: PhantomData<T>,
     /// Data codec.
     codec: PhantomData<Codec>,
+    /// Maximum item size in bytes.
+    #[serde(default = "default_max_item_size")]
+    max_item_size: u64,
+}
+
+const fn default_max_item_size() -> u64 {
+    u64::MAX
 }
 
 impl<T, Codec> Receiver<T, Codec>
@@ -110,6 +122,9 @@ where
     async fn connect(&mut self) {
         if self.receiver.is_none() {
             self.receiver = Some(self.receiver_rx.recv().await.unwrap_or(Err(ConnectError::Dropped)));
+            if let Some(Ok(receiver)) = &mut self.receiver {
+                receiver.set_max_item_size(self.max_item_size);
+            }
         }
     }
 
@@ -129,10 +144,26 @@ where
     /// Close the channel.
     ///
     /// This stops the remote endpoint from sending more items, but allows already sent items
-    /// to be received.    
+    /// to be received.
     pub async fn close(&mut self) {
         if let Ok(receiver) = self.get().await {
             receiver.close().await;
+        }
+    }
+
+    /// Maximum allowed item size in bytes.
+    pub fn max_item_size(&self) -> usize {
+        self.max_item_size
+    }
+
+    /// Sets the maximum allowed item size in bytes.
+    ///
+    /// This does not change the maximum allowed item size on the remote endpoint
+    /// if the sender or receiver has already been sent to or received from the remote endpoint.
+    pub fn set_max_item_size(&mut self, max_item_size: usize) {
+        self.max_item_size = max_item_size;
+        if let Some(Ok(receiver)) = &mut self.receiver {
+            receiver.set_max_item_size(self.max_item_size);
         }
     }
 }
@@ -147,6 +178,7 @@ where
     where
         S: serde::Serializer,
     {
+        let max_item_size = self.max_item_size;
         let sender_tx =
             self.sender_tx.clone().ok_or_else(|| ser::Error::custom("cannot forward received receiver"))?;
 
@@ -158,13 +190,14 @@ where
             interlock.sender.start_send()
         };
 
-        let port = PortSerializer::connect(|connect| {
+        let port = PortSerializer::connect(move |connect| {
             async move {
                 let _ = interlock_confirm.send(());
 
                 match connect.await {
                     Ok((raw_tx, _)) => {
-                        let tx = base::Sender::new(raw_tx);
+                        let mut tx = base::Sender::new(raw_tx);
+                        tx.set_max_item_size(max_item_size);
                         let _ = sender_tx.send(Ok(tx));
                     }
                     Err(err) => {
@@ -175,7 +208,13 @@ where
             .boxed()
         })?;
 
-        TransportedReceiver::<T, Codec> { port, data: PhantomData, codec: PhantomData }.serialize(serializer)
+        TransportedReceiver::<T, Codec> {
+            port,
+            data: PhantomData,
+            max_item_size: max_item_size.try_into().unwrap_or(u64::MAX),
+            codec: PhantomData,
+        }
+        .serialize(serializer)
     }
 }
 
@@ -189,14 +228,17 @@ where
     where
         D: serde::Deserializer<'de>,
     {
-        let TransportedReceiver::<T, Codec> { port, .. } = TransportedReceiver::deserialize(deserializer)?;
+        let TransportedReceiver::<T, Codec> { port, max_item_size, .. } =
+            TransportedReceiver::deserialize(deserializer)?;
+        let max_item_size = usize::try_from(max_item_size).unwrap_or(usize::MAX);
 
         let (receiver_tx, receiver_rx) = tokio::sync::mpsc::unbounded_channel();
-        PortDeserializer::accept(port, |local_port, request| {
+        PortDeserializer::accept(port, move |local_port, request| {
             async move {
                 match request.accept_from(local_port).await {
                     Ok((_, raw_rx)) => {
-                        let rx = base::Receiver::new(raw_rx);
+                        let mut rx = base::Receiver::new(raw_rx);
+                        rx.set_max_item_size(max_item_size);
                         let _ = receiver_tx.send(Ok(rx));
                     }
                     Err(err) => {
@@ -212,6 +254,7 @@ where
             sender_tx: None,
             receiver_rx,
             interlock: Arc::new(Mutex::new(Interlock { sender: Location::Remote, receiver: Location::Local })),
+            max_item_size,
         })
     }
 }

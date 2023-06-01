@@ -237,7 +237,8 @@ impl TraitMethod {
 
         quote! {
             async fn #ident (#self_ref, #args) -> #ret_ty {
-                let (reply_tx, reply_rx) = ::remoc::rch::oneshot::channel();
+                let (mut reply_tx, reply_rx) = ::remoc::rch::oneshot::channel();
+                reply_tx.set_max_item_size(self.max_reply_size);
                 let req_value = #req_enum :: #req_case { __reply_tx: reply_tx, #entries };
                 let req = ::remoc::rtc::Req::#req_type(req_value);
                 self.req_tx.send(req).await.map_err(::remoc::rtc::CallError::from)?;

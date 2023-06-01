@@ -125,4 +125,14 @@ where
     pub fn is_closed(&self) -> bool {
         self.0.is_closed()
     }
+
+    /// The maximum allowed item size in bytes.
+    pub fn max_item_size(&self) -> usize {
+        self.0.max_item_size()
+    }
+
+    /// Sets the maximum allowed item size in bytes.
+    pub fn set_max_item_size(&mut self, max_item_size: usize) {
+        self.0.set_max_item_size(max_item_size)
+    }
 }

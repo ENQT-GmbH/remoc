@@ -685,6 +685,8 @@ impl TraitDef {
                     ::remoc::rtc::Req<#req_value #req_generics, #req_ref #req_generics, #req_ref_mut #req_generics>,
                     Codec,
                 >,
+                #[serde(default = "::remoc::rtc::missing_max_reply_size", with = "::remoc::rtc::serde_max_reply_size")]
+                max_reply_size: usize,
                 #[serde(skip)]
                 #[serde(default = "::remoc::rtc::empty_client_drop_tx")]
                 drop_tx: ::remoc::rtc::local_broadcast::Sender<()>,
@@ -698,6 +700,7 @@ impl TraitDef {
                 {
                     Self {
                         req_tx,
+                        max_reply_size: ::remoc::rch::DEFAULT_MAX_ITEM_SIZE,
                         drop_tx: ::remoc::rtc::empty_client_drop_tx(),
                     }
                 }
@@ -721,6 +724,22 @@ impl TraitDef {
 
                 fn is_closed(&self) -> bool {
                     self.req_tx.is_closed()
+                }
+
+                fn max_request_size(&self) -> usize {
+                    self.req_tx.max_item_size()
+                }
+
+                fn set_max_request_size(&mut self, max_request_size: usize) {
+                    self.req_tx.set_max_item_size(max_request_size);
+                }
+
+                fn max_reply_size(&self) -> usize {
+                    self.max_reply_size
+                }
+
+                fn set_max_reply_size(&mut self, max_reply_size: usize) {
+                    self.max_reply_size = max_reply_size
                 }
             }
 

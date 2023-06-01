@@ -54,7 +54,7 @@ use bytes::Buf;
 use serde::{de::DeserializeOwned, Serialize};
 use std::{fmt, ops::Deref};
 
-use super::{base, RemoteSendError};
+use super::{base, RemoteSendError, DEFAULT_MAX_ITEM_SIZE};
 use crate::{chmux, codec, rch::BACKCHANNEL_MSG_ERROR, RemoteSend};
 
 mod receiver;
@@ -96,8 +96,8 @@ where
     let (tx, rx) = tokio::sync::watch::channel(Ok(init));
     let (remote_send_err_tx, remote_send_err_rx) = tokio::sync::mpsc::channel(ERROR_QUEUE);
 
-    let sender = Sender::new(tx, remote_send_err_tx.clone(), remote_send_err_rx);
-    let receiver = Receiver::new(rx, remote_send_err_tx);
+    let sender = Sender::new(tx, remote_send_err_tx.clone(), remote_send_err_rx, DEFAULT_MAX_ITEM_SIZE);
+    let receiver = Receiver::new(rx, remote_send_err_tx, None);
     (sender, receiver)
 }
 
@@ -105,12 +105,14 @@ where
 async fn send_impl<T, Codec>(
     mut rx: tokio::sync::watch::Receiver<Result<T, RecvError>>, raw_tx: chmux::Sender,
     mut raw_rx: chmux::Receiver, remote_send_err_tx: tokio::sync::mpsc::Sender<RemoteSendError>,
+    max_item_size: usize,
 ) where
     T: Serialize + Send + Clone + 'static,
     Codec: codec::Codec,
 {
     // Encode data using remote sender for sending.
     let mut remote_tx = base::Sender::<Result<T, RecvError>, Codec>::new(raw_tx);
+    remote_tx.set_max_item_size(max_item_size);
 
     // Process events.
     loop {
@@ -149,13 +151,14 @@ async fn send_impl<T, Codec>(
 async fn recv_impl<T, Codec>(
     tx: tokio::sync::watch::Sender<Result<T, RecvError>>, mut raw_tx: chmux::Sender, raw_rx: chmux::Receiver,
     mut remote_send_err_rx: tokio::sync::mpsc::Receiver<RemoteSendError>,
-    mut current_err: Option<RemoteSendError>,
+    mut current_err: Option<RemoteSendError>, max_item_size: usize,
 ) where
     T: DeserializeOwned + Send + 'static,
     Codec: codec::Codec,
 {
     // Decode raw received data using remote receiver.
     let mut remote_rx = base::Receiver::<Result<T, RecvError>, Codec>::new(raw_rx);
+    remote_rx.set_max_item_size(max_item_size);
 
     // Process events.
     loop {

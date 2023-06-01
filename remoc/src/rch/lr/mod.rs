@@ -10,7 +10,10 @@ use std::sync::{Arc, Mutex};
 mod receiver;
 mod sender;
 
-use super::interlock::{Interlock, Location};
+use super::{
+    interlock::{Interlock, Location},
+    DEFAULT_MAX_ITEM_SIZE,
+};
 pub use receiver::{Receiver, RecvError};
 pub use sender::{SendError, SendErrorKind, Sender};
 
@@ -21,7 +24,19 @@ pub fn channel<T, Codec>() -> (Sender<T, Codec>, Receiver<T, Codec>) {
     let (receiver_tx, receiver_rx) = tokio::sync::mpsc::unbounded_channel();
     let interlock = Arc::new(Mutex::new(Interlock { sender: Location::Local, receiver: Location::Local }));
 
-    let sender = Sender { sender: None, sender_rx, receiver_tx: Some(receiver_tx), interlock: interlock.clone() };
-    let receiver = Receiver { receiver: None, sender_tx: Some(sender_tx), receiver_rx, interlock };
+    let sender = Sender {
+        sender: None,
+        sender_rx,
+        receiver_tx: Some(receiver_tx),
+        interlock: interlock.clone(),
+        max_item_size: DEFAULT_MAX_ITEM_SIZE,
+    };
+    let receiver = Receiver {
+        receiver: None,
+        sender_tx: Some(sender_tx),
+        receiver_rx,
+        interlock,
+        max_item_size: DEFAULT_MAX_ITEM_SIZE,
+    };
     (sender, receiver)
 }

@@ -77,7 +77,7 @@ where
     let (remote_send_err_tx, remote_send_err_rx) = tokio::sync::watch::channel(None);
 
     let sender = Sender::new(tx, closed_rx, remote_send_err_rx);
-    let receiver = Receiver::new(rx, closed_tx, false, remote_send_err_tx);
+    let receiver = Receiver::new(rx, closed_tx, false, remote_send_err_tx, None);
     (sender, receiver)
 }
 
@@ -85,13 +85,14 @@ where
 async fn send_impl<T, Codec>(
     mut rx: tokio::sync::mpsc::Receiver<Result<T, RecvError>>, raw_tx: chmux::Sender,
     mut raw_rx: chmux::Receiver, remote_send_err_tx: tokio::sync::watch::Sender<Option<RemoteSendError>>,
-    closed_tx: tokio::sync::watch::Sender<Option<ClosedReason>>,
+    closed_tx: tokio::sync::watch::Sender<Option<ClosedReason>>, max_item_size: usize,
 ) where
     T: Serialize + Send + 'static,
     Codec: codec::Codec,
 {
     // Encode data using remote sender.
     let mut remote_tx = base::Sender::<Result<T, RecvError>, Codec>::new(raw_tx);
+    remote_tx.set_max_item_size(max_item_size);
 
     // Process events.
     loop {
@@ -154,13 +155,14 @@ async fn send_impl<T, Codec>(
 async fn recv_impl<T, Codec>(
     tx: &tokio::sync::mpsc::Sender<Result<T, RecvError>>, mut raw_tx: chmux::Sender, raw_rx: chmux::Receiver,
     mut remote_send_err_rx: tokio::sync::watch::Receiver<Option<RemoteSendError>>,
-    mut closed_rx: tokio::sync::watch::Receiver<Option<ClosedReason>>,
+    mut closed_rx: tokio::sync::watch::Receiver<Option<ClosedReason>>, max_item_size: usize,
 ) where
     T: DeserializeOwned + Send + 'static,
     Codec: codec::Codec,
 {
     // Decode raw received data using remote receiver.
     let mut remote_rx = base::Receiver::<Result<T, RecvError>, Codec>::new(raw_rx);
+    remote_rx.set_max_item_size(max_item_size);
 
     // Process events.
     loop {

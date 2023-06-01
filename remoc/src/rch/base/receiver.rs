@@ -12,7 +12,7 @@ use std::{
 };
 use tokio::task::{self, JoinHandle};
 
-use super::{io::ChannelBytesReader, BIG_DATA_CHUNK_QUEUE};
+use super::{super::DEFAULT_MAX_ITEM_SIZE, io::ChannelBytesReader, BIG_DATA_CHUNK_QUEUE};
 use crate::{
     chmux::{self, AnyStorage, Received, RecvChunkError},
     codec::{self, DeserializationError},
@@ -27,6 +27,8 @@ pub enum RecvError {
     Deserialize(DeserializationError),
     /// Chmux ports required for deserialization of received channels were not received.
     MissingPorts(Vec<u32>),
+    /// Maximum item size was exceeded.
+    MaxItemSizeExceeded,
 }
 
 impl From<chmux::RecvError> for RecvError {
@@ -51,6 +53,7 @@ impl fmt::Display for RecvError {
                 "missing chmux ports: {}",
                 ports.iter().map(|p| p.to_string()).collect::<Vec<_>>().join(", ")
             ),
+            Self::MaxItemSizeExceeded => write!(f, "maximum item size exceeded"),
         }
     }
 }
@@ -62,7 +65,7 @@ impl RecvError {
     pub fn is_final(&self) -> bool {
         match self {
             Self::Receive(err) => err.is_final(),
-            Self::Deserialize(_) | Self::MissingPorts(_) => false,
+            Self::Deserialize(_) | Self::MissingPorts(_) | Self::MaxItemSizeExceeded => false,
         }
     }
 }
@@ -156,6 +159,7 @@ pub struct Receiver<T, Codec = codec::Default> {
     item: Option<T>,
     port_deser: Option<PortDeserializer>,
     default_max_ports: Option<usize>,
+    max_item_size: usize,
     _codec: PhantomData<Codec>,
 }
 
@@ -165,6 +169,7 @@ enum DataSource<T> {
     Streamed {
         tx: Option<tokio::sync::mpsc::Sender<Result<Bytes, ()>>>,
         task: JoinHandle<Result<(T, PortDeserializer), DeserializationError>>,
+        total: usize,
     },
 }
 
@@ -182,6 +187,7 @@ where
             item: None,
             port_deser: None,
             default_max_ports: None,
+            max_item_size: DEFAULT_MAX_ITEM_SIZE,
             _codec: PhantomData,
         }
     }
@@ -217,7 +223,7 @@ where
 
                                 Ok((item, pds))
                             });
-                            DataSource::Streamed { tx: Some(tx), task }
+                            DataSource::Streamed { tx: Some(tx), task, total: 0 }
                         }
                         Some(Received::Requests(_)) => continue 'restart,
                         None => return Ok(None),
@@ -237,6 +243,11 @@ where
                             continue 'restart;
                         };
 
+                        if data.remaining() > self.max_item_size {
+                            self.data = DataSource::None;
+                            return Err(RecvError::MaxItemSizeExceeded);
+                        }
+
                         let pdf_ref =
                             PortDeserializer::start(self.receiver.port_allocator(), self.receiver.storage());
                         self.item = Some(<Codec as codec::Codec>::deserialize(data.reader())?);
@@ -246,7 +257,12 @@ where
                     }
 
                     // Observe deserialization of streamed data.
-                    DataSource::Streamed { tx, task } => {
+                    DataSource::Streamed { tx, task, total } => {
+                        enum FeedError {
+                            RecvChunkError(RecvChunkError),
+                            MaxItemSizeExceeded,
+                        }
+
                         // Feed received data chunks to deserialization thread.
                         if let Some(tx) = &tx {
                             let res = loop {
@@ -257,21 +273,32 @@ where
                                 };
 
                                 match self.receiver.recv_chunk().await {
-                                    Ok(Some(chunk)) => tx_permit.send(Ok(chunk)),
+                                    Ok(Some(chunk)) => {
+                                        *total += chunk.remaining();
+                                        if *total > self.max_item_size {
+                                            break Err(FeedError::MaxItemSizeExceeded);
+                                        }
+
+                                        tx_permit.send(Ok(chunk));
+                                    }
                                     Ok(None) => break Ok(()),
-                                    Err(err) => break Err(err),
+                                    Err(err) => break Err(FeedError::RecvChunkError(err)),
                                 }
                             };
 
                             match res {
                                 Ok(()) => (),
-                                Err(RecvChunkError::Cancelled) => {
+                                Err(FeedError::RecvChunkError(RecvChunkError::Cancelled)) => {
                                     self.data = DataSource::None;
                                     continue 'restart;
                                 }
-                                Err(RecvChunkError::ChMux) => {
+                                Err(FeedError::RecvChunkError(RecvChunkError::ChMux)) => {
                                     self.data = DataSource::None;
                                     return Err(RecvError::Receive(chmux::RecvError::ChMux));
+                                }
+                                Err(FeedError::MaxItemSizeExceeded) => {
+                                    self.data = DataSource::None;
+                                    return Err(RecvError::MaxItemSizeExceeded);
                                 }
                             }
                         }
@@ -351,5 +378,17 @@ where
     #[inline]
     pub async fn close(&mut self) {
         self.receiver.close().await
+    }
+
+    /// The maximum allowed size in bytes of an item to be received.
+    ///
+    /// The default value is [DEFAULT_MAX_ITEM_SIZE].
+    pub fn max_item_size(&self) -> usize {
+        self.max_item_size
+    }
+
+    /// Sets the maximum allowed size in bytes of an item to be received.
+    pub fn set_max_item_size(&mut self, max_item_size: usize) {
+        self.max_item_size = max_item_size;
     }
 }

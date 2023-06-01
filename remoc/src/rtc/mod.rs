@@ -367,6 +367,21 @@ pub trait Client {
     /// Returns whether the server has been dropped or the connection to it
     /// has been lost.
     fn is_closed(&self) -> bool;
+
+    /// The maximum allowed size of a request in bytes.
+    fn max_request_size(&self) -> usize;
+
+    /// Sets the maximum allowed size of a request in bytes.
+    ///
+    /// This does not change the maximum request size the server will accept
+    /// if this client has been received from a remote endpoint.
+    fn set_max_request_size(&mut self, max_request_size: usize);
+
+    /// The maximum allowed size of a reply in bytes.
+    fn max_reply_size(&self) -> usize;
+
+    /// Sets the maximum allowed size of a reply in bytes.
+    fn set_max_reply_size(&mut self, max_reply_size: usize);
 }
 
 /// A future that completes when the server or client has been dropped
@@ -508,4 +523,34 @@ pub fn receiving_request_failed(err: mpsc::RecvError) {
 #[doc(hidden)]
 pub fn empty_client_drop_tx() -> local_broadcast::Sender<()> {
     local_broadcast::channel(1).0
+}
+
+/// Missing maximum reply size value for backwards compatibility.
+#[doc(hidden)]
+pub const fn missing_max_reply_size() -> usize {
+    usize::MAX
+}
+
+/// Serialization for `max_reply_size` field.
+#[doc(hidden)]
+pub mod serde_max_reply_size {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    /// Serialization function.
+    pub fn serialize<S>(max_reply_size: &usize, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let max_reply_size = u64::try_from(*max_reply_size).unwrap_or(u64::MAX);
+        max_reply_size.serialize(serializer)
+    }
+
+    /// Deserialization function.
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<usize, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let max_reply_size = u64::deserialize(deserializer)?;
+        Ok(usize::try_from(max_reply_size).unwrap_or(usize::MAX))
+    }
 }

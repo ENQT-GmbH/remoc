@@ -112,6 +112,7 @@ pub(crate) struct SenderInner<T, Codec> {
     remote_send_err_tx: tokio::sync::mpsc::Sender<RemoteSendError>,
     remote_send_err_rx: Mutex<tokio::sync::mpsc::Receiver<RemoteSendError>>,
     current_err: Mutex<Option<RemoteSendError>>,
+    max_item_size: usize,
     _codec: PhantomData<Codec>,
 }
 
@@ -124,6 +125,13 @@ pub(crate) struct TransportedSender<T, Codec> {
     data: Result<T, RecvError>,
     /// Data codec.
     codec: PhantomData<Codec>,
+    /// Maximum item size in bytes.
+    #[serde(default = "default_max_item_size")]
+    max_item_size: u64,
+}
+
+const fn default_max_item_size() -> u64 {
+    u64::MAX
 }
 
 impl<T, Codec> Sender<T, Codec>
@@ -134,13 +142,14 @@ where
     pub(crate) fn new(
         tx: tokio::sync::watch::Sender<Result<T, RecvError>>,
         remote_send_err_tx: tokio::sync::mpsc::Sender<RemoteSendError>,
-        remote_send_err_rx: tokio::sync::mpsc::Receiver<RemoteSendError>,
+        remote_send_err_rx: tokio::sync::mpsc::Receiver<RemoteSendError>, max_item_size: usize,
     ) -> Self {
         let inner = SenderInner {
             tx,
             remote_send_err_tx,
             remote_send_err_rx: Mutex::new(remote_send_err_rx),
             current_err: Mutex::new(None),
+            max_item_size,
             _codec: PhantomData,
         };
         Self { inner: Some(inner), successor_tx: Mutex::new(None) }
@@ -206,7 +215,7 @@ where
     /// Creates a new receiver subscribed to this sender.
     pub fn subscribe(&self) -> Receiver<T, Codec> {
         let inner = self.inner.as_ref().unwrap();
-        Receiver::new(inner.tx.subscribe(), inner.remote_send_err_tx.clone())
+        Receiver::new(inner.tx.subscribe(), inner.remote_send_err_tx.clone(), None)
     }
 
     fn update_error(&self) {
@@ -242,6 +251,16 @@ where
         let mut current_err = inner.current_err.lock().unwrap();
         *current_err = None;
     }
+
+    /// Maximum allowed item size in bytes.
+    pub fn max_item_size(&self) -> usize {
+        self.inner.as_ref().unwrap().max_item_size
+    }
+
+    /// Sets the maximum allowed item size in bytes.
+    pub fn set_max_item_size(&mut self, max_item_size: usize) {
+        self.inner.as_mut().unwrap().max_item_size = max_item_size;
+    }
 }
 
 impl<T, Codec> Drop for Sender<T, Codec> {
@@ -263,11 +282,13 @@ where
     where
         S: serde::Serializer,
     {
+        let max_item_size = self.max_item_size();
+
         // Prepare channel for takeover.
         let (successor_tx, successor_rx) = tokio::sync::oneshot::channel();
         *self.successor_tx.lock().unwrap() = Some(successor_tx);
 
-        let port = PortSerializer::connect(|connect| {
+        let port = PortSerializer::connect(move |connect| {
             async move {
                 // Sender has been dropped after sending, so we receive its channels.
                 let SenderInner { tx, remote_send_err_rx, current_err, .. } = match successor_rx.await {
@@ -286,14 +307,20 @@ where
                     }
                 };
 
-                super::recv_impl::<T, Codec>(tx, raw_tx, raw_rx, remote_send_err_rx, current_err).await;
+                super::recv_impl::<T, Codec>(tx, raw_tx, raw_rx, remote_send_err_rx, current_err, max_item_size)
+                    .await;
             }
             .boxed()
         })?;
 
         // Encode chmux port number in transport type and serialize it.
         let data = self.inner.as_ref().unwrap().tx.borrow().clone();
-        let transported = TransportedSender::<T, Codec> { port, data, codec: PhantomData };
+        let transported = TransportedSender::<T, Codec> {
+            port,
+            data,
+            max_item_size: max_item_size.try_into().unwrap_or(u64::MAX),
+            codec: PhantomData,
+        };
         transported.serialize(serializer)
     }
 }
@@ -310,7 +337,9 @@ where
         D: serde::Deserializer<'de>,
     {
         // Get chmux port number from deserialized transport type.
-        let TransportedSender { port, data, .. } = TransportedSender::<T, Codec>::deserialize(deserializer)?;
+        let TransportedSender { port, data, max_item_size, .. } =
+            TransportedSender::<T, Codec>::deserialize(deserializer)?;
+        let max_item_size = usize::try_from(max_item_size).unwrap_or(usize::MAX);
         if data.is_err() {
             return Err(serde::de::Error::custom("received watch data with error"));
         }
@@ -321,7 +350,7 @@ where
         let remote_send_err_tx2 = remote_send_err_tx.clone();
 
         // Accept chmux port request.
-        PortDeserializer::accept(port, |local_port, request| {
+        PortDeserializer::accept(port, move |local_port, request| {
             async move {
                 // Accept chmux connection request.
                 let (raw_tx, raw_rx) = match request.accept_from(local_port).await {
@@ -332,11 +361,11 @@ where
                     }
                 };
 
-                super::send_impl::<T, Codec>(rx, raw_tx, raw_rx, remote_send_err_tx).await;
+                super::send_impl::<T, Codec>(rx, raw_tx, raw_rx, remote_send_err_tx, max_item_size).await;
             }
             .boxed()
         })?;
 
-        Ok(Self::new(tx, remote_send_err_tx2, remote_send_err_rx))
+        Ok(Self::new(tx, remote_send_err_tx2, remote_send_err_rx, max_item_size))
     }
 }

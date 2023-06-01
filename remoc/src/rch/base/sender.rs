@@ -14,7 +14,7 @@ use std::{
 use tokio::task;
 
 use super::{
-    super::SendErrorExt,
+    super::{SendErrorExt, DEFAULT_MAX_ITEM_SIZE},
     io::{ChannelBytesWriter, LimitedBytesWriter},
     BIG_DATA_CHUNK_QUEUE, BIG_DATA_LIMIT,
 };
@@ -41,6 +41,8 @@ pub enum SendErrorKind {
     Serialize(SerializationError),
     /// Sending of the serialized item over the chmux channel failed.
     Send(chmux::SendError),
+    /// Maximum item size was exceeded.
+    MaxItemSizeExceeded,
 }
 
 impl SendErrorKind {
@@ -105,6 +107,7 @@ impl fmt::Display for SendErrorKind {
         match self {
             Self::Serialize(err) => write!(f, "serialization error: {err}"),
             Self::Send(err) => write!(f, "send error: {err}"),
+            Self::MaxItemSizeExceeded => write!(f, "maximum item size exceeded"),
         }
     }
 }
@@ -193,6 +196,7 @@ impl PortSerializer {
 pub struct Sender<T, Codec = codec::Default> {
     sender: chmux::Sender,
     big_data: i8,
+    max_item_size: usize,
     _data: PhantomData<T>,
     _codec: PhantomData<Codec>,
 }
@@ -204,7 +208,13 @@ where
 {
     /// Creates a base remote sender from a [chmux] sender.
     pub fn new(sender: chmux::Sender) -> Self {
-        Self { sender, big_data: 0, _data: PhantomData, _codec: PhantomData }
+        Self {
+            sender,
+            big_data: 0,
+            max_item_size: DEFAULT_MAX_ITEM_SIZE,
+            _data: PhantomData,
+            _codec: PhantomData,
+        }
     }
 
     fn serialize_buffered(
@@ -297,6 +307,10 @@ where
 
         let (item, ps) = match data_ps {
             Some((data, ps)) => {
+                if data.len() > self.max_item_size {
+                    return Err(SendError::new(SendErrorKind::MaxItemSizeExceeded, item));
+                }
+
                 // Send buffered data.
                 if let Err(err) = self.sender.send(data.freeze()).await {
                     return Err(SendError::new(SendErrorKind::Send(err), item));
@@ -315,10 +329,22 @@ where
                     self.sender.chunk_size(),
                 );
 
+                enum SendTaskError {
+                    SendError(chmux::SendError),
+                    MaxItemSizeExceeded,
+                }
+
                 let mut sc = self.sender.send_chunks();
+                let max_item_size = self.max_item_size;
                 let send_task = async move {
+                    let mut total = 0;
                     while let Some(chunk) = rx.recv().await {
-                        sc = sc.send(chunk.freeze()).await?;
+                        total += chunk.len();
+                        if total > max_item_size {
+                            return Err(SendTaskError::MaxItemSizeExceeded);
+                        }
+
+                        sc = sc.send(chunk.freeze()).await.map_err(SendTaskError::SendError)?;
                     }
                     Ok(sc)
                 };
@@ -338,7 +364,11 @@ where
                     (Ok((item, _, _)), Err(err)) | (Err((_, item)), Err(err)) => {
                         // When sending fails, the serialization task will either finish
                         // or fail due to rx being dropped.
-                        return Err(SendError::new(SendErrorKind::Send(err), item));
+                        let kind = match err {
+                            SendTaskError::SendError(err) => SendErrorKind::Send(err),
+                            SendTaskError::MaxItemSizeExceeded => SendErrorKind::MaxItemSizeExceeded,
+                        };
+                        return Err(SendError::new(kind, item));
                     }
                     (Err((err, item)), _) => {
                         // When serialization fails, the send task will finish successfully
@@ -391,5 +421,23 @@ where
     #[inline]
     pub fn closed(&self) -> Closed {
         self.sender.closed()
+    }
+
+    /// The maximum allowed size in bytes of an item to be sent.
+    ///
+    /// The default value is [DEFAULT_MAX_ITEM_SIZE].
+    pub fn max_item_size(&self) -> usize {
+        self.max_item_size
+    }
+
+    /// Sets the maximum allowed size in bytes of an item to be sent.
+    ///
+    /// This does not change the maximum allowed size on the receive end.
+    /// Thus if the maximum allowed size is larger on the sender than on the
+    /// [receiver](super::Receiver), sending of oversized items will succeed but the receiver
+    /// will fail with a [MaxItemSizeExceeded error](super::RecvError::MaxItemSizeExceeded) when
+    /// trying to receive the item.
+    pub fn set_max_item_size(&mut self, max_item_size: usize) {
+        self.max_item_size = max_item_size;
     }
 }

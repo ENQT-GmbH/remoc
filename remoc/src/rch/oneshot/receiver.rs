@@ -8,12 +8,8 @@ use std::{
     task::{Context, Poll},
 };
 
-use super::super::{base, mpsc};
-use crate::{
-    chmux,
-    codec::{self},
-    RemoteSend,
-};
+use super::super::{base, mpsc, DEFAULT_MAX_ITEM_SIZE};
+use crate::{chmux, codec, RemoteSend};
 
 /// An error occurred during receiving over an oneshot channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -133,15 +129,17 @@ impl Error for TryRecvError {}
 #[derive(Serialize, Deserialize)]
 #[serde(bound(serialize = "T: RemoteSend, Codec: codec::Codec"))]
 #[serde(bound(deserialize = "T: RemoteSend, Codec: codec::Codec"))]
-pub struct Receiver<T, Codec = codec::Default>(pub(crate) mpsc::Receiver<T, Codec, 1>);
+pub struct Receiver<T, Codec = codec::Default, const MAX_ITEM_SIZE: usize = DEFAULT_MAX_ITEM_SIZE>(
+    pub(crate) mpsc::Receiver<T, Codec, 1, MAX_ITEM_SIZE>,
+);
 
-impl<T, Codec> fmt::Debug for Receiver<T, Codec> {
+impl<T, Codec, const MAX_ITEM_SIZE: usize> fmt::Debug for Receiver<T, Codec, MAX_ITEM_SIZE> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Receiver").finish()
     }
 }
 
-impl<T, Codec> Receiver<T, Codec>
+impl<T, Codec, const MAX_ITEM_SIZE: usize> Receiver<T, Codec, MAX_ITEM_SIZE>
 where
     T: DeserializeOwned + Send + 'static,
     Codec: codec::Codec,
@@ -157,9 +155,28 @@ where
     pub fn try_recv(&mut self) -> Result<T, TryRecvError> {
         Ok(self.0.try_recv()?)
     }
+
+    /// The maximum item size in bytes.
+    pub const fn max_item_size(&self) -> usize {
+        self.0.max_item_size()
+    }
+
+    /// Sets the maximum item size in bytes.
+    pub fn set_max_item_size<const NEW_MAX_ITEM_SIZE: usize>(self) -> Receiver<T, Codec, NEW_MAX_ITEM_SIZE> {
+        Receiver(self.0.set_max_item_size())
+    }
+
+    /// The maximum item size of the remote sender.
+    ///
+    /// If this is larger than [max_item_size](Self::max_item_size) sending of oversized
+    /// items will succeed but receiving will fail with a
+    /// [MaxItemSizeExceeded error](base::RecvError::MaxItemSizeExceeded).
+    pub fn remote_max_item_size(&self) -> Option<usize> {
+        self.0.remote_max_item_size()
+    }
 }
 
-impl<T, Codec> Future for Receiver<T, Codec>
+impl<T, Codec, const MAX_ITEM_SIZE: usize> Future for Receiver<T, Codec, MAX_ITEM_SIZE>
 where
     T: DeserializeOwned + Send + 'static,
     Codec: codec::Codec,
