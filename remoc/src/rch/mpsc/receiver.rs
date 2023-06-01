@@ -337,7 +337,7 @@ impl<T, Codec, const BUFFER: usize, const MAX_ITEM_SIZE: usize> Receiver<T, Code
     }
 
     /// The maximum item size in bytes.
-    pub const fn max_item_size(&self) -> usize {
+    pub fn max_item_size(&self) -> usize {
         MAX_ITEM_SIZE
     }
 

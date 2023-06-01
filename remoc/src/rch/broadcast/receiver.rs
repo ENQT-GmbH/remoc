@@ -236,7 +236,7 @@ where
     }
 
     /// The maximum item size in bytes.
-    pub const fn max_item_size(&self) -> usize {
+    pub fn max_item_size(&self) -> usize {
         self.rx.max_item_size()
     }
 
