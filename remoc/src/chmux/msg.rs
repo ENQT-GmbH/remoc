@@ -6,10 +6,8 @@ use std::{
 
 use super::{Cfg, ChMuxError};
 
-macro_rules! invalid_data {
-    ($msg:expr) => {
-        io::Error::new(io::ErrorKind::InvalidData, format!("invalid value for {} received", $msg))
-    };
+fn invalid_data(msg: &str) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, format!("invalid value for {} received", msg))
 }
 
 /// Magic identifier.
@@ -246,7 +244,7 @@ impl MultiplexMsg {
                 let mut magic = vec![0; MAGIC.len()];
                 reader.read_exact(&mut magic)?;
                 if magic != MAGIC {
-                    return Err(invalid_data!("invalid magic"));
+                    return Err(invalid_data("invalid magic"));
                 }
                 Self::Hello { version: reader.read_u8()?, cfg: ExchangedCfg::read(&mut reader)? }
             }
@@ -296,7 +294,7 @@ impl MultiplexMsg {
             MSG_CLIENT_FINISH => Self::ClientFinish,
             MSG_LISTENER_FINISH => Self::ListenerFinish,
             MSG_GOODBYE => Self::Goodbye,
-            _ => return Err(invalid_data!("invalid message id")),
+            _ => return Err(invalid_data("invalid message id")),
         };
         Ok(msg)
     }
@@ -346,11 +344,11 @@ impl ExchangedCfg {
             },
             chunk_size: match reader.read_u32::<LE>()? {
                 cs if cs >= 4 => cs,
-                _ => return Err(invalid_data!("chunk_size")),
+                _ => return Err(invalid_data("chunk_size")),
             },
             port_receive_buffer: match reader.read_u32::<LE>()? {
                 prb if prb >= 4 => prb,
-                _ => return Err(invalid_data!("port_receive_buffer")),
+                _ => return Err(invalid_data("port_receive_buffer")),
             },
             connect_queue: reader.read_u16::<LE>()?,
         };

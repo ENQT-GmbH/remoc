@@ -38,10 +38,8 @@ use super::{
 };
 
 /// Multiplexer protocol error.
-macro_rules! protocol_err {
-    ($msg:expr) => {
-        super::ChMuxError::Protocol($msg.to_string())
-    };
+fn protocol_err<SinkError, StreamError>(msg: impl AsRef<str>) -> super::ChMuxError<SinkError, StreamError> {
+    super::ChMuxError::Protocol(msg.as_ref().to_string())
 }
 
 /// Port state.
@@ -896,8 +894,8 @@ where
 
             // Hello message only allowed when establishing connection.
             MultiplexMsg::Hello { .. } => {
-                return Err(protocol_err!(
-                    "received Hello message for already established multiplexer connection"
+                return Err(protocol_err(
+                    "received Hello message for already established multiplexer connection",
                 ));
             }
 
@@ -907,7 +905,7 @@ where
             // Open port request from remote endpoint.
             MultiplexMsg::OpenPort { client_port, wait } => {
                 if !self.outstanding_remote_port_requests.insert(client_port) {
-                    return Err(protocol_err!(format!(
+                    return Err(protocol_err(format!(
                         "remote endpoint sent OpenPort request for same remote port {client_port} twice"
                     )));
                 }
@@ -920,7 +918,7 @@ where
                 if let Some((listen_wait_tx, listen_no_wait_tx)) = &self.listen_tx {
                     let res = if wait { listen_wait_tx.try_send(req) } else { listen_no_wait_tx.try_send(req) };
                     if let Err(mpsc::error::TrySendError::Full(_)) = res {
-                        return Err(protocol_err!("remote endpoint sent too many OpenPort requests"));
+                        return Err(protocol_err("remote endpoint sent too many OpenPort requests"));
                     }
                 }
             }
@@ -933,7 +931,7 @@ where
                     let (sender, receiver) = self.create_port(local_port, server_port);
                     let _ = response_tx.send(ConnectResponse::Accepted(sender, receiver));
                 } else {
-                    return Err(protocol_err!(format!(
+                    return Err(protocol_err(format!(
                         "received PortOpened message for port {client_port} not in connecting state"
                     )));
                 }
@@ -944,7 +942,7 @@ where
                 if let Some(PortState::Connecting { response_tx }) = self.ports.remove(&client_port) {
                     let _ = response_tx.send(ConnectResponse::Rejected { no_ports });
                 } else {
-                    return Err(protocol_err!(format!(
+                    return Err(protocol_err(format!(
                         "received Rejected message for port {client_port} not in connecting state"
                     )));
                 }
@@ -964,7 +962,7 @@ where
                             receiver_credit_monitor.use_credits(size.max(1))?
                         }
                         _ => {
-                            return Err(protocol_err!(format!(
+                            return Err(protocol_err(format!(
                                 "received data exceeds maximum chunk size on port {}",
                                 &port
                             )))
@@ -977,7 +975,7 @@ where
                         credit: used_credit,
                     }));
                 } else {
-                    return Err(protocol_err!(format!(
+                    return Err(protocol_err(format!(
                         "received data for non-connected or finished local port {}",
                         &port
                     )));
@@ -994,7 +992,7 @@ where
                 {
                     for port in &ports {
                         if !self.outstanding_remote_port_requests.insert(*port) {
-                            return Err(protocol_err!(format!(
+                            return Err(protocol_err(format!(
                                 "remote endpoint sent PortData request for same remote port {port} twice"
                             )));
                         }
@@ -1006,7 +1004,7 @@ where
                                 receiver_credit_monitor.use_credits(size)?
                             }
                             _ => {
-                                return Err(protocol_err!(format!(
+                                return Err(protocol_err(format!(
                                     "received ports exceeds maximum chunk size on port {}",
                                     &port
                                 )))
@@ -1028,7 +1026,7 @@ where
                         credit: used_credit,
                     }));
                 } else {
-                    return Err(protocol_err!(format!(
+                    return Err(protocol_err(format!(
                         "received port data for non-connected or finished local port {}",
                         &port
                     )));
@@ -1040,7 +1038,7 @@ where
                 if let Some(PortState::Connected { sender_credit_provider, .. }) = self.ports.get_mut(&port) {
                     sender_credit_provider.provide(credits)?;
                 } else {
-                    return Err(protocol_err!(format!(
+                    return Err(protocol_err(format!(
                         "received port credits message for port {} not in connected state",
                         &port
                     )));
@@ -1054,13 +1052,13 @@ where
                         let _ = receiver_tx_data.send(PortReceiveMsg::Finished);
                         self.maybe_free_port(port);
                     } else {
-                        return Err(protocol_err!(format!(
+                        return Err(protocol_err(format!(
                             "received SendFinish message for local port {} more than once",
                             &port
                         )));
                     }
                 } else {
-                    return Err(protocol_err!(format!(
+                    return Err(protocol_err(format!(
                         "received SendFinish message for local port {} not in connected state",
                         &port
                     )));
@@ -1090,13 +1088,13 @@ where
 
                         self.maybe_free_port(port);
                     } else {
-                        return Err(protocol_err!(format!(
+                        return Err(protocol_err(format!(
                             "received more than one ReceiveClose message for port {}",
                             &port
                         )));
                     }
                 } else {
-                    return Err(protocol_err!(format!(
+                    return Err(protocol_err(format!(
                         "received ReceiveClose message for port {} not in connected state",
                         &port
                     )));
@@ -1128,7 +1126,7 @@ where
                     *remote_receiver_dropped = true;
                     self.maybe_free_port(port);
                 } else {
-                    return Err(protocol_err!(format!(
+                    return Err(protocol_err(format!(
                         "received ReceiveFinish message for port {} not in connected state",
                         &port
                     )));
@@ -1152,8 +1150,8 @@ where
                         failed = true;
                     }
                     if failed {
-                        return Err(protocol_err!(
-                            "remote endpoint sent too many OpenPort or ClientFinish requests"
+                        return Err(protocol_err(
+                            "remote endpoint sent too many OpenPort or ClientFinish requests",
                         ));
                     }
                 }

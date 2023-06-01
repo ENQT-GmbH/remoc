@@ -1,4 +1,3 @@
-use bytes::Buf;
 use futures::FutureExt;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -12,11 +11,9 @@ use std::{
 use super::{
     super::{
         base::{self, PortDeserializer, PortSerializer},
-        ClosedReason, RemoteSendError, SendErrorExt, BACKCHANNEL_MSG_CLOSE, BACKCHANNEL_MSG_ERROR,
-        DEFAULT_BUFFER,
+        ClosedReason, RemoteSendError, SendErrorExt, DEFAULT_BUFFER,
     },
     receiver::RecvError,
-    recv_impl, send_impl,
 };
 use crate::{chmux, codec, RemoteSend};
 
@@ -486,13 +483,13 @@ where
             // Channel is open.
             Some(tx) => {
                 // Prepare channel for takeover.
-                let mut closed_rx = self.closed_rx.clone();
-                let mut remote_send_err_rx = self.remote_send_err_rx.clone();
+                let closed_rx = self.closed_rx.clone();
+                let remote_send_err_rx = self.remote_send_err_rx.clone();
 
                 Some(PortSerializer::connect(|connect| {
                     async move {
                         // Establish chmux channel.
-                        let (mut raw_tx, raw_rx) = match connect.await {
+                        let (raw_tx, raw_rx) = match connect.await {
                             Ok(tx_rx) => tx_rx,
                             Err(err) => {
                                 let _ = tx.send(Err(RecvError::RemoteConnect(err))).await;
@@ -500,7 +497,7 @@ where
                             }
                         };
 
-                        recv_impl!(T, tx, raw_tx, raw_rx, remote_send_err_rx, closed_rx);
+                        super::recv_impl::<T, Codec>(&tx, raw_tx, raw_rx, remote_send_err_rx, closed_rx).await;
                     }
                     .boxed()
                 })?)
@@ -537,7 +534,7 @@ where
             // Received channel is open.
             Some(port) => {
                 // Create internal communication channels.
-                let (tx, mut rx) = tokio::sync::mpsc::channel(BUFFER);
+                let (tx, rx) = tokio::sync::mpsc::channel(BUFFER);
                 let (closed_tx, closed_rx) = tokio::sync::watch::channel(None);
                 let (remote_send_err_tx, remote_send_err_rx) = tokio::sync::watch::channel(None);
 
@@ -545,7 +542,7 @@ where
                 PortDeserializer::accept(port, |local_port, request| {
                     async move {
                         // Accept chmux connection request.
-                        let (raw_tx, mut raw_rx) = match request.accept_from(local_port).await {
+                        let (raw_tx, raw_rx) = match request.accept_from(local_port).await {
                             Ok(tx_rx) => tx_rx,
                             Err(err) => {
                                 let _ = remote_send_err_tx.send(Some(RemoteSendError::Listen(err)));
@@ -553,7 +550,7 @@ where
                             }
                         };
 
-                        send_impl!(T, rx, raw_tx, raw_rx, remote_send_err_tx, closed_tx);
+                        super::send_impl::<T, Codec>(rx, raw_tx, raw_rx, remote_send_err_tx, closed_tx).await;
                     }
                     .boxed()
                 })?;

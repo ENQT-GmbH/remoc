@@ -45,7 +45,15 @@
 //! ```
 //!
 
-use crate::RemoteSend;
+use bytes::Buf;
+use serde::{de::DeserializeOwned, Serialize};
+
+use super::{base, ClosedReason, RemoteSendError};
+use crate::{
+    chmux, codec,
+    rch::{BACKCHANNEL_MSG_CLOSE, BACKCHANNEL_MSG_ERROR},
+    RemoteSend,
+};
 
 mod distributor;
 mod receiver;
@@ -74,128 +82,136 @@ where
 }
 
 /// Send implementation for deserializer of Sender and serializer of Receiver.
-macro_rules! send_impl {
-    ($T:ty, $rx:ident, $raw_tx:ident, $raw_rx:ident, $remote_send_err_tx:ident, $closed_tx:ident) => {
-        // Encode data using remote sender.
-        let mut remote_tx = base::Sender::<Result<$T, RecvError>, Codec>::new($raw_tx);
+async fn send_impl<T, Codec>(
+    mut rx: tokio::sync::mpsc::Receiver<Result<T, RecvError>>, raw_tx: chmux::Sender,
+    mut raw_rx: chmux::Receiver, remote_send_err_tx: tokio::sync::watch::Sender<Option<RemoteSendError>>,
+    closed_tx: tokio::sync::watch::Sender<Option<ClosedReason>>,
+) where
+    T: Serialize + Send + 'static,
+    Codec: codec::Codec,
+{
+    // Encode data using remote sender.
+    let mut remote_tx = base::Sender::<Result<T, RecvError>, Codec>::new(raw_tx);
 
-        // Process events.
-        loop {
-            tokio::select! {
-                biased;
+    // Process events.
+    loop {
+        tokio::select! {
+            biased;
 
-                // Back channel message from remote endpoint.
-                backchannel_msg = $raw_rx.recv() => {
-                    match backchannel_msg {
-                        Ok(Some(mut msg)) if msg.remaining() >= 1 => {
-                            match msg.get_u8() {
-                                BACKCHANNEL_MSG_CLOSE => {
-                                    let _ = $remote_send_err_tx.send(Some(RemoteSendError::Closed));
-                                    let _ = $closed_tx.send(Some(ClosedReason::Closed));
-                                    break;
-                                }
-                                BACKCHANNEL_MSG_ERROR => {
-                                    let _ = $remote_send_err_tx.send(Some(RemoteSendError::Forward));
-                                    let _ = $closed_tx.send(Some(ClosedReason::Failed));
-                                    break;
-                                }
-                                _ => (),
+            // Back channel message from remote endpoint.
+            backchannel_msg = raw_rx.recv() => {
+                match backchannel_msg {
+                    Ok(Some(mut msg)) if msg.remaining() >= 1 => {
+                        match msg.get_u8() {
+                            BACKCHANNEL_MSG_CLOSE => {
+                                let _ = remote_send_err_tx.send(Some(RemoteSendError::Closed));
+                                let _ = closed_tx.send(Some(ClosedReason::Closed));
+                                break;
                             }
-                        },
-                        Ok(Some(_)) => (),
-                        Ok(None) => {
-                            let _ = $remote_send_err_tx.send(Some(RemoteSendError::Send(
-                                base::SendErrorKind::Send(chmux::SendError::Closed { gracefully: false })
-                            )));
-                            let _ = $closed_tx.send(Some(ClosedReason::Dropped));
-                            break;
+                            BACKCHANNEL_MSG_ERROR => {
+                                let _ = remote_send_err_tx.send(Some(RemoteSendError::Forward));
+                                let _ = closed_tx.send(Some(ClosedReason::Failed));
+                                break;
+                            }
+                            _ => (),
                         }
-                        _ => {
-                            let _ = $remote_send_err_tx.send(Some(RemoteSendError::Send(
-                                base::SendErrorKind::Send(chmux::SendError::ChMux)
-                            )));
-                            let _ = $closed_tx.send(Some(ClosedReason::Failed));
-                            break;
-                        },
+                    },
+                    Ok(Some(_)) => (),
+                    Ok(None) => {
+                        let _ = remote_send_err_tx.send(Some(RemoteSendError::Send(
+                            base::SendErrorKind::Send(chmux::SendError::Closed { gracefully: false })
+                        )));
+                        let _ = closed_tx.send(Some(ClosedReason::Dropped));
+                        break;
                     }
+                    _ => {
+                        let _ = remote_send_err_tx.send(Some(RemoteSendError::Send(
+                            base::SendErrorKind::Send(chmux::SendError::ChMux)
+                        )));
+                        let _ = closed_tx.send(Some(ClosedReason::Failed));
+                        break;
+                    },
                 }
+            }
 
-                // Data to send to remote endpoint.
-                value_opt = $rx.recv() => {
-                    match value_opt {
-                        Some(value) => {
-                            if let Err(err) = remote_tx.send(value).await {
-                                let _ = $remote_send_err_tx.send(Some(RemoteSendError::Send(err.kind)));
-                                let _ = $closed_tx.send(Some(ClosedReason::Failed));
-                            }
+            // Data to send to remote endpoint.
+            value_opt = rx.recv() => {
+                match value_opt {
+                    Some(value) => {
+                        if let Err(err) = remote_tx.send(value).await {
+                            let _ = remote_send_err_tx.send(Some(RemoteSendError::Send(err.kind)));
+                            let _ = closed_tx.send(Some(ClosedReason::Failed));
                         }
-                        None => break,
                     }
+                    None => break,
                 }
             }
         }
-    };
+    }
 }
-pub(crate) use send_impl;
 
 /// Receive implementation for serializer of Sender and deserializer of Receiver.
-macro_rules! recv_impl {
-    ($T:ty, $tx:ident, $raw_tx:ident, $raw_rx:ident, $remote_send_err_rx:ident, $closed_rx:ident) => {
-        // Decode raw received data using remote receiver.
-        let mut remote_rx = base::Receiver::<Result<$T, RecvError>, Codec>::new($raw_rx);
+async fn recv_impl<T, Codec>(
+    tx: &tokio::sync::mpsc::Sender<Result<T, RecvError>>, mut raw_tx: chmux::Sender, raw_rx: chmux::Receiver,
+    mut remote_send_err_rx: tokio::sync::watch::Receiver<Option<RemoteSendError>>,
+    mut closed_rx: tokio::sync::watch::Receiver<Option<ClosedReason>>,
+) where
+    T: DeserializeOwned + Send + 'static,
+    Codec: codec::Codec,
+{
+    // Decode raw received data using remote receiver.
+    let mut remote_rx = base::Receiver::<Result<T, RecvError>, Codec>::new(raw_rx);
 
-        // Process events.
-        loop {
-            tokio::select! {
-                biased;
+    // Process events.
+    loop {
+        tokio::select! {
+            biased;
 
-                // Channel closure requested locally.
-                res = $closed_rx.changed() => {
-                    match res {
-                        Ok(()) => {
-                            let reason = $closed_rx.borrow().clone();
-                            match reason {
-                                Some(ClosedReason::Closed) => {
-                                    let _ = $raw_tx.send(vec![BACKCHANNEL_MSG_CLOSE].into()).await;
-                                }
-                                Some(ClosedReason::Dropped) => break,
-                                Some(ClosedReason::Failed) => {
-                                    let _ = $raw_tx.send(vec![BACKCHANNEL_MSG_ERROR].into()).await;
-                                }
-                                None => (),
+            // Channel closure requested locally.
+            res = closed_rx.changed() => {
+                match res {
+                    Ok(()) => {
+                        let reason = closed_rx.borrow().clone();
+                        match reason {
+                            Some(ClosedReason::Closed) => {
+                                let _ = raw_tx.send(vec![BACKCHANNEL_MSG_CLOSE].into()).await;
                             }
-                        },
-                        Err(_) => break,
-                    }
+                            Some(ClosedReason::Dropped) => break,
+                            Some(ClosedReason::Failed) => {
+                                let _ = raw_tx.send(vec![BACKCHANNEL_MSG_ERROR].into()).await;
+                            }
+                            None => (),
+                        }
+                    },
+                    Err(_) => break,
                 }
+            }
 
-                // Notify remote endpoint of error.
-                Ok(()) = $remote_send_err_rx.changed() => {
-                    if $remote_send_err_rx.borrow().as_ref().is_some() {
-                        let _ = $raw_tx.send(vec![BACKCHANNEL_MSG_ERROR].into()).await;
-                    }
+            // Notify remote endpoint of error.
+            Ok(()) = remote_send_err_rx.changed() => {
+                if remote_send_err_rx.borrow().as_ref().is_some() {
+                    let _ = raw_tx.send(vec![BACKCHANNEL_MSG_ERROR].into()).await;
                 }
+            }
 
-                // Data received from remote endpoint.
-                res = remote_rx.recv() => {
-                    let mut is_final_err = false;
-                    let value = match res {
-                        Ok(Some(value)) => value,
-                        Ok(None) => break,
-                        Err(err) => {
-                            is_final_err = err.is_final();
-                            Err(RecvError::RemoteReceive(err))
-                        },
-                    };
-                    if $tx.send(value).await.is_err() {
-                        break;
-                    }
-                    if is_final_err {
-                        break;
-                    }
+            // Data received from remote endpoint.
+            res = remote_rx.recv() => {
+                let mut is_final_err = false;
+                let value = match res {
+                    Ok(Some(value)) => value,
+                    Ok(None) => break,
+                    Err(err) => {
+                        is_final_err = err.is_final();
+                        Err(RecvError::RemoteReceive(err))
+                    },
+                };
+                if tx.send(value).await.is_err() {
+                    break;
+                }
+                if is_final_err {
+                    break;
                 }
             }
         }
-    };
+    }
 }
-pub(crate) use recv_impl;

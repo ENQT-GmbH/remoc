@@ -1,4 +1,3 @@
-use bytes::Buf;
 use futures::{task::noop_waker, FutureExt};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -12,10 +11,10 @@ use std::{
 use super::{
     super::{
         base::{self, PortDeserializer, PortSerializer},
-        RemoteSendError, SendErrorExt, BACKCHANNEL_MSG_ERROR,
+        RemoteSendError, SendErrorExt,
     },
     receiver::RecvError,
-    recv_impl, send_impl, Receiver, Ref, ERROR_QUEUE,
+    Receiver, Ref, ERROR_QUEUE,
 };
 use crate::{chmux, codec, RemoteSend};
 
@@ -275,11 +274,11 @@ where
                     Ok(inner) => inner,
                     Err(_) => return,
                 };
-                let mut remote_send_err_rx = remote_send_err_rx.into_inner().unwrap();
-                let mut current_err = current_err.into_inner().unwrap();
+                let remote_send_err_rx = remote_send_err_rx.into_inner().unwrap();
+                let current_err = current_err.into_inner().unwrap();
 
                 // Establish chmux channel.
-                let (mut raw_tx, raw_rx) = match connect.await {
+                let (raw_tx, raw_rx) = match connect.await {
                     Ok(tx_rx) => tx_rx,
                     Err(err) => {
                         let _ = tx.send(Err(RecvError::RemoteConnect(err)));
@@ -287,7 +286,7 @@ where
                     }
                 };
 
-                recv_impl!(T, tx, raw_tx, raw_rx, remote_send_err_rx, current_err);
+                super::recv_impl::<T, Codec>(tx, raw_tx, raw_rx, remote_send_err_rx, current_err).await;
             }
             .boxed()
         })?;
@@ -317,7 +316,7 @@ where
         }
 
         // Create internal communication channels.
-        let (tx, mut rx) = tokio::sync::watch::channel(data);
+        let (tx, rx) = tokio::sync::watch::channel(data);
         let (remote_send_err_tx, remote_send_err_rx) = tokio::sync::mpsc::channel(ERROR_QUEUE);
         let remote_send_err_tx2 = remote_send_err_tx.clone();
 
@@ -325,7 +324,7 @@ where
         PortDeserializer::accept(port, |local_port, request| {
             async move {
                 // Accept chmux connection request.
-                let (raw_tx, mut raw_rx) = match request.accept_from(local_port).await {
+                let (raw_tx, raw_rx) = match request.accept_from(local_port).await {
                     Ok(tx_rx) => tx_rx,
                     Err(err) => {
                         let _ = remote_send_err_tx.try_send(RemoteSendError::Listen(err));
@@ -333,7 +332,7 @@ where
                     }
                 };
 
-                send_impl!(T, rx, raw_tx, raw_rx, remote_send_err_tx);
+                super::send_impl::<T, Codec>(rx, raw_tx, raw_rx, remote_send_err_tx).await;
             }
             .boxed()
         })?;

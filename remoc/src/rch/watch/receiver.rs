@@ -1,4 +1,3 @@
-use bytes::Buf;
 use futures::{ready, FutureExt, Stream};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -13,9 +12,9 @@ use tokio_util::sync::ReusableBoxFuture;
 use super::{
     super::{
         base::{self, PortDeserializer, PortSerializer},
-        RemoteSendError, BACKCHANNEL_MSG_ERROR,
+        RemoteSendError,
     },
-    recv_impl, send_impl, Ref, ERROR_QUEUE,
+    Ref, ERROR_QUEUE,
 };
 use crate::{chmux, codec, RemoteSend};
 
@@ -161,13 +160,13 @@ where
         S: serde::Serializer,
     {
         // Prepare channel for takeover.
-        let mut rx = self.rx.clone();
+        let rx = self.rx.clone();
         let remote_send_err_tx = self.remote_send_err_tx.clone();
 
         let port = PortSerializer::connect(|connect| {
             async move {
                 // Establish chmux channel.
-                let (raw_tx, mut raw_rx) = match connect.await {
+                let (raw_tx, raw_rx) = match connect.await {
                     Ok(tx_rx) => tx_rx,
                     Err(err) => {
                         let _ = remote_send_err_tx.try_send(RemoteSendError::Connect(err));
@@ -175,7 +174,7 @@ where
                     }
                 };
 
-                send_impl!(T, rx, raw_tx, raw_rx, remote_send_err_tx);
+                super::send_impl::<T, Codec>(rx, raw_tx, raw_rx, remote_send_err_tx).await;
             }
             .boxed()
         })?;
@@ -203,12 +202,12 @@ where
 
         // Create channels.
         let (tx, rx) = tokio::sync::watch::channel(data);
-        let (remote_send_err_tx, mut remote_send_err_rx) = tokio::sync::mpsc::channel(ERROR_QUEUE);
+        let (remote_send_err_tx, remote_send_err_rx) = tokio::sync::mpsc::channel(ERROR_QUEUE);
 
         PortDeserializer::accept(port, |local_port, request| {
             async move {
                 // Accept chmux connection request.
-                let (mut raw_tx, raw_rx) = match request.accept_from(local_port).await {
+                let (raw_tx, raw_rx) = match request.accept_from(local_port).await {
                     Ok(tx_rx) => tx_rx,
                     Err(err) => {
                         let _ = tx.send(Err(RecvError::RemoteListen(err)));
@@ -216,8 +215,7 @@ where
                     }
                 };
 
-                let mut current_err: Option<RemoteSendError> = None;
-                recv_impl!(T, tx, raw_tx, raw_rx, remote_send_err_rx, current_err);
+                super::recv_impl::<T, Codec>(tx, raw_tx, raw_rx, remote_send_err_rx, None).await;
             }
             .boxed()
         })?;
