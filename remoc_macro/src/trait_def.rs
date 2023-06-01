@@ -85,7 +85,7 @@ impl TraitDef {
                 } else {
                     return Err(Error::new(
                         Span::call_site(),
-                        format!("unknown attribute: {}", path.get_ident().unwrap().to_string()),
+                        format!("unknown attribute: {}", path.get_ident().unwrap()),
                     ));
                 }
             }
