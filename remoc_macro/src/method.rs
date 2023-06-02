@@ -146,7 +146,7 @@ impl TraitMethod {
 
         // Self argument.
         let self_ref = match self.self_ref {
-            SelfRef::Value => quote! {self},
+            SelfRef::Value => quote! {self,},
             SelfRef::Ref => quote! {&self,},
             SelfRef::RefMut => quote! {&mut self,},
         };
