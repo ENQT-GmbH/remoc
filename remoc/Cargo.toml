@@ -1,6 +1,6 @@
 [package]
 name = "remoc"
-version = "0.11.0-pre1"
+version = "0.11.0-pre2"
 authors = [
     "Sebastian Urban <surban@surban.net>",
     "ENQT GmbH <su@enqt.de>",
@@ -47,7 +47,7 @@ full-codecs = [
 ]
 
 [dependencies]
-remoc_macro = { version = "=0.11.0-pre1", path = "../remoc_macro", optional = true }
+remoc_macro = { version = "=0.11.0-pre2", path = "../remoc_macro", optional = true }
 
 futures = "0.3"
 tokio = { version = "1.18", features = ["macros", "rt", "sync", "time"] }
