@@ -20,6 +20,7 @@ impl From<remoc::rtc::CallError> for IncreaseError {
 pub trait Counter {
     async fn value(self) -> Result<u32, remoc::rtc::CallError>;
     async fn value_plus(self, add: u32) -> Result<u32, remoc::rtc::CallError>;
+    async fn value_ref(&self) -> Result<u32, remoc::rtc::CallError>;
     #[no_cancel]
     async fn increase(&mut self, #[serde(default)] by: u32) -> Result<(), IncreaseError>;
 }
@@ -43,6 +44,10 @@ impl Counter for CounterObj {
 
     async fn value_plus(self, add: u32) -> Result<u32, remoc::rtc::CallError> {
         Ok(self.value + add)
+    }
+
+    async fn value_ref(&self) -> Result<u32, remoc::rtc::CallError> {
+        Ok(self.value)
     }
 
     async fn increase(&mut self, by: u32) -> Result<(), IncreaseError> {
@@ -123,4 +128,47 @@ async fn simple_plus() {
 
     let (_, counter_obj) = join!(client_task, server.serve());
     assert!(counter_obj.is_none());
+}
+
+#[tokio::test]
+async fn simple_spawn() {
+    use remoc::rtc::Server;
+
+    crate::init();
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<CounterClient>().await;
+
+    println!("Spawning counter server");
+    let counter_obj = CounterObj::new();
+    let (server, client) = CounterServer::new(counter_obj, 1);
+    let server_task = tokio::spawn(async move {
+        let counter_obj = server.serve().await.unwrap();
+        println!("Server done");
+
+        let value = counter_obj.value;
+        println!("Counter obj value: {}", value);
+        assert_eq!(value, 65);
+    });
+
+    println!("Sending counter client");
+    a_tx.send(client).await.unwrap();
+
+    println!("Receiving counter client");
+    let mut client = b_rx.recv().await.unwrap().unwrap();
+
+    println!("value: {}", client.value_ref().await.unwrap());
+    assert_eq!(client.value_ref().await.unwrap(), 0);
+
+    println!("add 20");
+    client.increase(20).await.unwrap();
+    println!("value: {}", client.value_ref().await.unwrap());
+    assert_eq!(client.value_ref().await.unwrap(), 20);
+
+    println!("add 45");
+    client.increase(45).await.unwrap();
+    println!("value: {}", client.value_ref().await.unwrap());
+    assert_eq!(client.value_ref().await.unwrap(), 65);
+
+    drop(client);
+    println!("waiting for server to terminate");
+    server_task.await.unwrap();
 }

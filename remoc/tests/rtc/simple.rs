@@ -1,4 +1,6 @@
+use std::sync::Arc;
 use futures::join;
+use tokio::sync::RwLock;
 
 use crate::loop_channel;
 
@@ -105,4 +107,55 @@ async fn simple() {
 
     println!("Counter obj value: {}", counter_obj.value);
     assert_eq!(counter_obj.value, 65);
+}
+
+#[tokio::test]
+async fn simple_spawn() {
+    use remoc::rtc::ServerSharedMut;
+
+    crate::init();
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<CounterClient>().await;
+
+    println!("Spawning counter server");
+    let counter_obj = Arc::new(RwLock::new(CounterObj::new()));
+    let (server, client) = CounterServerSharedMut::new(counter_obj.clone(), 16);
+    let server_task = tokio::spawn(async move {
+        server.serve(true).await;
+        println!("Server done");
+
+        let value = counter_obj.read().await.value;
+        println!("Counter obj value: {}", value);
+        assert_eq!(value, 65);
+    });
+
+    println!("Sending counter client");
+    a_tx.send(client).await.unwrap();
+
+    println!("Receiving counter client");
+    let mut client = b_rx.recv().await.unwrap().unwrap();
+
+    println!("Spawning watch...");
+    let mut watch_rx = client.watch().await.unwrap();
+    tokio::spawn(async move {
+        while watch_rx.changed().await.is_ok() {
+            println!("Watch value: {}", *watch_rx.borrow_and_update().unwrap());
+        }
+    });
+
+    println!("value: {}", client.value().await.unwrap());
+    assert_eq!(client.value().await.unwrap(), 0);
+
+    println!("add 20");
+    client.increase(20).await.unwrap();
+    println!("value: {}", client.value().await.unwrap());
+    assert_eq!(client.value().await.unwrap(), 20);
+
+    println!("add 45");
+    client.increase(45).await.unwrap();
+    println!("value: {}", client.value().await.unwrap());
+    assert_eq!(client.value().await.unwrap(), 65);
+
+    drop(client);
+    println!("waiting for server to terminate");
+    server_task.await.unwrap();
 }

@@ -40,12 +40,9 @@
 //!
 //! The purpose of these server types is as follows:
 //!
-//!   * server implementations with no [`Send`] + [`Sync`] requirement on the target object:
+//!   * server implementations with [`Send`] + [`Sync`] requirement on the target object (recommended):
 //!     * `TraitServer` implements [Server] and takes the target object by value. It will
 //!       consume the target value when a trait method taking the receiver by value is invoked.
-//!     * `TraitServerRef` implements [ServerRef] and takes a reference to the target value.
-//!     * `TraitServerRefMut` implements [ServerRefMut] and takes a mutable reference to the target value.
-//!   * server implementations with [`Send`] + [`Sync`] requirement on the target object:
 //!     * `TraitServerShared` implements [ServerShared] and takes an [Arc] to the target value.
 //!       It can execute client requests in parallel.
 //!       The generated [`ServerShared::serve`] implementation returns a future that implements [`Send`].
@@ -53,6 +50,9 @@
 //!       [RwLock](LocalRwLock) holding the target object.
 //!       It can execute const client requests in parallel and mutable requests sequentially.
 //!       The generated [`ServerSharedMut::serve`] implementation returns a future that implements [`Send`].
+//!   * server implementations with no [`Send`] + [`Sync`] requirement on the target object:
+//!     * `TraitServerRef` implements [ServerRef] and takes a reference to the target value.
+//!     * `TraitServerRefMut` implements [ServerRefMut] and takes a mutable reference to the target value.
 //!
 //! If unsure, you probably want to use `TraitServerSharedMut`, even when the target object will
 //! only be accessed by a single client.
@@ -418,20 +418,21 @@ pub trait ServerBase {
 }
 
 /// A server of a remotable trait taking the target object by value.
-#[async_trait(?Send)]
-pub trait Server<T, Codec>: ServerBase
+#[async_trait]
+pub trait Server<Target, Codec>: ServerBase
 where
     Self: Sized,
+    Target: Send + Sync + 'static,
 {
     /// Creates a new server instance for the target object.
-    fn new(target: T, request_buffer: usize) -> (Self, Self::Client);
+    fn new(target: Target, request_buffer: usize) -> (Self, Self::Client);
 
     /// Serves the target object.
     ///
     /// Serving ends when the client is dropped or a method taking self by value
     /// is called. In the first case, the target object is returned and, in the
     /// second case, None is returned.
-    async fn serve(self) -> Option<T>;
+    async fn serve(self) -> Option<Target>;
 }
 
 /// A server of a remotable trait taking the target object by reference.
@@ -470,6 +471,7 @@ pub trait ServerShared<Target, Codec>: ServerBase
 where
     Self: Sized,
     Self::Client: Clone,
+    Target: Send + Sync + 'static,
 {
     /// Creates a new server instance for a shared reference to the target object.
     fn new(target: Arc<Target>, request_buffer: usize) -> (Self, Self::Client);
@@ -484,12 +486,13 @@ where
 
 /// A server of a remotable trait taking the target object by shared mutable reference.
 #[async_trait]
-pub trait ServerSharedMut<T, Codec>: ServerBase
+pub trait ServerSharedMut<Target, Codec>: ServerBase
 where
     Self: Sized,
+    Target: Send + Sync + 'static,
 {
     /// Creates a new server instance for a shared mutable reference to the target object.
-    fn new(target: Arc<LocalRwLock<T>>, request_buffer: usize) -> (Self, Self::Client);
+    fn new(target: Arc<LocalRwLock<Target>>, request_buffer: usize) -> (Self, Self::Client);
 
     /// Serves the target object.
     ///

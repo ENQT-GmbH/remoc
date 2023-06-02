@@ -293,7 +293,7 @@ impl TraitDef {
         let Self { vis, ident, .. } = self;
 
         let (req_generics, _) = self.generics(false, true, false, false, false);
-        let (ty_generics, impl_generics) = self.generics(true, true, true, false, false);
+        let (ty_generics, impl_generics) = self.generics(true, true, true, false, true);
         let ty_generics_where = &ty_generics.where_clause;
         let (impl_generics_impl, impl_generics_ty, impl_generics_where) = impl_generics.split_for_impl();
         let (req_value, req_ref, req_ref_mut) = self.request_enum_idents();
@@ -322,7 +322,7 @@ impl TraitDef {
                 type Client = #client #req_generics;
             }
 
-            #[::remoc::rtc::async_trait(?Send)]
+            #[::remoc::rtc::async_trait]
             impl #impl_generics_impl ::remoc::rtc::Server <Target, Codec> for #server #impl_generics_ty #impl_generics_where
             {
                 fn new(target: Target, request_buffer: usize) -> (Self, Self::Client) {
