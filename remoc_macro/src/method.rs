@@ -76,7 +76,7 @@ impl Parse for TraitMethod {
         // Check for no_cancel attribute.
         let mut cancel = true;
         attrs.retain(|attr| {
-            if let Some(attr) = attr.path.get_ident() {
+            if let Some(attr) = attr.path().get_ident() {
                 if *attr == "no_cancel" {
                     cancel = false;
                     return false;
@@ -94,7 +94,7 @@ impl Parse for TraitMethod {
         // Parse arguments.
         let content;
         parenthesized!(content in input);
-        let raw_args: Punctuated<FnArg, Comma> = content.parse_terminated(FnArg::parse)?;
+        let raw_args: Punctuated<FnArg, Comma> = content.parse_terminated(FnArg::parse, Token![,])?;
 
         // Extract receiver and arguments.
         let mut self_ref = None;

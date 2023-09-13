@@ -1,12 +1,12 @@
 //! Trait parsing and client and server generation.
 
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::TokenStream;
 use quote::{format_ident, quote, TokenStreamExt};
 use syn::{
     braced,
+    meta::ParseNestedMeta,
     parse::{Parse, ParseStream},
-    Attribute, AttributeArgs, Error, GenericParam, Generics, Ident, Lifetime, LifetimeDef, Meta, NestedMeta,
-    Token, TypeParam, Visibility, WhereClause,
+    Attribute, GenericParam, Generics, Ident, Lifetime, LifetimeParam, Token, TypeParam, Visibility, WhereClause,
 };
 
 use crate::{
@@ -70,28 +70,17 @@ impl Parse for TraitDef {
 }
 
 impl TraitDef {
-    /// Applies attributes specified by the procedural macro invocation.
-    pub fn apply_attrs(&mut self, attrs: AttributeArgs) -> syn::Result<()> {
-        for attr in attrs {
-            if let NestedMeta::Meta(Meta::Path(path)) = attr {
-                if path.is_ident("clone") {
-                    if self.is_taking_value() {
-                        return Err(Error::new(
-                            Span::call_site(),
-                            "the client cannot be clonable if a method takes self by value",
-                        ));
-                    }
-                    self.clone = true;
-                } else {
-                    return Err(Error::new(
-                        Span::call_site(),
-                        format!("unknown attribute: {}", path.get_ident().unwrap()),
-                    ));
-                }
+    /// Parses and applies attributes specified by the procedural macro invocation.
+    pub fn parse_meta(&mut self, meta: ParseNestedMeta) -> syn::Result<()> {
+        if meta.path.is_ident("clone") {
+            if self.is_taking_value() {
+                return Err(meta.error("the client cannot be clonable if a method takes self by value"));
             }
+            self.clone = true;
+            Ok(())
+        } else {
+            Err(meta.error("unknown attribute"))
         }
-
-        Ok(())
     }
 
     /// True, if any trait method takes self by value.
@@ -167,7 +156,7 @@ impl TraitDef {
 
         if with_lifetime {
             let target_lt: Lifetime = syn::parse2(quote! {'target}).unwrap();
-            ty_generics.params.insert(0, LifetimeDef::new(target_lt).into());
+            ty_generics.params.insert(0, LifetimeParam::new(target_lt).into());
         }
 
         let mut impl_generics = ty_generics.clone();
