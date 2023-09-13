@@ -586,7 +586,7 @@ where
                 };
 
                 let mut inner = inner_task.write().await;
-                let mut inner = match inner.as_mut() {
+                let inner = match inner.as_mut() {
                     Some(inner) => inner,
                     None => return,
                 };

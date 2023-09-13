@@ -293,7 +293,7 @@ impl<T, Codec, const BUFFER: usize, const MAX_ITEM_SIZE: usize> Receiver<T, Code
     /// sending new values.
     #[inline]
     pub fn close(&mut self) {
-        let mut inner = self.inner.as_mut().unwrap();
+        let inner = self.inner.as_mut().unwrap();
         let _ = inner.closed_tx.send(Some(ClosedReason::Closed));
         inner.closed = true;
     }
