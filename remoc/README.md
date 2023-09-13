@@ -107,7 +107,7 @@ By default all features are enabled and the JSON codec is used as default.
 ## Supported Rust versions
 
 Remoc is built against the latest stable release.
-The minimum supported Rust version (MSRV) is 1.59.
+The minimum supported Rust version (MSRV) is 1.72.
 
 ## Example
 

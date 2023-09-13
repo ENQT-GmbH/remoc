@@ -9,7 +9,7 @@ set -e
 echo "Checking crate versions"
 ./check_version.sh
 
-VERSION=$(grep "^version = " remoc/Cargo.toml | cut -d ' ' -f 3 | tr -d \")
+VERSION=$(grep "^version = " Cargo.toml | cut -d ' ' -f 3 | tr -d \")
 
 echo "Publishing remoc_macro $VERSION"
 cargo publish --manifest-path remoc_macro/Cargo.toml

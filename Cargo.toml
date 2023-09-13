@@ -1,3 +1,17 @@
+[workspace.package]
+version = "0.11.0"
+
+edition = "2021"
+rust-version = "1.72"
+license = "Apache-2.0"
+
+repository = "https://github.com/ENQT-GmbH/remoc/"
+authors = [
+    "Sebastian Urban <surban@surban.net>",
+    "ENQT GmbH <su@enqt.de>",
+    "Remoc contributors",
+]
+
 [workspace]
 resolver = "2"
 members = ["remoc", "remoc_macro"]

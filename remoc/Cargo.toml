@@ -1,20 +1,15 @@
 [package]
 name = "remoc"
-version = "0.11.0-pre3"
-authors = [
-    "Sebastian Urban <surban@surban.net>",
-    "ENQT GmbH <su@enqt.de>",
-    "Remoc contributors",
-]
-readme = "README.md"
-repository = "https://github.com/ENQT-GmbH/remoc/"
-documentation = "https://docs.rs/remoc"
-edition = "2021"
-rust-version = "1.59"
 description = "🦑 Remote multiplexed objects, channels, observable collections and RPC making remote interactions seamless. Provides multiple remote channels and RPC over TCP, TLS or any other transport."
 keywords = ["remote", "channel", "rpc", "stream", "multiplexer"]
 categories = ["asynchronous", "network-programming"]
-license = "Apache-2.0"
+
+version = { workspace = true }
+repository = { workspace = true }
+edition = { workspace = true }
+rust-version = { workspace = true }
+license = { workspace = true }
+authors = { workspace = true }
 
 
 [features]
@@ -43,11 +38,12 @@ full-codecs = [
     "codec-message-pack",
 ]
 
+
 [dependencies]
 remoc_macro = { version = "=0.11.0", path = "../remoc_macro", optional = true }
 
 futures = "0.3"
-tokio = { version = "1.18", features = ["macros", "rt", "sync", "time"] }
+tokio = { version = "1.32", features = ["macros", "rt", "sync", "time"] }
 tokio-util = { version = "0.7", features = ["codec"] }
 rand = "0.8"
 tracing = "0.1.29"
@@ -65,7 +61,7 @@ rmp-serde = { version = "1.0", optional = true }
 
 
 [dev-dependencies]
-tokio = { version = "1.18", features = [
+tokio = { version = "1.32", features = [
     "net",
     "io-util",
     "rt",
