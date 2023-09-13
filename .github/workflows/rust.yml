@@ -28,7 +28,7 @@ jobs:
     name: Check with MSRV
     runs-on: ubuntu-latest
     env:
-      minrust: 1.59
+      minrust: 1.72
 
     steps:
       - name: Checkout sources
@@ -119,7 +119,6 @@ jobs:
       matrix:
         codec:
           - bincode
-          - cbor
           - ciborium
           - message-pack
 

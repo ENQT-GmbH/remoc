@@ -170,16 +170,6 @@ pub use self::bincode::Bincode;
 #[doc(no_inline)]
 pub use self::bincode::Bincode as Default;
 
-#[cfg(feature = "codec-cbor")]
-mod cbor;
-#[cfg(feature = "codec-cbor")]
-#[allow(deprecated)]
-pub use cbor::Cbor;
-#[cfg(feature = "default-codec-cbor")]
-#[doc(no_inline)]
-#[allow(deprecated)]
-pub use cbor::Cbor as Default;
-
 #[cfg(feature = "codec-ciborium")]
 mod ciborium;
 #[cfg(feature = "codec-ciborium")]

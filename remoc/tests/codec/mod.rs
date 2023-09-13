@@ -86,13 +86,6 @@ fn bincode() {
     roundtrip::<TestStruct, codec::Bincode>()
 }
 
-#[cfg(feature = "codec-cbor")]
-#[test]
-fn cbor() {
-    #[allow(deprecated)]
-    roundtrip::<TestStruct, codec::Cbor>()
-}
-
 #[cfg(feature = "codec-ciborium")]
 #[test]
 fn ciborium() {
