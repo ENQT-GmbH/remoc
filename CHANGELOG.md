@@ -4,22 +4,18 @@ All notable changes to Remoc will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## 0.11.0-pre3 - 2023-06-02
-### Changed
-- make RTC value trait server require that target is Send + Sync
-
-## 0.11.0-pre2 - 2023-06-02
-### Fixed
-- RTC method not accepting any arguments if self was taken by value
-
-## 0.11.0-pre1 - 2023-06-01
+## 0.11.0 - 2023-09-13
 ### Added
 - methods to adjust the maximum item size in serialized form of a remote channel
 - methods to adjust the maximum request and reply size for remote trait calling (RTC)
 ### Changed
+- update minimum supported Rust version to 1.72
 - limit serialized item size of remote channels to 16 MB by default to prevent
   denial-of-service attacks by a malicious remote endpoint that sends arbitrarily
   large items to cause an out-of-memory condition on the receiving endpoint
+- make RTC value trait server require that target is Send + Sync
+### Fixed
+- RTC method not accepting any arguments if self was taken by value
 
 ## 0.10.3 - 2023-03-22
 ### Fixed
