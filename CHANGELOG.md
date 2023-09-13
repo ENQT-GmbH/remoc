@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - make RTC value trait server require that target is Send + Sync
 ### Fixed
 - RTC method not accepting any arguments if self was taken by value
+### Removed
+- serde_cbor codec
 
 ## 0.10.3 - 2023-03-22
 ### Fixed
