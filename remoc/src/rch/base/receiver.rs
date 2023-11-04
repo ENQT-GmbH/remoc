@@ -234,15 +234,13 @@ where
                 match &mut self.data {
                     DataSource::None => unreachable!(),
 
-                    // Deserialize data from buffer.
-                    DataSource::Buffered(data_opt) => {
-                        let data = if let Some(data) = data_opt {
-                            data
-                        } else {
-                            self.data = DataSource::None;
-                            continue 'restart;
-                        };
+                    DataSource::Buffered(None) => {
+                        self.data = DataSource::None;
+                        continue 'restart;
+                    }
 
+                    // Deserialize data from buffer.
+                    DataSource::Buffered(Some(data)) => {
                         if data.remaining() > self.max_item_size {
                             self.data = DataSource::None;
                             return Err(RecvError::MaxItemSizeExceeded);
@@ -250,10 +248,10 @@ where
 
                         let pdf_ref =
                             PortDeserializer::start(self.receiver.port_allocator(), self.receiver.storage());
-                        self.item = Some(<Codec as codec::Codec>::deserialize(data.reader())?);
-                        self.port_deser = Some(PortDeserializer::finish(pdf_ref));
-
+                        let item_res = <Codec as codec::Codec>::deserialize(data.reader());
                         self.data = DataSource::None;
+                        self.item = Some(item_res?);
+                        self.port_deser = Some(PortDeserializer::finish(pdf_ref));
                     }
 
                     // Observe deserialization of streamed data.
