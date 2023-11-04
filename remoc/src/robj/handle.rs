@@ -71,7 +71,6 @@
 
 use serde::{Deserialize, Serialize};
 use std::{
-    any::Any,
     fmt,
     marker::PhantomData,
     mem,
@@ -266,7 +265,7 @@ where
         match entry.take() {
             Some(any) => match any.downcast::<T>() {
                 Ok(value) => Ok(*value),
-                Err(any) => Err(HandleError::MismatchedType(format!("{:?}", any.type_id()))),
+                Err(any) => Err(HandleError::MismatchedType(format!("{:?}", (*any).type_id()))),
             },
             None => Err(HandleError::Unknown),
         }
@@ -286,7 +285,7 @@ where
         match &*entry {
             Some(any) => {
                 if !any.is::<T>() {
-                    return Err(HandleError::MismatchedType(format!("{:?}", any.type_id())));
+                    return Err(HandleError::MismatchedType(format!("{:?}", (**any).type_id())));
                 }
                 let value_ref = OwnedRwLockReadGuard::map(entry, |entry| {
                     entry.as_ref().unwrap().downcast_ref::<T>().unwrap()
@@ -311,7 +310,7 @@ where
         match &*entry {
             Some(any) => {
                 if !any.is::<T>() {
-                    return Err(HandleError::MismatchedType(format!("{:?}", any.type_id())));
+                    return Err(HandleError::MismatchedType(format!("{:?}", (**any).type_id())));
                 }
                 let value_ref = OwnedRwLockWriteGuard::map(entry, |entry| {
                     entry.as_mut().unwrap().downcast_mut::<T>().unwrap()

@@ -505,7 +505,7 @@ where
     Codec: crate::codec::Codec,
 {
     /// Ensures a value is in the entry by inserting the default if empty,
-    /// and returns a mutable reference to the value in the entry.    
+    /// and returns a mutable reference to the value in the entry.
     pub fn or_insert(self, default: V) -> RefMut<'a, K, V, Codec> {
         match self {
             Self::Occupied(ocu) => ocu.into_mut(),
@@ -514,7 +514,7 @@ where
     }
 
     /// Ensures a value is in the entry by inserting the result of the default
-    /// function if empty, and returns a mutable reference to the value in the entry.    
+    /// function if empty, and returns a mutable reference to the value in the entry.
     pub fn or_insert_with<F: FnOnce() -> V>(self, default: F) -> RefMut<'a, K, V, Codec> {
         match self {
             Self::Occupied(ocu) => ocu.into_mut(),
@@ -523,7 +523,7 @@ where
     }
 
     /// Ensures a value is in the entry by inserting the result of the default
-    /// function with key as argument if empty, and returns a mutable reference to the value in the entry.    
+    /// function with key as argument if empty, and returns a mutable reference to the value in the entry.
     pub fn or_insert_with_key<F: FnOnce(&K) -> V>(self, default: F) -> RefMut<'a, K, V, Codec> {
         match self {
             Self::Occupied(ocu) => ocu.into_mut(),
@@ -559,8 +559,9 @@ where
     Codec: crate::codec::Codec,
 {
     /// Ensures a value is in the entry by inserting the default value if empty,
-    /// and returns a mutable reference to the value in the entry.    
+    /// and returns a mutable reference to the value in the entry.
     pub fn or_default(self) -> RefMut<'a, K, V, Codec> {
+        #[allow(clippy::unwrap_or_default)]
         self.or_insert_with(V::default)
     }
 }
@@ -1079,7 +1080,7 @@ where
     /// The current contents of the hash map are sent incrementally.
     ///
     /// `buffer` specifies the maximum size of the event buffer for this subscription in number of events.
-    /// If it is exceeded the subscription is shed and the receiver gets a [RecvError::Lagged].    
+    /// If it is exceeded the subscription is shed and the receiver gets a [RecvError::Lagged].
     pub async fn subscribe_incremental(
         &self, buffer: usize,
     ) -> Result<HashMapSubscription<K, V, Codec>, RecvError> {

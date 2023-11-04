@@ -52,8 +52,7 @@ async fn loopback() {
     let mut rng = rand::thread_rng();
     for i in 1..100 {
         let size = if i % 2 == 0 { rng.gen_range(0..1_000_000) } else { 1024 };
-        let mut data: Vec<u8> = Vec::new();
-        data.resize(size, 0);
+        let mut data = vec![0u8; size];
         rng.fill_bytes(&mut data);
         let data = Bytes::from(data);
 

@@ -126,7 +126,7 @@ impl Eq for PortNumber {}
 
 impl PartialOrd for PortNumber {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.number.partial_cmp(&other.number)
+        Some(self.cmp(other))
     }
 }
 

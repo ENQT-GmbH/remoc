@@ -54,8 +54,7 @@ async fn big_msg() {
     let mut rng = rand::thread_rng();
     for _ in 1..10 {
         let size = rng.gen_range(0..1_000_000);
-        let mut data: Vec<u8> = Vec::new();
-        data.resize(size, 0);
+        let mut data = vec![0u8; size];
         rng.fill_bytes(&mut data);
 
         let data_send = data.clone();
@@ -90,8 +89,7 @@ async fn tcp_big_msg() {
     let mut rng = rand::thread_rng();
     for _ in 1..10 {
         let size = rng.gen_range(0..1_000_000);
-        let mut data: Vec<u8> = Vec::new();
-        data.resize(size, 0);
+        let mut data = vec![0u8; size];
         rng.fill_bytes(&mut data);
 
         let data_send = data.clone();
