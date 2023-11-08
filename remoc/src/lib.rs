@@ -260,6 +260,11 @@ pub mod robs;
 #[cfg_attr(docsrs, doc(cfg(feature = "rtc")))]
 pub mod rtc;
 
+// Re-export serde for remoc_macro used by rtc.
+#[doc(hidden)]
+#[cfg(feature = "rtc")]
+pub use serde as _serde;
+
 #[cfg(any(feature = "rfn", feature = "robj"))]
 mod provider;
 #[cfg(any(feature = "rfn", feature = "robj"))]
@@ -268,6 +273,3 @@ pub use provider::Provider;
 #[doc(hidden)]
 #[cfg(all(feature = "rch", feature = "default-codec-set"))]
 pub mod doctest;
-
-#[doc(hidden)]
-pub use serde as _serde;
