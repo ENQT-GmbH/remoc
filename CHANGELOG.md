@@ -4,6 +4,10 @@ All notable changes to Remoc will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.11.3 - 2023-11-08
+### Fixed
+- build with no enabled features
+
 ## 0.11.2 - 2023-11-08
 ### Fixed
 - re-export serde for remoc_macro
