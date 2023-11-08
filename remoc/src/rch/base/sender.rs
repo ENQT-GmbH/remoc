@@ -201,6 +201,12 @@ pub struct Sender<T, Codec = codec::Default> {
     _codec: PhantomData<Codec>,
 }
 
+impl<T, Codec> fmt::Debug for Sender<T, Codec> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Sender").finish()
+    }
+}
+
 impl<T, Codec> Sender<T, Codec>
 where
     T: Serialize + Send + 'static,

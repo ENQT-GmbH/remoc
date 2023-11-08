@@ -163,6 +163,12 @@ pub struct Receiver<T, Codec = codec::Default> {
     _codec: PhantomData<Codec>,
 }
 
+impl<T, Codec> fmt::Debug for Receiver<T, Codec> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Receiver").finish()
+    }
+}
+
 enum DataSource<T> {
     None,
     Buffered(Option<chmux::DataBuf>),
