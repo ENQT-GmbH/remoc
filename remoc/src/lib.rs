@@ -268,3 +268,6 @@ pub use provider::Provider;
 #[doc(hidden)]
 #[cfg(all(feature = "rch", feature = "default-codec-set"))]
 pub mod doctest;
+
+#[doc(hidden)]
+pub use serde as _serde;

@@ -225,6 +225,7 @@ impl TraitDef {
 
         quote! {
             #[derive(::remoc::rtc::Serialize, ::remoc::rtc::Deserialize)]
+            #[serde(crate = "::remoc::_serde")]
             #[serde(bound(serialize = #impl_generics_where_str))]
             #[serde(bound(deserialize = #impl_generics_where_str))]
             enum #req_value #ty_generics #ty_generics_where {
@@ -242,6 +243,7 @@ impl TraitDef {
             }
 
             #[derive(::remoc::rtc::Serialize, ::remoc::rtc::Deserialize)]
+            #[serde(crate = "::remoc::_serde")]
             #[serde(bound(serialize = #impl_generics_where_str))]
             #[serde(bound(deserialize = #impl_generics_where_str))]
             enum #req_ref #ty_generics #ty_generics_where {
@@ -259,6 +261,7 @@ impl TraitDef {
             }
 
             #[derive(::remoc::rtc::Serialize, ::remoc::rtc::Deserialize)]
+            #[serde(crate = "::remoc::_serde")]
             #[serde(bound(serialize = #impl_generics_where_str))]
             #[serde(bound(deserialize = #impl_generics_where_str))]
             enum #req_ref_mut #ty_generics #ty_generics_where {
@@ -665,6 +668,7 @@ impl TraitDef {
         quote! {
             #[doc=#doc]
             #[derive(::remoc::rtc::Serialize, ::remoc::rtc::Deserialize)]
+            #[serde(crate = "::remoc::_serde")]
             #[serde(bound(serialize = #impl_generics_where_str))]
             #[serde(bound(deserialize = #impl_generics_where_str))]
             #clone
