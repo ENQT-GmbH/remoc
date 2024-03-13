@@ -1,10 +1,10 @@
 use futures::{future, StreamExt};
 use rand::Rng;
-use remoc::rch::{mpsc, ClosedReason, SendResultExt};
 use std::time::Duration;
 use tokio::time::sleep;
 
 use crate::{droppable_loop_channel, loop_channel};
+use remoc::rch::{base::SendErrorKind, mpsc, mpsc::SendError, ClosedReason, SendResultExt};
 
 #[tokio::test]
 async fn simple() {
@@ -391,4 +391,55 @@ async fn forward() {
         Err(err) if err.is_closed() && err.closed_reason() == Some(ClosedReason::Closed) => (),
         Err(_) => panic!("wrong error after close"),
     }
+}
+
+#[tokio::test]
+async fn max_item_size_exceeded() {
+    crate::init();
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<mpsc::Receiver<Vec<u8>>>().await;
+
+    println!("Sending remote mpsc channel receiver");
+    let (tx, rx) = mpsc::channel(16);
+    a_tx.send(rx).await.unwrap();
+    println!("Receiving remote mpsc channel receiver");
+    let mut rx = b_rx.recv().await.unwrap().unwrap();
+
+    assert_eq!(tx.max_item_size(), rx.max_item_size());
+    let max_item_size = tx.max_item_size();
+    println!("Maximum send and recv item size is {max_item_size}");
+
+    // Happy case: sent data size is under limit.
+    // JSON encoding will result in much larger transfer size.
+    let elems = max_item_size / 10;
+    let data = vec![127; elems];
+    println!("Sending {elems} elements, which is under limit");
+    tx.send(data.clone()).await.unwrap();
+    println!("Receiving...");
+    let rxed = rx.recv().await.unwrap().unwrap();
+    println!("Received {} elements", rxed.len());
+    assert_eq!(data, rxed, "send/receive mismatch");
+    println!();
+
+    // Failure case: sent data size exceeds limits.
+    let elems = max_item_size * 10;
+    let data = vec![127; elems];
+    println!("Sending {elems} elements, which is over limit");
+    tx.send(data.clone()).await.unwrap();
+
+    println!("Receiving...");
+    let rxed = rx.recv().await;
+    println!("Receive result: {rxed:?}");
+    assert!(matches!(rxed, Ok(None)));
+
+    // Send one more element to obtain error.
+    println!("Sending 1 element");
+    let res = tx.send(vec![1]).await;
+    println!("Send result: {res:?}");
+    assert!(matches!(res, Err(SendError::RemoteSend(SendErrorKind::MaxItemSizeExceeded))));
+    println!();
+
+    println!("Verifying that sender is closed");
+    assert!(tx.is_closed());
+    assert_eq!(tx.closed_reason(), Some(ClosedReason::Failed));
+    println!("Close reason: {:?}", tx.closed_reason());
 }
