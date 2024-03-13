@@ -19,11 +19,27 @@ pub use crate::ConnectExt;
 
 #[cfg(feature = "rch")]
 #[doc(no_inline)]
+pub use crate::RemoteSend;
+
+#[cfg(feature = "rch")]
+#[doc(no_inline)]
 pub use crate::rch::SendResultExt;
 
 #[cfg(feature = "rch")]
 #[doc(no_inline)]
-pub use crate::RemoteSend;
+pub use crate::rch::base::BaseExt;
+
+#[cfg(feature = "rch")]
+#[doc(no_inline)]
+pub use crate::rch::mpsc::MpscExt;
+
+#[cfg(feature = "rch")]
+#[doc(no_inline)]
+pub use crate::rch::oneshot::OneshotExt;
+
+#[cfg(feature = "rch")]
+#[doc(no_inline)]
+pub use crate::rch::watch::WatchExt;
 
 #[cfg(feature = "rfn")]
 pub use crate::rfn;

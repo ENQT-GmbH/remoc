@@ -98,6 +98,29 @@ where
     (sender, receiver)
 }
 
+/// Extensions for watch channels.
+pub trait WatchExt<T, Codec, const MAX_ITEM_SIZE: usize> {
+    /// Sets the maximum item size for the channel.
+    fn with_max_item_size<const NEW_MAX_ITEM_SIZE: usize>(
+        self,
+    ) -> (Sender<T, Codec>, Receiver<T, Codec, NEW_MAX_ITEM_SIZE>);
+}
+
+impl<T, Codec, const MAX_ITEM_SIZE: usize> WatchExt<T, Codec, MAX_ITEM_SIZE>
+    for (Sender<T, Codec>, Receiver<T, Codec, MAX_ITEM_SIZE>)
+where
+    T: Send + 'static,
+{
+    fn with_max_item_size<const NEW_MAX_ITEM_SIZE: usize>(
+        self,
+    ) -> (Sender<T, Codec>, Receiver<T, Codec, NEW_MAX_ITEM_SIZE>) {
+        let (mut tx, rx) = self;
+        tx.set_max_item_size(NEW_MAX_ITEM_SIZE);
+        let rx = rx.set_max_item_size();
+        (tx, rx)
+    }
+}
+
 /// Send implementation for deserializer of Sender and serializer of Receiver.
 async fn send_impl<T, Codec>(
     mut rx: tokio::sync::watch::Receiver<Result<T, RecvError>>, raw_tx: chmux::Sender,

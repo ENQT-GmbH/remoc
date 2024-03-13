@@ -42,7 +42,7 @@
 use serde::{de::DeserializeOwned, Serialize};
 
 use super::mpsc;
-use crate::codec;
+use crate::{codec, RemoteSend};
 
 mod receiver;
 mod sender;
@@ -62,4 +62,28 @@ where
     let tx = tx.set_buffer();
     let rx = rx.set_buffer();
     (Sender(tx), Receiver(rx))
+}
+
+/// Extensions for oneshot channels.
+pub trait OneshotExt<T, Codec, const MAX_ITEM_SIZE: usize> {
+    /// Sets the maximum item size for the channel.
+    fn with_max_item_size<const NEW_MAX_ITEM_SIZE: usize>(
+        self,
+    ) -> (Sender<T, Codec>, Receiver<T, Codec, NEW_MAX_ITEM_SIZE>);
+}
+
+impl<T, Codec, const MAX_ITEM_SIZE: usize> OneshotExt<T, Codec, MAX_ITEM_SIZE>
+    for (Sender<T, Codec>, Receiver<T, Codec, MAX_ITEM_SIZE>)
+where
+    T: RemoteSend,
+    Codec: codec::Codec,
+{
+    fn with_max_item_size<const NEW_MAX_ITEM_SIZE: usize>(
+        self,
+    ) -> (Sender<T, Codec>, Receiver<T, Codec, NEW_MAX_ITEM_SIZE>) {
+        let (mut tx, rx) = self;
+        tx.set_max_item_size(NEW_MAX_ITEM_SIZE);
+        let rx = rx.set_max_item_size();
+        (tx, rx)
+    }
 }

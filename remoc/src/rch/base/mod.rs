@@ -41,7 +41,7 @@
 //! ```
 //!
 
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{error::Error, fmt};
 
 mod io;
@@ -112,4 +112,23 @@ where
     let (raw_sender, _) = client_sr?;
     let (_, raw_receiver) = listener_sr?.ok_or(ConnectError::NoConnectRequest)?;
     Ok((Sender::new(raw_sender), Receiver::new(raw_receiver)))
+}
+
+/// Extensions for base channels.
+pub trait BaseExt<T, Codec> {
+    /// Sets the maximum item size for the channel.
+    fn with_max_item_size(self, max_item_size: usize) -> (Sender<T, Codec>, Receiver<T, Codec>);
+}
+
+impl<T, Codec> BaseExt<T, Codec> for (Sender<T, Codec>, Receiver<T, Codec>)
+where
+    T: Serialize + DeserializeOwned + Send + 'static,
+    Codec: codec::Codec,
+{
+    fn with_max_item_size(self, max_item_size: usize) -> (Sender<T, Codec>, Receiver<T, Codec>) {
+        let (mut tx, mut rx) = self;
+        tx.set_max_item_size(max_item_size);
+        rx.set_max_item_size(max_item_size);
+        (tx, rx)
+    }
 }

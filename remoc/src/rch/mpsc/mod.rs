@@ -81,6 +81,44 @@ where
     (sender, receiver)
 }
 
+/// Extensions for MPSC channels.
+pub trait MpscExt<T, Codec, const BUFFER: usize, const MAX_ITEM_SIZE: usize> {
+    /// Sets the buffer size that will be used when sending the channel's sender and receiver
+    /// to a remote endpoint.
+    fn with_buffer<const NEW_BUFFER: usize>(
+        self,
+    ) -> (Sender<T, Codec, NEW_BUFFER>, Receiver<T, Codec, NEW_BUFFER, MAX_ITEM_SIZE>);
+
+    /// Sets the maximum item size for the channel.
+    fn with_max_item_size<const NEW_MAX_ITEM_SIZE: usize>(
+        self,
+    ) -> (Sender<T, Codec, BUFFER>, Receiver<T, Codec, BUFFER, NEW_MAX_ITEM_SIZE>);
+}
+
+impl<T, Codec, const BUFFER: usize, const MAX_ITEM_SIZE: usize> MpscExt<T, Codec, BUFFER, MAX_ITEM_SIZE>
+    for (Sender<T, Codec, BUFFER>, Receiver<T, Codec, BUFFER, MAX_ITEM_SIZE>)
+where
+    T: Send + 'static,
+{
+    fn with_buffer<const NEW_BUFFER: usize>(
+        self,
+    ) -> (Sender<T, Codec, NEW_BUFFER>, Receiver<T, Codec, NEW_BUFFER, MAX_ITEM_SIZE>) {
+        let (tx, rx) = self;
+        let tx = tx.set_buffer();
+        let rx = rx.set_buffer();
+        (tx, rx)
+    }
+
+    fn with_max_item_size<const NEW_MAX_ITEM_SIZE: usize>(
+        self,
+    ) -> (Sender<T, Codec, BUFFER>, Receiver<T, Codec, BUFFER, NEW_MAX_ITEM_SIZE>) {
+        let (mut tx, rx) = self;
+        tx.set_max_item_size(NEW_MAX_ITEM_SIZE);
+        let rx = rx.set_max_item_size();
+        (tx, rx)
+    }
+}
+
 /// Send implementation for deserializer of Sender and serializer of Receiver.
 async fn send_impl<T, Codec>(
     mut rx: tokio::sync::mpsc::Receiver<Result<T, RecvError>>, raw_tx: chmux::Sender,
