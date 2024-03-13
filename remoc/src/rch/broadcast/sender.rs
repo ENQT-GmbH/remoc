@@ -1,11 +1,9 @@
-use futures::task::noop_waker;
 use serde::{Deserialize, Serialize};
 use std::{
     convert::{TryFrom, TryInto},
     error::Error,
     fmt, mem,
     sync::{Arc, Mutex},
-    task::{Context, Poll},
 };
 
 use super::{
@@ -154,9 +152,7 @@ where
         let mut inner = self.inner.lock().unwrap();
 
         // Fetch subscribers that have become ready again.
-        let waker = noop_waker();
-        let mut cx = Context::from_waker(&waker);
-        while let Poll::Ready(Some(sub)) = inner.ready_rx.poll_recv(&mut cx) {
+        while let Ok(sub) = inner.ready_rx.try_recv() {
             inner.subs.push(sub);
             inner.not_ready -= 1;
         }

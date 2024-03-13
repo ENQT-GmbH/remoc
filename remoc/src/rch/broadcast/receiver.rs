@@ -1,4 +1,4 @@
-use futures::{ready, task::noop_waker, Stream};
+use futures::{ready, Stream};
 use serde::{Deserialize, Serialize};
 use std::{
     convert::TryFrom,
@@ -160,6 +160,18 @@ impl From<mpsc::RecvError> for TryRecvError {
     }
 }
 
+impl From<mpsc::TryRecvError> for TryRecvError {
+    fn from(err: mpsc::TryRecvError) -> Self {
+        match err {
+            mpsc::TryRecvError::RemoteReceive(err) => Self::RemoteReceive(err),
+            mpsc::TryRecvError::RemoteConnect(err) => Self::RemoteConnect(err),
+            mpsc::TryRecvError::RemoteListen(err) => Self::RemoteListen(err),
+            mpsc::TryRecvError::Closed => Self::Closed,
+            mpsc::TryRecvError::Empty => Self::Empty,
+        }
+    }
+}
+
 impl From<RecvError> for TryRecvError {
     fn from(err: RecvError) -> Self {
         match err {
@@ -223,15 +235,10 @@ where
     /// Attempts to return a pending value on this receiver without awaiting.
     #[inline]
     pub fn try_recv(&mut self) -> Result<T, TryRecvError> {
-        let waker = noop_waker();
-        let mut cx = Context::from_waker(&waker);
-
-        match self.rx.poll_recv(&mut cx) {
-            Poll::Ready(Ok(Some(BroadcastMsg::Value(value)))) => Ok(value),
-            Poll::Ready(Ok(Some(BroadcastMsg::Lagged))) => Err(TryRecvError::Lagged),
-            Poll::Ready(Ok(None)) => Err(TryRecvError::Closed),
-            Poll::Ready(Err(err)) => Err(err.into()),
-            Poll::Pending => Err(TryRecvError::Empty),
+        match self.rx.try_recv() {
+            Ok(BroadcastMsg::Value(value)) => Ok(value),
+            Ok(BroadcastMsg::Lagged) => Err(TryRecvError::Lagged),
+            Err(err) => Err(err.into()),
         }
     }
 

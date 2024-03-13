@@ -240,11 +240,8 @@ where
         }
 
         let mut remote_send_err_rx = inner.remote_send_err_rx.lock().unwrap();
-
-        let waker = noop_waker();
-        let mut cx = Context::from_waker(&waker);
-        if let Poll::Ready(err_opt) = remote_send_err_rx.poll_recv(&mut cx) {
-            *current_err = err_opt;
+        if let Ok(err) = remote_send_err_rx.try_recv() {
+            *current_err = Some(err);
         }
     }
 
