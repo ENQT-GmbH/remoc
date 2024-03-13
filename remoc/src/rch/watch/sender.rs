@@ -158,6 +158,11 @@ where
     /// Sends a value over this channel, notifying all receivers.
     ///
     /// This method fails if all receivers have been dropped or become disconnected.
+    ///
+    /// # Error reporting
+    /// Sending and error reporting are done asynchronously.
+    /// Thus, the reporting of an error may be delayed and this function may
+    /// return errors caused by previous invocations.
     #[inline]
     pub fn send(&self, value: T) -> Result<(), SendError> {
         match self.inner.as_ref().unwrap().tx.send(Ok(value)) {
@@ -235,6 +240,10 @@ where
     }
 
     /// Returns the error that occurred during sending to a remote endpoint, if any.
+    ///
+    /// # Error reporting
+    /// Sending and error reporting are done asynchronously.
+    /// Thus, the reporting of an error may be delayed.
     pub fn error(&self) -> Option<SendError> {
         self.update_error();
 

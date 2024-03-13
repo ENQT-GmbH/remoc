@@ -324,6 +324,11 @@ where
     }
 
     /// Sends a value over this channel.
+    ///
+    /// # Error reporting
+    /// Sending and error reporting are done asynchronously.
+    /// Thus, the reporting of an error may be delayed and this function may
+    /// return errors caused by previous invocations.
     #[inline]
     pub async fn send(&self, value: T) -> Result<(), SendError<T>> {
         if let Some(err) = self.remote_send_err_rx.borrow().as_ref() {
@@ -342,6 +347,11 @@ where
     }
 
     /// Attempts to immediately send a message over this channel.
+    ///
+    /// # Error reporting
+    /// Sending and error reporting are done asynchronously.
+    /// Thus, the reporting of an error may be delayed and this function may
+    /// return errors caused by previous invocations.
     #[inline]
     pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
         if let Some(err) = self.remote_send_err_rx.borrow().as_ref() {
@@ -364,6 +374,11 @@ where
 
     /// Blocking send to call outside of asynchronous contexts.
     ///
+    /// # Error reporting
+    /// Sending and error reporting are done asynchronously.
+    /// Thus, the reporting of an error may be delayed and this function may
+    /// return errors caused by previous invocations.
+    ///
     /// # Panics
     /// This function panics if called within an asynchronous execution context.
     #[inline]
@@ -374,6 +389,11 @@ where
 
     /// Wait for channel capacity, returning an owned permit.
     /// Once capacity to send one message is available, it is reserved for the caller.
+    ///
+    /// # Error reporting
+    /// Sending and error reporting are done asynchronously.
+    /// Thus, the reporting of an error may be delayed and this function may
+    /// return errors caused by previous invocations.
     #[inline]
     pub async fn reserve(&self) -> Result<Permit<T>, SendError<()>> {
         if let Some(err) = self.remote_send_err_rx.borrow().as_ref() {
