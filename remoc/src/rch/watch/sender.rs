@@ -1,12 +1,6 @@
-use futures::{task::noop_waker, FutureExt};
+use futures::FutureExt;
 use serde::{Deserialize, Serialize};
-use std::{
-    error::Error,
-    fmt,
-    marker::PhantomData,
-    sync::Mutex,
-    task::{Context, Poll},
-};
+use std::{error::Error, fmt, marker::PhantomData, sync::Mutex};
 
 use super::{
     super::{
@@ -14,7 +8,7 @@ use super::{
         RemoteSendError, SendErrorExt,
     },
     receiver::RecvError,
-    Receiver, Ref, ERROR_QUEUE,
+    Receiver, Ref,
 };
 use crate::{chmux, codec, RemoteSend};
 
@@ -118,8 +112,8 @@ impl<T, Codec> fmt::Debug for Sender<T, Codec> {
 
 pub(crate) struct SenderInner<T, Codec> {
     tx: tokio::sync::watch::Sender<Result<T, RecvError>>,
-    remote_send_err_tx: tokio::sync::mpsc::Sender<RemoteSendError>,
-    remote_send_err_rx: Mutex<tokio::sync::mpsc::Receiver<RemoteSendError>>,
+    remote_send_err_tx: tokio::sync::mpsc::UnboundedSender<RemoteSendError>,
+    remote_send_err_rx: Mutex<tokio::sync::mpsc::UnboundedReceiver<RemoteSendError>>,
     current_err: Mutex<Option<RemoteSendError>>,
     max_item_size: usize,
     _codec: PhantomData<Codec>,
@@ -150,8 +144,8 @@ where
     /// Creates a new sender.
     pub(crate) fn new(
         tx: tokio::sync::watch::Sender<Result<T, RecvError>>,
-        remote_send_err_tx: tokio::sync::mpsc::Sender<RemoteSendError>,
-        remote_send_err_rx: tokio::sync::mpsc::Receiver<RemoteSendError>, max_item_size: usize,
+        remote_send_err_tx: tokio::sync::mpsc::UnboundedSender<RemoteSendError>,
+        remote_send_err_rx: tokio::sync::mpsc::UnboundedReceiver<RemoteSendError>, max_item_size: usize,
     ) -> Self {
         let inner = SenderInner {
             tx,
@@ -267,6 +261,28 @@ where
         *current_err = None;
     }
 
+    /// Checks that no item-specific send error has occurred.
+    ///
+    /// This method clears non-item-specific errors present on the channel.
+    ///
+    /// # Error reporting
+    /// Sending and error reporting are done asynchronously.
+    /// Thus, the reporting of an error may be delayed.
+    ///
+    /// To verify that no item-specific send error has occurred during the lifetime of
+    /// the channel, call this method after the channel is closed, i.e.
+    /// [`closed`](Self::closed) has returned or [`is_closed`](Self::is_closed) is
+    /// `true`.
+    pub fn check(&mut self) -> Result<(), SendError> {
+        while let Some(err) = self.error() {
+            if err.is_item_specific() {
+                return Err(err);
+            }
+            self.clear_error();
+        }
+        Ok(())
+    }
+
     /// Maximum allowed item size in bytes.
     pub fn max_item_size(&self) -> usize {
         self.inner.as_ref().unwrap().max_item_size
@@ -361,7 +377,7 @@ where
 
         // Create internal communication channels.
         let (tx, rx) = tokio::sync::watch::channel(data);
-        let (remote_send_err_tx, remote_send_err_rx) = tokio::sync::mpsc::channel(ERROR_QUEUE);
+        let (remote_send_err_tx, remote_send_err_rx) = tokio::sync::mpsc::unbounded_channel();
         let remote_send_err_tx2 = remote_send_err_tx.clone();
 
         // Accept chmux port request.
@@ -371,7 +387,7 @@ where
                 let (raw_tx, raw_rx) = match request.accept_from(local_port).await {
                     Ok(tx_rx) => tx_rx,
                     Err(err) => {
-                        let _ = remote_send_err_tx.try_send(RemoteSendError::Listen(err));
+                        let _ = remote_send_err_tx.send(RemoteSendError::Listen(err));
                         return;
                     }
                 };

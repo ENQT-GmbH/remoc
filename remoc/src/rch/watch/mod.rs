@@ -63,9 +63,6 @@ mod sender;
 pub use receiver::{ChangedError, Receiver, ReceiverStream, RecvError};
 pub use sender::{SendError, Sender};
 
-/// Length of queuing for storing errors that occurred during remote send.
-const ERROR_QUEUE: usize = 16;
-
 /// Returns a reference to the inner value.
 pub struct Ref<'a, T>(tokio::sync::watch::Ref<'a, Result<T, RecvError>>);
 
@@ -94,7 +91,7 @@ where
     T: RemoteSend,
 {
     let (tx, rx) = tokio::sync::watch::channel(Ok(init));
-    let (remote_send_err_tx, remote_send_err_rx) = tokio::sync::mpsc::channel(ERROR_QUEUE);
+    let (remote_send_err_tx, remote_send_err_rx) = tokio::sync::mpsc::unbounded_channel();
 
     let sender = Sender::new(tx, remote_send_err_tx.clone(), remote_send_err_rx, DEFAULT_MAX_ITEM_SIZE);
     let receiver = Receiver::new(rx, remote_send_err_tx, None);
@@ -104,7 +101,7 @@ where
 /// Send implementation for deserializer of Sender and serializer of Receiver.
 async fn send_impl<T, Codec>(
     mut rx: tokio::sync::watch::Receiver<Result<T, RecvError>>, raw_tx: chmux::Sender,
-    mut raw_rx: chmux::Receiver, remote_send_err_tx: tokio::sync::mpsc::Sender<RemoteSendError>,
+    mut raw_rx: chmux::Receiver, remote_send_err_tx: tokio::sync::mpsc::UnboundedSender<RemoteSendError>,
     max_item_size: usize,
 ) where
     T: Serialize + Send + Clone + 'static,
@@ -124,7 +121,7 @@ async fn send_impl<T, Codec>(
                 match backchannel_msg {
                     Ok(Some(mut msg)) if msg.remaining() >= 1 => {
                         if msg.get_u8() == BACKCHANNEL_MSG_ERROR {
-                            let _ = remote_send_err_tx.try_send(RemoteSendError::Forward);
+                            let _ = remote_send_err_tx.send(RemoteSendError::Forward);
                         }
                     }
                     _ => break,
@@ -137,7 +134,7 @@ async fn send_impl<T, Codec>(
                     Ok(()) => {
                         let value = rx.borrow_and_update().clone();
                         if let Err(err) = remote_tx.send(value).await {
-                            let _ = remote_send_err_tx.try_send(RemoteSendError::Send(err.kind.clone()));
+                            let _ = remote_send_err_tx.send(RemoteSendError::Send(err.kind.clone()));
                             if err.is_item_specific() {
                                 break
                             }
@@ -153,7 +150,7 @@ async fn send_impl<T, Codec>(
 /// Receive implementation for serializer of Sender and deserializer of Receiver.
 async fn recv_impl<T, Codec>(
     tx: tokio::sync::watch::Sender<Result<T, RecvError>>, mut raw_tx: chmux::Sender, raw_rx: chmux::Receiver,
-    mut remote_send_err_rx: tokio::sync::mpsc::Receiver<RemoteSendError>,
+    mut remote_send_err_rx: tokio::sync::mpsc::UnboundedReceiver<RemoteSendError>,
     mut current_err: Option<RemoteSendError>, max_item_size: usize,
 ) where
     T: DeserializeOwned + Send + 'static,

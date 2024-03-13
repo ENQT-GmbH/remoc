@@ -15,7 +15,7 @@ use super::{
         base::{self, PortDeserializer, PortSerializer},
         RemoteSendError, DEFAULT_MAX_ITEM_SIZE,
     },
-    Ref, ERROR_QUEUE,
+    Ref,
 };
 use crate::{chmux, codec, RemoteSend};
 
@@ -87,7 +87,7 @@ impl Error for ChangedError {}
 #[derive(Clone)]
 pub struct Receiver<T, Codec = codec::Default, const MAX_ITEM_SIZE: usize = DEFAULT_MAX_ITEM_SIZE> {
     rx: tokio::sync::watch::Receiver<Result<T, RecvError>>,
-    remote_send_err_tx: tokio::sync::mpsc::Sender<RemoteSendError>,
+    remote_send_err_tx: tokio::sync::mpsc::UnboundedSender<RemoteSendError>,
     remote_max_item_size: Option<usize>,
     _codec: PhantomData<Codec>,
 }
@@ -115,7 +115,8 @@ pub(crate) struct TransportedReceiver<T, Codec> {
 impl<T, Codec, const MAX_ITEM_SIZE: usize> Receiver<T, Codec, MAX_ITEM_SIZE> {
     pub(crate) fn new(
         rx: tokio::sync::watch::Receiver<Result<T, RecvError>>,
-        remote_send_err_tx: tokio::sync::mpsc::Sender<RemoteSendError>, remote_max_item_size: Option<usize>,
+        remote_send_err_tx: tokio::sync::mpsc::UnboundedSender<RemoteSendError>,
+        remote_max_item_size: Option<usize>,
     ) -> Self {
         Self { rx, remote_send_err_tx, remote_max_item_size, _codec: PhantomData }
     }
@@ -201,7 +202,7 @@ where
                 let (raw_tx, raw_rx) = match connect.await {
                     Ok(tx_rx) => tx_rx,
                     Err(err) => {
-                        let _ = remote_send_err_tx.try_send(RemoteSendError::Connect(err));
+                        let _ = remote_send_err_tx.send(RemoteSendError::Connect(err));
                         return;
                     }
                 };
@@ -248,7 +249,7 @@ where
 
         // Create channels.
         let (tx, rx) = tokio::sync::watch::channel(data);
-        let (remote_send_err_tx, remote_send_err_rx) = tokio::sync::mpsc::channel(ERROR_QUEUE);
+        let (remote_send_err_tx, remote_send_err_rx) = tokio::sync::mpsc::unbounded_channel();
 
         PortDeserializer::accept(port, |local_port, request| {
             async move {

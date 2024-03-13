@@ -15,7 +15,7 @@ async fn simple() {
     let end_value = 124;
 
     println!("Sending remote mpsc channel receiver");
-    let (tx, rx) = watch::channel(start_value);
+    let (mut tx, rx) = watch::channel(start_value);
     a_tx.send(rx).await.unwrap();
     println!("Receiving remote mpsc channel receiver");
     let mut rx = b_rx.recv().await.unwrap().unwrap();
@@ -47,6 +47,8 @@ async fn simple() {
             sleep(Duration::from_millis(20)).await;
         }
     }
+
+    tx.check().unwrap();
     drop(tx);
 
     println!("Waiting for receive task");
@@ -62,7 +64,7 @@ async fn simple_stream() {
     let end_value = 124;
 
     println!("Sending remote mpsc channel receiver");
-    let (tx, rx) = watch::channel(start_value);
+    let (mut tx, rx) = watch::channel(start_value);
     a_tx.send(rx).await.unwrap();
     println!("Receiving remote mpsc channel receiver");
     let rx = b_rx.recv().await.unwrap().unwrap();
@@ -94,6 +96,8 @@ async fn simple_stream() {
             prev_value -= 1;
         }
     }
+
+    tx.check().unwrap();
     drop(tx);
 
     println!("Waiting for receive task");
@@ -109,7 +113,7 @@ async fn close() {
     let (tx, rx) = watch::channel(123);
     a_tx.send(tx).await.unwrap();
     println!("Receiving remote mpsc channel sender");
-    let tx = b_rx.recv().await.unwrap().unwrap();
+    let mut tx = b_rx.recv().await.unwrap().unwrap();
 
     println!("Cloning receiver");
     let rx2 = rx.clone();
@@ -126,6 +130,7 @@ async fn close() {
     println!("Waiting for close notification");
     tx.closed().await;
     assert!(tx.is_closed());
+    tx.check().unwrap();
 
     println!("Attempting to send");
     match tx.send(15) {
@@ -144,7 +149,7 @@ async fn conn_failure() {
     let (tx, rx) = watch::channel(123);
     a_tx.send(tx).await.unwrap();
     println!("Receiving remote mpsc channel sender");
-    let tx = b_rx.recv().await.unwrap().unwrap();
+    let mut tx = b_rx.recv().await.unwrap().unwrap();
 
     println!("Cloning receiver");
     let _rx2 = rx.clone();
@@ -157,6 +162,7 @@ async fn conn_failure() {
     println!("Waiting for close notification");
     tx.closed().await;
     assert!(tx.is_closed());
+    tx.check().unwrap();
 
     println!("Attempting to send");
     match tx.send(15) {
@@ -229,4 +235,65 @@ async fn max_item_size_exceeded() {
     assert!(matches!(tx.error(), Some(SendError::RemoteSend(SendErrorKind::MaxItemSizeExceeded))));
     tx.clear_error();
     assert!(matches!(tx.error(), None));
+    tx.check().unwrap();
+}
+
+#[tokio::test]
+async fn max_item_size_exceeded_check() {
+    crate::init();
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<watch::Receiver<Vec<u8>>>().await;
+
+    println!("Sending remote mpsc channel receiver");
+    let (mut tx, rx) = watch::channel(Vec::new());
+    a_tx.send(rx).await.unwrap();
+    println!("Receiving remote mpsc channel receiver");
+    let mut rx = b_rx.recv().await.unwrap().unwrap();
+
+    assert_eq!(tx.max_item_size(), rx.max_item_size());
+    let max_item_size = tx.max_item_size();
+    println!("Maximum send and recv item size is {max_item_size}");
+
+    {
+        let value = rx.borrow().unwrap();
+        println!("Initial value: {value:?}");
+    }
+
+    let recv_task = tokio::spawn(async move {
+        loop {
+            let res = rx.changed().await;
+            println!("RX changed result: {res:?}");
+            if res.is_err() {
+                break res;
+            }
+
+            let value = rx.borrow_and_update().unwrap().clone();
+            println!("Received value change: {} elements", value.len());
+        }
+    });
+
+    // Happy case: sent data size is under limit.
+    // JSON encoding will result in much larger transfer size.
+    let elems = max_item_size / 10;
+    println!("Sending {elems} elements");
+    let value = vec![100; elems];
+    tx.send(value.clone()).unwrap();
+    assert_eq!(*tx.borrow(), value);
+
+    sleep(Duration::from_millis(100)).await;
+
+    // Failure case: sent data size exceeds limits.
+    let elems = max_item_size * 10;
+    println!("Sending {elems} elements");
+    let value = vec![100; elems];
+    tx.send(value.clone()).unwrap();
+    assert_eq!(*tx.borrow(), value);
+
+    println!("Wait for sender close");
+    tx.closed().await;
+    let res = tx.check();
+    println!("Sender check result: {res:?}");
+    assert!(matches!(res, Err(SendError::RemoteSend(SendErrorKind::MaxItemSizeExceeded))));
+
+    println!("Waiting for receive task");
+    assert!(matches!(recv_task.await.unwrap(), Err(ChangedError::Closed)));
 }
