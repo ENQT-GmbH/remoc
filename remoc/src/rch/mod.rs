@@ -182,6 +182,9 @@ pub trait SendErrorExt {
 
     /// Whether the error is final, i.e. no further send operation can succeed.
     fn is_final(&self) -> bool;
+
+    /// Whether the error is caused by the item to be sent.
+    fn is_item_specific(&self) -> bool;
 }
 
 /// Common functions to query results of send operations for details.

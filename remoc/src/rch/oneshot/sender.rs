@@ -57,6 +57,10 @@ impl<T> SendErrorExt for SendError<T> {
         #[allow(deprecated)]
         self.is_final()
     }
+
+    fn is_item_specific(&self) -> bool {
+        false
+    }
 }
 
 impl<T> fmt::Display for SendError<T> {

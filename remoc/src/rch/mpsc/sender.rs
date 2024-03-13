@@ -64,6 +64,11 @@ impl<T> SendError<T> {
         true
     }
 
+    /// Whether the error is caused by the item to be sent.
+    pub fn is_item_specific(&self) -> bool {
+        matches!(self, Self::RemoteSend(err) if err.is_item_specific())
+    }
+
     /// Returns the error without the contained item.
     pub fn without_item(self) -> SendError<()> {
         match self {
@@ -88,6 +93,10 @@ impl<T> SendErrorExt for SendError<T> {
     fn is_final(&self) -> bool {
         #[allow(deprecated)]
         self.is_final()
+    }
+
+    fn is_item_specific(&self) -> bool {
+        self.is_item_specific()
     }
 }
 
@@ -150,6 +159,11 @@ impl<T> TrySendError<T> {
     pub fn is_final(&self) -> bool {
         !matches!(self, Self::Full(_))
     }
+
+    /// Whether the error is caused by the item to be sent.
+    pub fn is_item_specific(&self) -> bool {
+        matches!(self, Self::RemoteSend(err) if err.is_item_specific())
+    }
 }
 
 impl<T> SendErrorExt for TrySendError<T> {
@@ -163,6 +177,10 @@ impl<T> SendErrorExt for TrySendError<T> {
 
     fn is_final(&self) -> bool {
         self.is_final()
+    }
+
+    fn is_item_specific(&self) -> bool {
+        self.is_item_specific()
     }
 }
 

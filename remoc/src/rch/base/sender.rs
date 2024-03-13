@@ -110,6 +110,10 @@ impl<T> SendErrorExt for SendError<T> {
     fn is_final(&self) -> bool {
         self.is_final()
     }
+
+    fn is_item_specific(&self) -> bool {
+        self.is_item_specific()
+    }
 }
 
 impl fmt::Display for SendErrorKind {
