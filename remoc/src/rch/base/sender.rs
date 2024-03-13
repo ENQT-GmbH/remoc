@@ -60,6 +60,11 @@ impl SendErrorKind {
     pub fn is_final(&self) -> bool {
         matches!(self, Self::Send(_))
     }
+
+    /// Returns whether the error is caused by the item to be sent.
+    pub fn is_item_specific(&self) -> bool {
+        matches!(self, Self::Serialize(_) | Self::MaxItemSizeExceeded)
+    }
 }
 
 impl<T> SendError<T> {
@@ -80,6 +85,11 @@ impl<T> SendError<T> {
     /// Returns whether the error is final, i.e. no further send operation can succeed.
     pub fn is_final(&self) -> bool {
         self.kind.is_final()
+    }
+
+    /// Returns whether the error is caused by the item to be sent.
+    pub fn is_item_specific(&self) -> bool {
+        self.kind.is_item_specific()
     }
 
     /// Returns the error without the contained item.

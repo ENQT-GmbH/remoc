@@ -137,7 +137,10 @@ async fn send_impl<T, Codec>(
                     Ok(()) => {
                         let value = rx.borrow_and_update().clone();
                         if let Err(err) = remote_tx.send(value).await {
-                            let _ = remote_send_err_tx.try_send(RemoteSendError::Send(err.kind));
+                            let _ = remote_send_err_tx.try_send(RemoteSendError::Send(err.kind.clone()));
+                            if err.is_item_specific() {
+                                break
+                            }
                         }
                     }
                     Err(_) => break,
