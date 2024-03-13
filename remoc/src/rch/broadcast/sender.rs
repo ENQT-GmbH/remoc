@@ -210,6 +210,20 @@ where
         Receiver::new(rx)
     }
 
+    /// Creates a new receiver with a custom maximum item size.
+    pub fn subscribe_with_max_item_size<const RECEIVE_BUFFER: usize, const MAX_ITEM_SIZE: usize>(
+        &self, send_buffer: usize,
+    ) -> Receiver<T, Codec, RECEIVE_BUFFER, MAX_ITEM_SIZE> {
+        let mut inner = self.inner.lock().unwrap();
+
+        let (tx, rx) = mpsc::channel(send_buffer);
+        let mut tx = tx.set_buffer();
+        tx.set_max_item_size(MAX_ITEM_SIZE);
+        let rx = rx.set_buffer().set_max_item_size();
+        inner.subs.push(tx);
+        Receiver::new(rx)
+    }
+
     /// Creates an mpsc sender that feeds values to this broadcast sender.
     ///
     /// The mpsc sender can be sent over a remote channel.
