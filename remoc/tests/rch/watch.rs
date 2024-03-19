@@ -105,6 +105,47 @@ async fn simple_stream() {
 }
 
 #[tokio::test]
+async fn modify_stream() {
+    crate::init();
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<watch::Receiver<i16>>().await;
+
+    let start_value = 2;
+    let end_value = 124;
+
+    println!("Sending remote mpsc channel receiver");
+    let (mut tx, rx) = watch::channel(start_value);
+    a_tx.send(rx).await.unwrap();
+    println!("Receiving remote mpsc channel receiver");
+    let rx = b_rx.recv().await.unwrap().unwrap();
+    let mut rx = ReceiverStream::from(rx);
+
+    let recv_task = tokio::spawn(async move {
+        let mut value = 0;
+        while let Some(rxed_value) = rx.next().await {
+            value = rxed_value.unwrap();
+            println!("Received value change: {value}");
+        }
+
+        assert_eq!(value, end_value);
+    });
+
+    for value in (start_value + 1)..=end_value {
+        println!("Modifying {value}");
+        tx.send_modify(|v| *v += 1);
+
+        if value % 10 == 0 {
+            sleep(Duration::from_millis(20)).await;
+        }
+    }
+
+    tx.check().unwrap();
+    drop(tx);
+
+    println!("Waiting for receive task");
+    recv_task.await.unwrap();
+}
+
+#[tokio::test]
 async fn close() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<watch::Sender<i16>>().await;
