@@ -3,12 +3,13 @@
 use proc_macro2::TokenStream;
 use quote::{quote, TokenStreamExt};
 use syn::{
-    parenthesized,
+    braced, parenthesized,
     parse::{Parse, ParseStream},
     punctuated::Punctuated,
     spanned::Spanned,
+    token,
     token::Comma,
-    Attribute, FnArg, Generics, Ident, Pat, PatType, ReturnType, Token, Type,
+    Attribute, Block, FnArg, Generics, Ident, Pat, PatType, ReturnType, Stmt, Token, Type,
 };
 
 use crate::util::{attribute_tokens, to_pascal_case};
@@ -62,6 +63,8 @@ pub struct TraitMethod {
     pub ret_ty: Type,
     /// Whether method should be cancelled, if client sends hangup message.
     pub cancel: bool,
+    /// Method body.
+    pub body: Option<Vec<Stmt>>,
 }
 
 impl Parse for TraitMethod {
@@ -129,9 +132,18 @@ impl Parse for TraitMethod {
             ReturnType::Type(_, ty) => *ty,
             ReturnType::Default => return Err(input.error("all methods must return a Result type")),
         };
-        input.parse::<Token![;]>()?;
 
-        Ok(Self { attrs, ident, self_ref, args, ret_ty, cancel })
+        // Parse default body.
+        let body = if input.peek(token::Brace) {
+            let content;
+            braced!(content in input);
+            Some(content.call(Block::parse_within)?)
+        } else {
+            input.parse::<Token![;]>()?;
+            None
+        };
+
+        Ok(Self { attrs, ident, self_ref, args, ret_ty, cancel, body })
     }
 }
 
@@ -157,8 +169,19 @@ impl TraitMethod {
             args.append_all(quote! { #ident : #ty , });
         }
 
+        // Body.
+        let body_opt = match &self.body {
+            Some(stmts) => {
+                let mut body = quote! {};
+                body.append_all(stmts);
+                quote! { { #body } }
+            }
+            None => quote! { ; },
+        };
+
         quote! {
-            #attrs async fn #ident ( #args ) -> #ret_ty;
+            #attrs async fn #ident ( #args ) -> #ret_ty
+            #body_opt
         }
     }
 

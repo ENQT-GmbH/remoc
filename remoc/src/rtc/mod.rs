@@ -262,6 +262,11 @@ pub use async_trait::async_trait;
 ///
 /// Lifetimes are not allowed on remote traits and their methods.
 ///
+/// # Default implementations of methods
+///
+/// Default implementations of methods may be provided.
+/// However, this requires specifying `Send` and `Sync` as supertraits of the remote trait.
+///
 /// # Attributes
 ///
 /// If the `clone` argument is specified (by invoking the attribute as `#[remoc::rtc::remote(clone)]`),

@@ -6,7 +6,9 @@ use syn::{
     braced,
     meta::ParseNestedMeta,
     parse::{Parse, ParseStream},
-    Attribute, GenericParam, Generics, Ident, Lifetime, LifetimeParam, Token, TypeParam, Visibility, WhereClause,
+    punctuated::Punctuated,
+    token, Attribute, GenericParam, Generics, Ident, Lifetime, LifetimeParam, Token, TypeParam, TypeParamBound,
+    Visibility, WhereClause,
 };
 
 use crate::{
@@ -26,6 +28,10 @@ pub struct TraitDef {
     /// Generics.
     /// Contains type parameter `Codec`.
     generics: Generics,
+    /// Colon before supertraits.
+    colon: Option<Token![:]>,
+    /// Supertraits.
+    supertraits: Punctuated<TypeParamBound, Token![+]>,
     /// Methods.
     methods: Vec<TraitMethod>,
     /// Whether the `clone` attribute is present.
@@ -50,6 +56,19 @@ impl Parse for TraitDef {
             return Err(input.error("lifetimes are not allowed on remote traits"));
         }
 
+        // Parse supertraits.
+        let colon: Option<Token![:]> = input.parse()?;
+        let mut supertraits = Punctuated::new();
+        if colon.is_some() {
+            loop {
+                supertraits.push_value(input.parse()?);
+                if input.peek(Token![where]) || input.peek(token::Brace) {
+                    break;
+                }
+                supertraits.push_punct(input.parse()?);
+            }
+        }
+
         // Generics where clause.
         if let Some(where_clause) = input.parse::<Option<WhereClause>>()? {
             generics.make_where_clause().predicates.extend(where_clause.predicates);
@@ -65,7 +84,7 @@ impl Parse for TraitDef {
             methods.push(content.parse()?);
         }
 
-        Ok(Self { attrs, vis, ident, generics, methods, clone: false })
+        Ok(Self { attrs, vis, ident, generics, colon, supertraits, methods, clone: false })
     }
 }
 
@@ -100,7 +119,7 @@ impl TraitDef {
 
     /// Vanilla trait definition, without remote-specific attributes.
     pub fn vanilla_trait(&self) -> TokenStream {
-        let Self { vis, ident, attrs, generics, .. } = self;
+        let Self { vis, ident, attrs, colon, supertraits, generics, .. } = self;
         let where_clause = &generics.where_clause;
         let attrs = attribute_tokens(attrs);
 
@@ -113,7 +132,7 @@ impl TraitDef {
         quote! {
             #attrs
             #[::remoc::rtc::async_trait]
-            #vis trait #ident #generics #where_clause {
+            #vis trait #ident #generics #colon #supertraits #where_clause {
                 #defs
             }
         }
