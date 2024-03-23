@@ -265,7 +265,7 @@ pub use async_trait::async_trait;
 /// # Default implementations of methods
 ///
 /// Default implementations of methods may be provided.
-/// However, this requires specifying `Send` and `Sync` as supertraits of the remote trait.
+/// However, this requires specifying [`Send`] and [`Sync`] as supertraits of the remote trait.
 ///
 /// # Attributes
 ///
