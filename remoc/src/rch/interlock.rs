@@ -4,6 +4,13 @@ pub(crate) struct Interlock {
     pub receiver: Location,
 }
 
+impl Interlock {
+    /// Creates a new interlock with local sender and receiver locations.
+    pub fn new() -> Self {
+        Self { sender: Location::Local, receiver: Location::Local }
+    }
+}
+
 /// Location of a sender or receiver.
 pub(crate) enum Location {
     Local,

@@ -1,7 +1,7 @@
 use futures::FutureExt;
-use serde::{ser, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use std::{
-    fmt,
+    fmt, mem,
     sync::{Arc, Mutex},
 };
 
@@ -20,6 +20,7 @@ pub struct Sender {
     pub(super) sender_rx: tokio::sync::mpsc::UnboundedReceiver<Result<chmux::Sender, ConnectError>>,
     pub(super) receiver_tx: Option<tokio::sync::mpsc::UnboundedSender<Result<chmux::Receiver, ConnectError>>>,
     pub(super) interlock: Arc<Mutex<Interlock>>,
+    pub(super) successor_tx: std::sync::Mutex<Option<tokio::sync::oneshot::Sender<Self>>>,
 }
 
 impl fmt::Debug for Sender {
@@ -53,7 +54,17 @@ impl Sender {
     /// to the remote endpoint.
     pub async fn into_inner(mut self) -> Result<chmux::Sender, ConnectError> {
         self.connect().await;
-        self.sender.unwrap()
+        self.sender.take().unwrap()
+    }
+
+    /// Forward data.
+    async fn forward(successor_rx: tokio::sync::oneshot::Receiver<Self>, rx: super::Receiver) {
+        let Ok(tx) = successor_rx.await else { return };
+        let Ok(mut tx) = tx.into_inner().await else { return };
+        let Ok(mut rx) = rx.into_inner().await else { return };
+        if let Err(err) = chmux::forward(&mut rx, &mut tx).await {
+            tracing::debug!("forwarding binary channel failed: {err}");
+        }
     }
 }
 
@@ -63,34 +74,48 @@ impl Serialize for Sender {
     where
         S: serde::Serializer,
     {
-        let receiver_tx =
-            self.receiver_tx.clone().ok_or_else(|| ser::Error::custom("cannot forward received sender"))?;
-
+        let receiver_tx = self.receiver_tx.clone();
         let interlock_confirm = {
             let mut interlock = self.interlock.lock().unwrap();
-            if !interlock.receiver.check_local() {
-                return Err(ser::Error::custom("cannot send sender because receiver has been sent"));
+            if interlock.receiver.check_local() {
+                Some(interlock.receiver.start_send())
+            } else {
+                None
             }
-            interlock.receiver.start_send()
         };
 
-        let port = PortSerializer::connect(|connect| {
-            async move {
-                let _ = interlock_confirm.send(());
+        match (receiver_tx, interlock_confirm) {
+            // Local-remote connection.
+            (Some(receiver_tx), Some(interlock_confirm)) => {
+                let port = PortSerializer::connect(|connect| {
+                    async move {
+                        let _ = interlock_confirm.send(());
 
-                match connect.await {
-                    Ok((_, raw_rx)) => {
-                        let _ = receiver_tx.send(Ok(raw_rx));
+                        match connect.await {
+                            Ok((_, raw_rx)) => {
+                                let _ = receiver_tx.send(Ok(raw_rx));
+                            }
+                            Err(err) => {
+                                let _ = receiver_tx.send(Err(ConnectError::Connect(err)));
+                            }
+                        }
                     }
-                    Err(err) => {
-                        let _ = receiver_tx.send(Err(ConnectError::Connect(err)));
-                    }
-                }
+                    .boxed()
+                })?;
+
+                TransportedSender { port }.serialize(serializer)
             }
-            .boxed()
-        })?;
 
-        TransportedSender { port }.serialize(serializer)
+            // Forwarding.
+            _ => {
+                let (successor_tx, successor_rx) = tokio::sync::oneshot::channel();
+                *self.successor_tx.lock().unwrap() = Some(successor_tx);
+                let (tx, rx) = super::channel();
+                PortSerializer::spawn(Self::forward(successor_rx, rx))?;
+
+                tx.serialize(serializer)
+            }
+        }
     }
 }
 
@@ -122,6 +147,23 @@ impl<'de> Deserialize<'de> for Sender {
             sender_rx,
             receiver_tx: None,
             interlock: Arc::new(Mutex::new(Interlock { sender: Location::Local, receiver: Location::Remote })),
+            successor_tx: std::sync::Mutex::new(None),
         })
+    }
+}
+
+impl Drop for Sender {
+    fn drop(&mut self) {
+        let successor_tx = self.successor_tx.lock().unwrap().take();
+        if let Some(successor_tx) = successor_tx {
+            let dummy = Self {
+                sender: None,
+                sender_rx: tokio::sync::mpsc::unbounded_channel().1,
+                receiver_tx: None,
+                interlock: Arc::new(Mutex::new(Interlock::new())),
+                successor_tx: std::sync::Mutex::new(None),
+            };
+            let _ = successor_tx.send(mem::replace(self, dummy));
+        }
     }
 }

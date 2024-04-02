@@ -36,8 +36,8 @@
 //! A [binary channel](bin) can be used to exchange binary data over a channel.
 //! It skips serialization and deserialization and thus is more efficient for binary data,
 //! especially when using text codecs such as JSON.
-//! However, it does not support forwarding and exactly one half of it must be on a remote
-//! endpoint.
+//! It does support forwarding.
+//! However, at least one half of it must be on a remote endpoint.
 //!
 //! # Acknowledgements and connection latency
 //!
