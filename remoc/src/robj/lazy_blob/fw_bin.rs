@@ -3,7 +3,7 @@
 use serde::{ser, Deserialize, Serialize};
 use std::sync::Mutex;
 
-use crate::{chmux::Received, rch::bin};
+use crate::{chmux, rch::bin};
 
 /// A chmux sender that can be remotely sent and forwarded.
 pub(crate) struct Sender {
@@ -44,43 +44,12 @@ impl Serialize for Sender {
             (Some(bin_tx), None) => {
                 let (bin_fw_tx, bin_fw_rx) = bin::channel();
                 tokio::spawn(async move {
-                    let mut bin_tx = if let Ok(bin_tx) = bin_tx.into_inner().await { bin_tx } else { return };
-                    let mut bin_fw_rx =
-                        if let Ok(bin_fw_rx) = bin_fw_rx.into_inner().await { bin_fw_rx } else { return };
+                    let Ok(mut bin_tx) = bin_tx.into_inner().await else { return };
+                    let Ok(mut bin_fw_rx) = bin_fw_rx.into_inner().await else { return };
 
                     // No error handling is performed, because complete transmission of
                     // data is verified by size.
-                    loop {
-                        match bin_fw_rx.recv_any().await {
-                            Ok(Some(Received::Data(data))) => {
-                                if bin_tx.send(data.into()).await.is_err() {
-                                    return;
-                                }
-                            }
-                            Ok(Some(Received::Chunks)) => {
-                                let mut chunk_tx = bin_tx.send_chunks();
-                                loop {
-                                    match bin_fw_rx.recv_chunk().await {
-                                        Ok(Some(chunk)) => {
-                                            chunk_tx = match chunk_tx.send(chunk).await {
-                                                Ok(chunk_tx) => chunk_tx,
-                                                Err(_) => return,
-                                            };
-                                        }
-                                        Ok(None) => {
-                                            if chunk_tx.finish().await.is_err() {
-                                                return;
-                                            }
-                                            break;
-                                        }
-                                        Err(_) => return,
-                                    }
-                                }
-                            }
-                            Ok(None) => break,
-                            _ => return,
-                        }
-                    }
+                    let _ = chmux::forward(&mut bin_fw_rx, &mut bin_tx).await;
                 });
                 TransportedSender { bin_tx: bin_fw_tx }.serialize(serializer)
             }
