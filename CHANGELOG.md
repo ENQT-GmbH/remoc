@@ -4,6 +4,15 @@ All notable changes to Remoc will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.12.0 - 2024-04-03
+### Added
+- chmux: allow specification of custom id (u32) when connecting a new channel
+- chmux: recursive port data forwarding
+- rch::bin: allow forwarding of binary channel
+### Changed
+- chmux: protocol version is now 3; fully backward compatible, but custom id and
+  forwarding requires endpoint of same or higher version
+
 ## 0.11.7 - 2024-03-22
 ### Added
 - remote trait calling (RTC): default method in remote traits
