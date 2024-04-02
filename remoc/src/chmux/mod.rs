@@ -31,12 +31,15 @@ pub use cfg::{Cfg, PortsExhausted};
 pub use client::{Client, Connect, ConnectError};
 pub use listener::{Listener, ListenerError, ListenerStream, Request};
 pub use mux::ChMux;
-pub use port_allocator::{PortAllocator, PortNumber};
+pub use port_allocator::{PortAllocator, PortNumber, PortReq};
 pub use receiver::{DataBuf, Received, Receiver, ReceiverStream, RecvAnyError, RecvChunkError, RecvError};
 pub use sender::{ChunkSender, Closed, SendError, Sender, SenderSink, TrySendError};
 
 /// Channel multiplexer protocol version.
-pub const PROTOCOL_VERSION: u8 = 2;
+pub const PROTOCOL_VERSION: u8 = 3;
+
+/// Lowest protocol version that supports port ids.
+const PROTOCOL_VERSION_PORT_ID: u8 = 3;
 
 /// Channel multiplexer error.
 #[derive(Debug, Clone)]

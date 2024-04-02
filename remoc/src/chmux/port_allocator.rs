@@ -161,3 +161,43 @@ impl Drop for PortNumber {
         }
     }
 }
+
+/// A port connection request by the local endpoint.
+///
+/// The id can be set freely by the user.
+/// It is initialized to the [port number](Self::port).
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct PortReq {
+    /// The allocated, local port number.
+    pub port: PortNumber,
+    /// A user-specified id.
+    pub id: u32,
+}
+
+impl From<PortNumber> for PortReq {
+    /// Create a new port connection request with [`id`](Self::id) set to
+    /// the [port number](Self::port).
+    fn from(port: PortNumber) -> Self {
+        Self { id: port.number, port }
+    }
+}
+
+impl From<PortReq> for PortNumber {
+    fn from(req: PortReq) -> Self {
+        req.port
+    }
+}
+
+impl PortReq {
+    /// Create a new port connection request with [`id`](Self::id) set to
+    /// the [port number](Self::port).
+    pub fn new(port: PortNumber) -> Self {
+        Self::from(port)
+    }
+
+    /// Sets the id to the specified value.
+    pub fn with_id(mut self, id: u32) -> Self {
+        self.id = id;
+        self
+    }
+}

@@ -34,7 +34,7 @@ use super::{
     port_allocator::{PortAllocator, PortNumber},
     receiver::{PortReceiveMsg, ReceivedData, ReceivedPortRequests, Receiver},
     sender::Sender,
-    AnyStorage, Cfg, ChMuxError, PROTOCOL_VERSION,
+    AnyStorage, Cfg, ChMuxError, PortReq, PROTOCOL_VERSION, PROTOCOL_VERSION_PORT_ID,
 };
 
 /// Multiplexer protocol error.
@@ -121,7 +121,7 @@ pub(crate) enum PortEvt {
         /// Wait for remote port to become available.
         wait: bool,
         /// Ports to send, together with response channel.
-        ports: Vec<(PortNumber, oneshot::Sender<ConnectResponse>)>,
+        ports: Vec<(PortReq, oneshot::Sender<ConnectResponse>)>,
     },
     /// Return channel-specific flow control credits.
     ReturnCredits {
@@ -741,13 +741,14 @@ where
 
         match event {
             // Process local connect request.
-            GlobalEvt::ConnectReq(ConnectRequest { local_port, sent_tx: _sent_tx, response_tx, wait }) => {
+            GlobalEvt::ConnectReq(ConnectRequest { local_port, id, sent_tx: _sent_tx, response_tx, wait }) => {
                 if !self.remote_listener_dropped.load(Ordering::SeqCst) {
                     let local_port_num = *local_port;
                     if self.ports.insert(local_port, PortState::Connecting { response_tx }).is_some() {
                         panic!("ConnectRequest for already used local port {local_port_num}");
                     }
-                    send_msg(permit, MultiplexMsg::OpenPort { client_port: local_port_num, wait });
+                    let id = (self.remote_protocol_version >= PROTOCOL_VERSION_PORT_ID).then_some(id);
+                    send_msg(permit, MultiplexMsg::OpenPort { client_port: local_port_num, wait, id });
                 } else {
                     let _ = response_tx.send(ConnectResponse::Rejected { no_ports: false });
                 }
@@ -785,16 +786,20 @@ where
             // Send ports from port.
             GlobalEvt::Port(PortEvt::SendPorts { remote_port, ports, first, last, wait }) => {
                 let mut port_nums = Vec::new();
-                for (port, response_tx) in ports {
+                let mut ids = (self.remote_protocol_version >= PROTOCOL_VERSION_PORT_ID).then_some(Vec::new());
+                for (PortReq { port, id }, response_tx) in ports {
                     let port_num = *port;
                     if self.ports.insert(port, PortState::Connecting { response_tx }).is_some() {
                         panic!("SendPorts with already used local port {port_num}");
                     }
                     port_nums.push(port_num);
+                    if let Some(ids) = &mut ids {
+                        ids.push(id);
+                    }
                 }
                 send_msg(
                     permit,
-                    MultiplexMsg::PortData { port: remote_port, first, last, wait, ports: port_nums },
+                    MultiplexMsg::PortData { port: remote_port, first, last, wait, ports: port_nums, ids },
                 );
             }
 
@@ -903,7 +908,7 @@ where
             MultiplexMsg::Ping => (),
 
             // Open port request from remote endpoint.
-            MultiplexMsg::OpenPort { client_port, wait } => {
+            MultiplexMsg::OpenPort { client_port, wait, id } => {
                 if !self.outstanding_remote_port_requests.insert(client_port) {
                     return Err(protocol_err(format!(
                         "remote endpoint sent OpenPort request for same remote port {client_port} twice"
@@ -911,6 +916,7 @@ where
                 }
                 let req = RemoteConnectMsg::Request(Request::new(
                     client_port,
+                    id.unwrap_or(client_port),
                     wait,
                     self.port_allocator.clone(),
                     self.channel_tx.clone(),
@@ -983,7 +989,7 @@ where
             }
 
             // Ports from remote endpoint.
-            MultiplexMsg::PortData { port, first, last, wait, ports } => {
+            MultiplexMsg::PortData { port, first, last, wait, ports, ids } => {
                 if let Some(PortState::Connected {
                     receiver_tx_data: Some(receiver_tx_data),
                     receiver_credit_monitor,
@@ -1013,10 +1019,12 @@ where
 
                     let port_allocator = self.port_allocator.clone();
                     let channel_tx = self.channel_tx.clone();
+                    let ids = ids.unwrap_or_else(|| ports.clone());
                     let requests = ports
                         .into_iter()
-                        .map(|remote_port| {
-                            Request::new(remote_port, wait, port_allocator.clone(), channel_tx.clone())
+                        .zip(ids)
+                        .map(|(remote_port, id)| {
+                            Request::new(remote_port, id, wait, port_allocator.clone(), channel_tx.clone())
                         })
                         .collect();
                     let _ = receiver_tx_data.send(PortReceiveMsg::PortRequests(ReceivedPortRequests {

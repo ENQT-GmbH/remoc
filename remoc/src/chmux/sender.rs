@@ -22,7 +22,7 @@ use super::{
     client::ConnectResponse,
     credit::{AssignedCredits, CreditUser},
     mux::PortEvt,
-    AnyStorage, Connect, ConnectError, PortAllocator, PortNumber,
+    AnyStorage, Connect, ConnectError, PortAllocator, PortReq,
 };
 
 /// An error occurred during sending of a message.
@@ -370,7 +370,7 @@ impl Sender {
     /// The receiver limits the number of ports sendable per call, see
     /// [Receiver::max_ports](super::Receiver::max_ports).
     #[inline]
-    pub async fn connect(&mut self, ports: Vec<PortNumber>, wait: bool) -> Result<Vec<Connect>, SendError> {
+    pub async fn connect(&mut self, ports: Vec<PortReq>, wait: bool) -> Result<Vec<Connect>, SendError> {
         let mut ports_response = Vec::new();
         let mut sent_txs = Vec::new();
         let mut connects = Vec::new();

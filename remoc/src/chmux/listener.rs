@@ -51,6 +51,7 @@ impl From<ListenerError> for std::io::Error {
 /// Dropping the request rejects it.
 pub struct Request {
     remote_port: u32,
+    id: u32,
     wait: bool,
     allocator: PortAllocator,
     tx: mpsc::Sender<PortEvt>,
@@ -59,12 +60,18 @@ pub struct Request {
 
 impl fmt::Debug for Request {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Request").field("remote_port", &self.remote_port).field("wait", &self.wait).finish()
+        f.debug_struct("Request")
+            .field("remote_port", &self.remote_port)
+            .field("id", &self.id)
+            .field("wait", &self.wait)
+            .finish()
     }
 }
 
 impl Request {
-    pub(crate) fn new(remote_port: u32, wait: bool, allocator: PortAllocator, tx: mpsc::Sender<PortEvt>) -> Self {
+    pub(crate) fn new(
+        remote_port: u32, id: u32, wait: bool, allocator: PortAllocator, tx: mpsc::Sender<PortEvt>,
+    ) -> Self {
         let (done_tx, done_rx) = oneshot::channel();
         let drop_tx = tx.clone();
         tokio::spawn(async move {
@@ -73,12 +80,19 @@ impl Request {
             }
         });
 
-        Self { remote_port, wait, allocator, tx, done_tx: Some(done_tx) }
+        Self { remote_port, id, wait, allocator, tx, done_tx: Some(done_tx) }
     }
 
     /// The remote port number.
     pub fn remote_port(&self) -> u32 {
         self.remote_port
+    }
+
+    /// The remotely provided id.
+    ///
+    /// If no id was provided, this returns the [`remote port`](Self::remote_port).
+    pub fn id(&self) -> u32 {
+        self.id
     }
 
     /// Indicates whether the handler of the request should wait for a local

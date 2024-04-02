@@ -19,6 +19,7 @@ use super::{
     port_allocator::{PortAllocator, PortNumber},
     receiver::Receiver,
     sender::Sender,
+    PortReq,
 };
 
 /// An error occurred during connecting to a remote service.
@@ -140,6 +141,8 @@ impl Drop for ConnectRequestCredit {
 pub(crate) struct ConnectRequest {
     /// Local port.
     pub local_port: PortNumber,
+    /// Port id.
+    pub id: u32,
     /// Notification that request has been queued for sending.
     pub sent_tx: mpsc::Sender<()>,
     /// Response channel sender.
@@ -247,15 +250,15 @@ impl Client {
     /// or rejects the connection.
     ///
     /// This returns a [Connect] that must be awaited to obtain the result.
-    pub async fn connect_ext(&self, local_port: Option<PortNumber>, wait: bool) -> Result<Connect, ConnectError> {
+    pub async fn connect_ext(&self, local_port: Option<PortReq>, wait: bool) -> Result<Connect, ConnectError> {
         // Obtain local port.
         let local_port = match local_port {
             Some(local_port) => local_port,
             None => {
                 if wait {
-                    self.port_allocator.allocate().await
+                    self.port_allocator.allocate().await.into()
                 } else {
-                    self.port_allocator.try_allocate().ok_or(ConnectError::LocalPortsExhausted)?
+                    self.port_allocator.try_allocate().ok_or(ConnectError::LocalPortsExhausted)?.into()
                 }
             }
         };
@@ -273,7 +276,8 @@ impl Client {
         // Build and send request.
         let (sent_tx, sent_rx) = mpsc::channel(1);
         let (response_tx, response_rx) = oneshot::channel();
-        let req = ConnectRequest { local_port, sent_tx, response_tx, wait };
+        let PortReq { port: local_port, id } = local_port;
+        let req = ConnectRequest { local_port, id, sent_tx, response_tx, wait };
         let _ = self.tx.send(req);
 
         let listener_dropped = self.listener_dropped.clone();

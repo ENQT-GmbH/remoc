@@ -35,6 +35,8 @@ pub enum MultiplexMsg {
         // Flags u8.
         /// Wait for server port to become available.
         wait: bool,
+        /// Port id
+        id: Option<u32>,
     },
     /// Connection accepted and server port assigned.
     PortOpened {
@@ -82,6 +84,8 @@ pub enum MultiplexMsg {
         wait: bool,
         /// Ports
         ports: Vec<u32>,
+        /// Port ids
+        ids: Option<Vec<u32>>,
     },
     /// Give flow credits to a port.
     PortCredits {
@@ -130,16 +134,18 @@ pub const MSG_CLIENT_FINISH: u8 = 13;
 pub const MSG_LISTENER_FINISH: u8 = 14;
 pub const MSG_GOODBYE: u8 = 15;
 
-pub const MSG_OPEN_PORT_FLAG_WAIT: u8 = 0b00000001;
+pub const MSG_OPEN_PORT_FLAG_WAIT: u8 = 0b0000_0001;
+pub const MSG_OPEN_PORT_FLAG_ID: u8 = 0b0000_0010;
 
-pub const MSG_REJECTED_FLAG_NO_PORTS: u8 = 0b00000001;
+pub const MSG_REJECTED_FLAG_NO_PORTS: u8 = 0b0000_0001;
 
-pub const MSG_DATA_FLAG_FIRST: u8 = 0b00000001;
-pub const MSG_DATA_FLAG_LAST: u8 = 0b00000010;
+pub const MSG_DATA_FLAG_FIRST: u8 = 0b0000_0001;
+pub const MSG_DATA_FLAG_LAST: u8 = 0b0000_0010;
 
-pub const MSG_PORT_DATA_FLAG_FIRST: u8 = 0b00000001;
-pub const MSG_PORT_DATA_FLAG_LAST: u8 = 0b00000010;
-pub const MSG_PORT_DATA_FLAG_WAIT: u8 = 0b00000100;
+pub const MSG_PORT_DATA_FLAG_FIRST: u8 = 0b0000_0001;
+pub const MSG_PORT_DATA_FLAG_LAST: u8 = 0b0000_0010;
+pub const MSG_PORT_DATA_FLAG_WAIT: u8 = 0b0000_0100;
+pub const MSG_PORT_DATA_FLAG_IDS: u8 = 0b0000_1000;
 
 /// Maximum message length.
 ///
@@ -162,10 +168,20 @@ impl MultiplexMsg {
             MultiplexMsg::Ping => {
                 writer.write_u8(MSG_PING)?;
             }
-            MultiplexMsg::OpenPort { client_port, wait } => {
+            MultiplexMsg::OpenPort { client_port, wait, id } => {
                 writer.write_u8(MSG_OPEN_PORT)?;
                 writer.write_u32::<LE>(*client_port)?;
-                writer.write_u8(if *wait { MSG_OPEN_PORT_FLAG_WAIT } else { 0 })?;
+                let mut flags = 0;
+                if *wait {
+                    flags |= MSG_OPEN_PORT_FLAG_WAIT
+                };
+                if id.is_some() {
+                    flags |= MSG_OPEN_PORT_FLAG_ID;
+                }
+                writer.write_u8(flags)?;
+                if let Some(id) = id {
+                    writer.write_u32::<LE>(*id)?;
+                }
             }
             MultiplexMsg::PortOpened { client_port, server_port } => {
                 writer.write_u8(MSG_PORT_OPENED)?;
@@ -189,7 +205,7 @@ impl MultiplexMsg {
                 }
                 writer.write_u8(flags)?;
             }
-            MultiplexMsg::PortData { port, first, last, wait, ports } => {
+            MultiplexMsg::PortData { port, first, last, wait, ports, ids } => {
                 writer.write_u8(MSG_PORT_DATA)?;
                 writer.write_u32::<LE>(*port)?;
                 let mut flags = 0;
@@ -202,9 +218,23 @@ impl MultiplexMsg {
                 if *wait {
                     flags |= MSG_PORT_DATA_FLAG_WAIT;
                 }
+                if ids.is_some() {
+                    flags |= MSG_PORT_DATA_FLAG_IDS;
+                }
                 writer.write_u8(flags)?;
-                for p in ports {
-                    writer.write_u32::<LE>(*p)?;
+                match ids {
+                    Some(ids) => {
+                        assert_eq!(ports.len(), ids.len(), "ports and port ids must have same length");
+                        for (p, id) in ports.iter().zip(ids) {
+                            writer.write_u32::<LE>(*p)?;
+                            writer.write_u32::<LE>(*id)?;
+                        }
+                    }
+                    None => {
+                        for p in ports {
+                            writer.write_u32::<LE>(*p)?;
+                        }
+                    }
                 }
             }
             MultiplexMsg::PortCredits { port, credits } => {
@@ -249,10 +279,16 @@ impl MultiplexMsg {
                 Self::Hello { version: reader.read_u8()?, cfg: ExchangedCfg::read(&mut reader)? }
             }
             MSG_PING => Self::Ping,
-            MSG_OPEN_PORT => Self::OpenPort {
-                client_port: reader.read_u32::<LE>()?,
-                wait: reader.read_u8()? & MSG_OPEN_PORT_FLAG_WAIT != 0,
-            },
+            MSG_OPEN_PORT => {
+                let client_port = reader.read_u32::<LE>()?;
+                let flags = reader.read_u8()?;
+                let wait = flags & MSG_OPEN_PORT_FLAG_WAIT != 0;
+                let mut id = (flags & MSG_OPEN_PORT_FLAG_ID != 0).then_some(0);
+                if let Some(id) = &mut id {
+                    *id = reader.read_u32::<LE>()?;
+                }
+                Self::OpenPort { client_port, wait, id }
+            }
             MSG_PORT_OPENED => {
                 Self::PortOpened { client_port: reader.read_u32::<LE>()?, server_port: reader.read_u32::<LE>()? }
             }
@@ -275,6 +311,7 @@ impl MultiplexMsg {
                 let first = flags & MSG_PORT_DATA_FLAG_FIRST != 0;
                 let last = flags & MSG_PORT_DATA_FLAG_LAST != 0;
                 let wait = flags & MSG_PORT_DATA_FLAG_WAIT != 0;
+                let mut ids = (flags & MSG_PORT_DATA_FLAG_IDS != 0).then_some(Vec::new());
                 let mut ports = Vec::new();
                 loop {
                     match reader.read_u32::<LE>() {
@@ -282,8 +319,11 @@ impl MultiplexMsg {
                         Err(err) if err.kind() == ErrorKind::UnexpectedEof => break,
                         Err(err) => return Err(err),
                     }
+                    if let Some(ids) = &mut ids {
+                        ids.push(reader.read_u32::<LE>()?);
+                    }
                 }
-                Self::PortData { port, first, last, wait, ports }
+                Self::PortData { port, first, last, wait, ports, ids }
             }
             MSG_PORT_CREDITS => {
                 Self::PortCredits { port: reader.read_u32::<LE>()?, credits: reader.read_u32::<LE>()? }

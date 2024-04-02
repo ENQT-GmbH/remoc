@@ -1,5 +1,8 @@
 use bytes::{Buf, Bytes};
-use futures::future::BoxFuture;
+use futures::{
+    future::{BoxFuture, FutureExt},
+    Future,
+};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::{
     cell::RefCell,
@@ -83,6 +86,7 @@ pub struct PortDeserializer {
         ),
     >,
     storage: AnyStorage,
+    tasks: Vec<BoxFuture<'static, ()>>,
 }
 
 impl PortDeserializer {
@@ -92,10 +96,22 @@ impl PortDeserializer {
 
     /// Create a new port deserializer and register it as active.
     fn start(allocator: chmux::PortAllocator, storage: AnyStorage) -> Rc<RefCell<PortDeserializer>> {
-        let this = Rc::new(RefCell::new(Self { allocator, expected: HashMap::new(), storage }));
+        let this =
+            Rc::new(RefCell::new(Self { allocator, expected: HashMap::new(), storage, tasks: Vec::new() }));
         let weak = Rc::downgrade(&this);
         Self::INSTANCE.with(move |i| i.replace(weak));
         this
+    }
+
+    /// Gets the active port deserializer for this thread.
+    fn instance<E>() -> Result<Rc<RefCell<Self>>, E>
+    where
+        E: serde::de::Error,
+    {
+        match Self::INSTANCE.with(|i| i.borrow().upgrade()) {
+            Some(this) => Ok(this),
+            None => Err(serde::de::Error::custom("this remoc object can only be deserialized during receiving")),
+        }
     }
 
     /// Deregister the active port deserializer and return it.
@@ -117,11 +133,7 @@ impl PortDeserializer {
     where
         E: serde::de::Error,
     {
-        let this = match Self::INSTANCE.with(|i| i.borrow().upgrade()) {
-            Some(this) => this,
-            None => return Err(serde::de::Error::custom("a channel can only be deserialized during receiving")),
-        };
-
+        let this = Self::instance()?;
         let mut this =
             this.try_borrow_mut().expect("PortDeserializer is referenced multiple times during deserialization");
         let local_port =
@@ -138,14 +150,25 @@ impl PortDeserializer {
     where
         E: serde::de::Error,
     {
-        let this = match Self::INSTANCE.with(|i| i.borrow().upgrade()) {
-            Some(this) => this,
-            None => return Err(serde::de::Error::custom("a handle can only be deserialized during receiving")),
-        };
+        let this = Self::instance()?;
         let this =
             this.try_borrow().expect("PortDeserializer is referenced multiple times during deserialization");
 
         Ok(this.storage.clone())
+    }
+
+    /// Spawn a task.
+    #[inline]
+    pub fn spawn<E>(task: impl Future<Output = ()> + Send + 'static) -> Result<(), E>
+    where
+        E: serde::de::Error,
+    {
+        let this = Self::instance()?;
+        let mut this =
+            this.try_borrow_mut().expect("PortDeserializer is referenced multiple times during deserialization");
+
+        this.tasks.push(task.boxed());
+        Ok(())
     }
 }
 
@@ -360,7 +383,7 @@ where
                 // Call port callbacks from received objects, ignoring superfluous requests for
                 // forward compatibility.
                 for request in requests {
-                    if let Some((local_port, callback)) = pds.expected.remove(&request.remote_port()) {
+                    if let Some((local_port, callback)) = pds.expected.remove(&request.id()) {
                         tokio::spawn(callback(local_port, request));
                     }
                 }
@@ -369,6 +392,11 @@ where
                 if !pds.expected.is_empty() {
                     return Err(RecvError::MissingPorts(pds.expected.keys().copied().collect()));
                 }
+            }
+
+            // Spawn registered tasks.
+            for task in pds.tasks.drain(..) {
+                tokio::spawn(task);
             }
 
             return Ok(Some(self.item.take().unwrap()));

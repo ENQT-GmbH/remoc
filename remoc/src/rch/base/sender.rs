@@ -1,5 +1,8 @@
 use bytes::BytesMut;
-use futures::future::BoxFuture;
+use futures::{
+    future::{BoxFuture, FutureExt},
+    Future,
+};
 use serde::{ser, Deserialize, Serialize};
 use std::{
     cell::RefCell,
@@ -19,7 +22,7 @@ use super::{
     BIG_DATA_CHUNK_QUEUE, BIG_DATA_LIMIT,
 };
 use crate::{
-    chmux::{self, AnyStorage},
+    chmux::{self, AnyStorage, PortReq},
     codec::{self, SerializationError},
 };
 
@@ -141,6 +144,7 @@ pub struct PortSerializer {
     requests:
         Vec<(chmux::PortNumber, Box<dyn FnOnce(chmux::Connect) -> BoxFuture<'static, ()> + Send + 'static>)>,
     storage: AnyStorage,
+    tasks: Vec<BoxFuture<'static, ()>>,
 }
 
 impl PortSerializer {
@@ -150,10 +154,21 @@ impl PortSerializer {
 
     /// Create a new port serializer and register it as active.
     fn start(allocator: chmux::PortAllocator, storage: AnyStorage) -> Rc<RefCell<Self>> {
-        let this = Rc::new(RefCell::new(Self { allocator, requests: Vec::new(), storage }));
+        let this = Rc::new(RefCell::new(Self { allocator, requests: Vec::new(), storage, tasks: Vec::new() }));
         let weak = Rc::downgrade(&this);
         Self::INSTANCE.with(move |i| i.replace(weak));
         this
+    }
+
+    /// Gets the active port serializer for this thread.
+    fn instance<E>() -> Result<Rc<RefCell<Self>>, E>
+    where
+        E: serde::ser::Error,
+    {
+        match Self::INSTANCE.with(|i| i.borrow().upgrade()) {
+            Some(this) => Ok(this),
+            None => Err(ser::Error::custom("this remoc object can only be serialized for sending")),
+        }
     }
 
     /// Deregister the active port serializer and return it.
@@ -174,10 +189,7 @@ impl PortSerializer {
     where
         E: serde::ser::Error,
     {
-        let this = match Self::INSTANCE.with(|i| i.borrow().upgrade()) {
-            Some(this) => this,
-            None => return Err(ser::Error::custom("a channel can only be serialized for sending")),
-        };
+        let this = Self::instance()?;
         let mut this =
             this.try_borrow_mut().expect("PortSerializer is referenced multiple times during serialization");
 
@@ -194,13 +206,24 @@ impl PortSerializer {
     where
         E: serde::ser::Error,
     {
-        let this = match Self::INSTANCE.with(|i| i.borrow().upgrade()) {
-            Some(this) => this,
-            None => return Err(ser::Error::custom("a handle can only be serialized for sending")),
-        };
+        let this = Self::instance()?;
         let this = this.try_borrow().expect("PortSerializer is referenced multiple times during serialization");
 
         Ok(this.storage.clone())
+    }
+
+    /// Spawn a task.
+    #[inline]
+    pub fn spawn<E>(task: impl Future<Output = ()> + Send + 'static) -> Result<(), E>
+    where
+        E: serde::ser::Error,
+    {
+        let this = Self::instance()?;
+        let mut this =
+            this.try_borrow_mut().expect("PortSerializer is referenced multiple times during serialization");
+
+        this.tasks.push(task.boxed());
+        Ok(())
     }
 }
 
@@ -399,11 +422,13 @@ where
             }
         };
 
+        let PortSerializer { requests, tasks, .. } = ps;
+
         // Extract ports and connect callbacks.
         let mut ports = Vec::new();
         let mut callbacks = Vec::new();
-        for (port, callback) in ps.requests {
-            ports.push(port);
+        for (port, callback) in requests {
+            ports.push(PortReq::new(port));
             callbacks.push(callback);
         }
 
@@ -426,6 +451,11 @@ where
         // We have to spawn a task for this to ensure cancellation safety.
         for (callback, connect) in callbacks.into_iter().zip(connects.into_iter()) {
             tokio::spawn(callback(connect));
+        }
+
+        // Spawn registered tasks.
+        for task in tasks {
+            tokio::spawn(task);
         }
 
         Ok(())
