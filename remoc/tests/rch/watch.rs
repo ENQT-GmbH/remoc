@@ -275,7 +275,7 @@ async fn max_item_size_exceeded() {
     // Test error clearing.
     assert!(matches!(tx.error(), Some(SendError::RemoteSend(SendErrorKind::MaxItemSizeExceeded))));
     tx.clear_error();
-    assert!(matches!(tx.error(), None));
+    assert!(tx.error().is_none());
     tx.check().unwrap();
 }
 
