@@ -10,8 +10,9 @@ use tokio_util::sync::ReusableBoxFuture;
 
 use super::{
     credit::{ChannelCreditReturner, UsedCredit},
+    forward,
     mux::PortEvt,
-    AnyStorage, PortAllocator, Request,
+    AnyStorage, ForwardError, PortAllocator, Request, Sender,
 };
 
 /// An error occurred during receiving a data message.
@@ -579,6 +580,19 @@ impl Receiver {
     /// Returns the arbitrary data storage of the channel multiplexer.
     pub fn storage(&self) -> AnyStorage {
         self.storage.clone()
+    }
+
+    /// Forwards all data received to the specified sender.
+    ///
+    /// This also recursively spawns background tasks for forwarding data on received ports.
+    ///
+    /// Returns when the channel is closed, but spawned tasks will continue forwarding until
+    /// their channels are closed.
+    ///
+    /// Returns the total number of bytes forwarded on this channel,
+    /// i.e. not counting forwarded bytes on recursively forwarded channel.
+    pub async fn forward(&mut self, tx: &mut Sender) -> Result<usize, ForwardError> {
+        forward::forward(self, tx).await
     }
 }
 

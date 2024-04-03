@@ -62,7 +62,7 @@ impl Receiver {
         let Ok(rx) = successor_rx.await else { return };
         let Ok(mut rx) = rx.into_inner().await else { return };
         let Ok(mut tx) = tx.into_inner().await else { return };
-        if let Err(err) = chmux::forward(&mut rx, &mut tx).await {
+        if let Err(err) = rx.forward(&mut tx).await {
             tracing::debug!("forwarding binary channel failed: {err}");
         }
     }

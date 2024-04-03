@@ -30,7 +30,7 @@ mod sender;
 pub use any_storage::{AnyBox, AnyEntry, AnyStorage};
 pub use cfg::{Cfg, PortsExhausted};
 pub use client::{Client, Connect, ConnectError};
-pub use forward::{forward, ForwardError};
+pub use forward::ForwardError;
 pub use listener::{Listener, ListenerError, ListenerStream, Request};
 pub use mux::ChMux;
 pub use port_allocator::{PortAllocator, PortNumber, PortReq};
