@@ -116,6 +116,8 @@ impl CreditProvider {
 /// Requests and consumes credits for sending over a channel.
 pub(crate) struct CreditUser {
     channel: Weak<Mutex<ChannelCreditsInner>>,
+    /// Whether data is sent anyway, when remote endpoint closed channel gracefully.
+    pub(crate) override_graceful_close: bool,
 }
 
 impl CreditUser {
@@ -132,7 +134,9 @@ impl CreditUser {
                 };
                 let mut channel = channel.lock().unwrap();
                 if let Some(gracefully) = channel.closed {
-                    return Err(SendError::Closed { gracefully });
+                    if !self.override_graceful_close || !gracefully {
+                        return Err(SendError::Closed { gracefully });
+                    }
                 }
 
                 if channel.credits >= min_req {
@@ -162,7 +166,9 @@ impl CreditUser {
         };
         let mut channel = channel.lock().unwrap();
         if let Some(gracefully) = channel.closed {
-            return Err(SendError::Closed { gracefully });
+            if !self.override_graceful_close || !gracefully {
+                return Err(SendError::Closed { gracefully });
+            }
         }
 
         if channel.credits >= req {
@@ -180,7 +186,7 @@ pub(crate) fn credit_send_pair(initial_credits: u32) -> (CreditProvider, CreditU
     let inner =
         Arc::new(Mutex::new(ChannelCreditsInner { credits: initial_credits, closed: None, notify: Vec::new() }));
 
-    let user = CreditUser { channel: Arc::downgrade(&inner) };
+    let user = CreditUser { channel: Arc::downgrade(&inner), override_graceful_close: false };
     let provider = CreditProvider(inner);
     (provider, user)
 }

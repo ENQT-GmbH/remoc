@@ -443,6 +443,24 @@ impl Sender {
         Closed::new(&self.hangup_notify)
     }
 
+    /// Returns whether data can be sent anyway, even if remote endpoint closed the channel gracefully.
+    ///
+    /// Sending always fails if remote endpoint closed the channel non-gracefully, for example
+    /// by dropping the receiver.
+    ///
+    /// By default this is false.
+    pub fn is_graceful_close_overridden(&self) -> bool {
+        self.credits.override_graceful_close
+    }
+
+    /// Sets whether data should be sent anyway, even if remote endpoint closed the channel gracefully.
+    ///
+    /// Sending always fails if remote endpoint closed the channel non-gracefully, for example
+    /// by dropping the receiver.
+    pub fn set_override_graceful_close(&mut self, override_graceful_close: bool) {
+        self.credits.override_graceful_close = override_graceful_close;
+    }
+
     /// Convert this into a sink.
     pub fn into_sink(self) -> SenderSink {
         SenderSink::new(self)
