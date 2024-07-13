@@ -194,6 +194,14 @@ pub use message_pack::MessagePack;
 #[doc(no_inline)]
 pub use message_pack::MessagePack as Default;
 
+#[cfg(feature = "codec-postcard")]
+mod postcard;
+#[cfg(feature = "codec-postcard")]
+pub use postcard::*;
+#[cfg(feature = "default-codec-postcard")]
+#[doc(no_inline)]
+pub use postcard::Postcard as Default;
+
 /// Default codec is not set and cannot be used.
 ///
 /// Set one of the crate features `default-codec-*` to define the default codec.
