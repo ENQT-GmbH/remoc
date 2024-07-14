@@ -110,3 +110,9 @@ fn json_with_attr() {
 fn message_pack() {
     roundtrip::<TestStruct, codec::MessagePack>()
 }
+
+#[cfg(feature = "codec-postcard")]
+#[test]
+fn postcard() {
+    roundtrip::<TestStruct, codec::Postcard>()
+}

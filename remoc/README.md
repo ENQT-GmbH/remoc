@@ -95,6 +95,7 @@ The following features enable data formats for transmission:
   * `codec-ciborium` provides the CBOR format.
   * `codec-json` provides the JSON format.
   * `codec-message-pack` provides the MessagePack format.
+  * `codec-postcard` provides the Postcard format.
 
 The feature `default-codec-*` selects the respective codec as default.
 At most one of this must be selected and this should only be used by

@@ -121,6 +121,7 @@ jobs:
           - bincode
           - ciborium
           - message-pack
+          - postcard
 
     steps:
       - name: Checkout sources
