@@ -197,7 +197,7 @@ pub use message_pack::MessagePack as Default;
 #[cfg(feature = "codec-postcard")]
 mod postcard;
 #[cfg(feature = "codec-postcard")]
-pub use postcard::*;
+pub use postcard::Postcard;
 #[cfg(feature = "default-codec-postcard")]
 #[doc(no_inline)]
 pub use postcard::Postcard as Default;

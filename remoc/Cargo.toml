@@ -46,7 +46,7 @@ full-codecs = [
 remoc_macro = { version = "=0.13.0", path = "../remoc_macro", optional = true }
 
 futures = "0.3"
-tokio = { version = "1.34.0", features = ["macros", "rt", "sync", "time"] }
+tokio = { version = "1.34", features = ["macros", "rt", "sync", "time"] }
 tokio-util = { version = "0.7", features = ["codec"] }
 rand = "0.8"
 tracing = "0.1.29"

@@ -2,8 +2,6 @@ use serde::{Deserialize, Serialize};
 
 use super::{Codec, DeserializationError, SerializationError};
 
-
-
 /// Postcard codec.
 ///
 /// See [postcard] for details.
@@ -31,7 +29,7 @@ impl Codec for Postcard {
     {
         let mut bytes = vec![];
         reader.read_to_end(&mut bytes).map_err(DeserializationError::new)?;
-        
+
         let item = postcard::from_bytes(&bytes).map_err(DeserializationError::new)?;
         Ok(item)
     }
