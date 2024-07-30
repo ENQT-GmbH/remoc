@@ -2,8 +2,8 @@
 //!
 //! This module allows calling of methods on an object located on a remote endpoint via a trait.
 //!
-//! By tagging a trait with the [remote attribute](remote), server and client types
-//! are generated for that trait.
+//! By tagging a trait with the [remote attribute](remote), server, client and request receiver
+//! types are generated for that trait.
 //! The client type contains an automatically generated implementation of the trait.
 //! Each call is encoded into a request and send to the server.
 //! The server accepts requests from the client and calls the requested trait method on an object
@@ -56,6 +56,16 @@
 //!
 //! If unsure, you probably want to use `TraitServerSharedMut`, even when the target object will
 //! only be accessed by a single client.
+//!
+//! # Request receiver type
+//!
+//! Assuming the trait is called `Trait`, the request receiver will be called `TraitReqReceiver`.
+//!
+//! The request receiver is also a server. However, instead of invoking the trait methods
+//! on a target object, it allows you to process each request as a message and send the result
+//! via a oneshot reply channel.
+//!
+//! See [ReqReceiver] for details.
 //!
 //! # Usage
 //!
@@ -235,9 +245,10 @@ pub use async_trait::async_trait;
 ///
 /// See [module-level documentation](self) for details and examples.
 ///
-/// This generates the client and server structs for the trait.
+/// This generates the client, server and request receiver structs for the trait.
 /// If the trait is called `Trait` the client will be called `TraitClient` and
-/// the name of the servers will start with `TraitServer`.
+/// the name of the servers will start with `TraitServer`. The request receiver
+/// will be called `TraitReqReceiver`.
 ///
 /// # Requirements
 ///
@@ -507,6 +518,32 @@ where
     ///
     /// Serving ends when the client is dropped.
     async fn serve(self, spawn: bool);
+}
+
+/// A receiver of requests made by the client of a remotable trait.
+#[async_trait]
+pub trait ReqReceiver<Codec>: ServerBase
+where
+    Self: Sized,
+{
+    /// Request enum type.
+    type Req;
+
+    /// Creates a new request receiver instance together with its associated client.
+    fn new(request_buffer: usize) -> (Self, Self::Client);
+
+    /// Receives the next request, i.e. method call, from the client.
+    ///
+    /// Handle the request by matching on the variants of the request enum.
+    /// Then reply with the result on the oneshot sender provided in the
+    /// `__reply_tx` field of each enum variant.
+    async fn recv(&mut self) -> Result<Option<Self::Req>, mpsc::RecvError>;
+
+    /// Closes the receiver half of the request channel without dropping it.
+    ///
+    /// This allows to process outstanding requests while stopping the client
+    /// from sending new requests.
+    fn close(&mut self);
 }
 
 // Re-exports for proc macro usage.

@@ -190,13 +190,42 @@ impl TraitMethod {
         let ident = to_pascal_case(&self.ident);
         let ret_ty = &self.ret_ty;
 
-        let mut entries = quote! { __reply_tx: ::remoc::rch::oneshot::Sender<#ret_ty, Codec>, };
+        let mut entries = quote! {
+            #[doc="Reply channel for sending the result of the method invocation.\n\n"]
+            #[doc="The channel is closed when the calling async method is cancelled "]
+            #[doc="or a connection error occurs."]
+            __reply_tx: ::remoc::rch::oneshot::Sender<#ret_ty, Codec>,
+        };
+
         for NamedArg { attrs, ident, ty } in &self.args {
             let attrs = attribute_tokens(attrs);
             entries.append_all(quote! { #attrs #ident : #ty , });
         }
 
-        quote! { #ident {#entries} , }
+        let docs_attrs = attribute_tokens(
+            &self
+                .attrs
+                .iter()
+                .filter(|attr| matches!(attr.path().get_ident(), Some(ident) if *ident == "doc"))
+                .cloned()
+                .collect::<Vec<_>>(),
+        );
+        quote! { #docs_attrs #ident {#entries} , }
+    }
+
+    /// Conversion clause for `impl From<#from_ty>`.
+    pub fn impl_from_clause(&self, from_ty: &Ident) -> TokenStream {
+        let ident = &self.ident;
+        let enum_ident = to_pascal_case(ident);
+
+        // Build enum argument list.
+        let mut entries = quote! { __reply_tx, };
+        for NamedArg { ident: arg_ident, .. } in &self.args {
+            entries.append_all(quote! { #arg_ident, });
+        }
+
+        let entry = quote! { #enum_ident {#entries} };
+        quote! { #from_ty :: #entry => Self :: #entry , }
     }
 
     /// Enum match discriminator and dispatch code.
