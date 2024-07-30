@@ -26,7 +26,8 @@
 //!   * `default-codec-bincode` -- enables and selects Bincode as the default codec
 //!   * `default-codec-ciborium` -- enables and selects CBOR as the default codec
 //!   * `default-codec-json` -- enables and selects JSON as the default codec
-//!   * `default-codec-message-pack` -- enables selects MessagePack as the default codec
+//!   * `default-codec-message-pack` -- enables and selects MessagePack as the default codec
+//!   * `default-codec-postcard` -- enables and selects Postcard as the default codec
 //!
 //! By default the JSON codec is enabled and the default, i.e. the `default-codec-json`
 //! crate feature is enabled.
