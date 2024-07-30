@@ -364,9 +364,9 @@ where
             None
         };
 
-        tracing::Span::current().record("msg", &tracing::field::debug(&msg));
+        tracing::Span::current().record("msg", tracing::field::debug(&msg));
         if let Some(data) = &data {
-            tracing::Span::current().record("data", &tracing::field::debug(&data));
+            tracing::Span::current().record("data", tracing::field::debug(&data));
         }
 
         Ok(TransportMsg { msg, data })
