@@ -43,7 +43,7 @@ full-codecs = [
 
 
 [dependencies]
-remoc_macro = { version = "=0.13.1", path = "../remoc_macro", optional = true }
+remoc_macro = { version = "=0.14.0-pre1", path = "../remoc_macro", optional = true }
 
 futures = "0.3"
 tokio = { version = "1.34", features = ["macros", "rt", "sync", "time"] }
