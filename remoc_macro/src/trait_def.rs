@@ -761,7 +761,7 @@ impl TraitDef {
                     (Self { req_rx }, Self::Client::new(req_tx))
                 }
 
-                async fn recv(&mut self) -> Result<Option<Self::Req>, ::remoc::rch::mpsc::RecvError> {
+                async fn recv(&mut self) -> ::std::result::Result<Option<Self::Req>, ::remoc::rch::mpsc::RecvError> {
                     self.req_rx.recv().await.map(|res| res.map(|opt| opt.into()))
                 }
 
