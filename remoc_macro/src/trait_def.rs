@@ -216,6 +216,7 @@ impl TraitDef {
 
         let (trait_generics, _) = self.generics(false, false, false, false, false);
         let (ty_generics, impl_generics) = self.generics(false, true, false, false, false);
+        let (ty_generics_default_codec, _) = self.generics(false, true, true, false, false);
         let ty_generics_where = &ty_generics.where_clause;
         let (impl_generics_impl, impl_generics_ty, impl_generics_where) = impl_generics.split_for_impl();
         let (req_all, req_value, req_ref, req_ref_mut) = self.request_enum_idents();
@@ -317,7 +318,7 @@ impl TraitDef {
             #[serde(crate = "::remoc::_serde")]
             #[serde(bound(serialize = #impl_generics_where_str))]
             #[serde(bound(deserialize = #impl_generics_where_str))]
-            #vis enum #req_all #ty_generics #ty_generics_where {
+            #vis enum #req_all #ty_generics_default_codec #ty_generics_where {
                 #value_entries
                 #ref_entries
                 #ref_mut_entries
