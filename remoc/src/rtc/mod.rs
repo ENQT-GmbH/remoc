@@ -221,7 +221,7 @@
 //! ```
 //!
 
-use futures::{future::BoxFuture, Future, FutureExt};
+use futures::{Future, FutureExt};
 use std::{
     error::Error,
     fmt,
@@ -229,6 +229,7 @@ use std::{
     sync::Arc,
     task::{Context, Poll},
 };
+use tokio_util::sync::ReusableBoxFuture;
 
 use crate::{
     chmux,
@@ -404,7 +405,7 @@ pub trait Client {
 /// or the connection between them has been lost.
 ///
 /// This can be obtained via [Client::closed].
-pub struct Closed(BoxFuture<'static, ()>);
+pub struct Closed(ReusableBoxFuture<'static, ()>);
 
 impl fmt::Debug for Closed {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -415,7 +416,7 @@ impl fmt::Debug for Closed {
 impl Closed {
     #[doc(hidden)]
     pub fn new(fut: impl Future<Output = ()> + Send + 'static) -> Self {
-        Self(fut.boxed())
+        Self(ReusableBoxFuture::new(fut))
     }
 }
 

@@ -1,7 +1,6 @@
 use bytes::Bytes;
 use futures::{
-    future::{self, BoxFuture},
-    ready,
+    future, ready,
     sink::Sink,
     task::{Context, Poll},
     Future, FutureExt,
@@ -17,6 +16,7 @@ use std::{
     },
 };
 use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio_util::sync::ReusableBoxFuture;
 
 use super::{
     client::ConnectResponse,
@@ -563,7 +563,7 @@ impl<'a> ChunkSender<'a> {
 /// A sink sending byte data over a channel.
 pub struct SenderSink {
     sender: Option<Arc<Mutex<Sender>>>,
-    send_fut: Option<BoxFuture<'static, Result<(), SendError>>>,
+    send_fut: Option<ReusableBoxFuture<'static, Result<(), SendError>>>,
 }
 
 impl SenderSink {
@@ -583,7 +583,7 @@ impl SenderSink {
 
         match self.sender.clone() {
             Some(sender) => {
-                self.send_fut = Some(Self::send(sender, data).boxed());
+                self.send_fut = Some(ReusableBoxFuture::new(Self::send(sender, data)));
                 Ok(())
             }
             None => panic!("start_send after sink has been closed"),
@@ -593,7 +593,7 @@ impl SenderSink {
     fn poll_send(&mut self, cx: &mut Context) -> Poll<Result<(), SendError>> {
         match &mut self.send_fut {
             Some(fut) => {
-                let res = ready!(fut.as_mut().poll(cx));
+                let res = ready!(fut.poll(cx));
                 self.send_fut = None;
                 Poll::Ready(res)
             }

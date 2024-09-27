@@ -1,12 +1,11 @@
 use futures::{
-    future::BoxFuture,
     ready,
     stream::Stream,
     task::{Context, Poll},
-    FutureExt,
 };
 use std::{error::Error, fmt, pin::Pin, sync::Arc};
 use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio_util::sync::ReusableBoxFuture;
 
 use super::{
     mux::PortEvt,
@@ -268,7 +267,7 @@ impl Drop for Listener {
 pub struct ListenerStream {
     server: Arc<Mutex<Listener>>,
     #[allow(clippy::type_complexity)]
-    accept_fut: Option<BoxFuture<'static, Option<Result<(Sender, Receiver), ListenerError>>>>,
+    accept_fut: Option<ReusableBoxFuture<'static, Option<Result<(Sender, Receiver), ListenerError>>>>,
 }
 
 impl ListenerStream {
@@ -283,11 +282,11 @@ impl ListenerStream {
 
     fn poll_next(&mut self, cx: &mut Context) -> Poll<Option<Result<(Sender, Receiver), ListenerError>>> {
         if self.accept_fut.is_none() {
-            self.accept_fut = Some(Self::accept(self.server.clone()).boxed());
+            self.accept_fut = Some(ReusableBoxFuture::new(Self::accept(self.server.clone())));
         }
 
         let accept_fut = self.accept_fut.as_mut().unwrap();
-        let res = ready!(accept_fut.as_mut().poll(cx));
+        let res = ready!(accept_fut.poll(cx));
 
         self.accept_fut = None;
         Poll::Ready(res)
