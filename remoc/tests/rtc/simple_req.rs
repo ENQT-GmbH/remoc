@@ -1,4 +1,5 @@
 use crate::loop_channel;
+use remoc::executor;
 
 // Avoid imports here to test if proc macro works without imports.
 
@@ -105,13 +106,13 @@ async fn simple_req() {
     println!("Sending counter request receiver");
     a_tx.send(client).await.unwrap();
 
-    let client_task = tokio::spawn(async move {
+    let client_task = executor::spawn(async move {
         println!("Receiving counter client");
         let mut client = b_rx.recv().await.unwrap().unwrap();
 
         println!("Spawning watch...");
         let mut watch_rx = client.watch().await.unwrap();
-        tokio::spawn(async move {
+        executor::spawn(async move {
             while watch_rx.changed().await.is_ok() {
                 println!("Watch value: {}", *watch_rx.borrow_and_update().unwrap());
             }

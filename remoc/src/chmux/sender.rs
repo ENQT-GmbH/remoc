@@ -18,6 +18,8 @@ use std::{
 use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio_util::sync::ReusableBoxFuture;
 
+use crate::executor;
+
 use super::{
     client::ConnectResponse,
     credit::{AssignedCredits, CreditUser},
@@ -224,7 +226,7 @@ impl Sender {
     ) -> Self {
         let (_drop_tx, drop_rx) = oneshot::channel();
         let tx_drop = tx.clone();
-        tokio::spawn(async move {
+        executor::spawn(async move {
             let _ = drop_rx.await;
             let _ = tx_drop.send(PortEvt::SenderDropped { local_port }).await;
         });
@@ -379,7 +381,7 @@ impl Sender {
             let (response_tx, response_rx) = oneshot::channel();
             ports_response.push((port, response_tx));
 
-            let response = tokio::spawn(async move {
+            let response = executor::spawn(async move {
                 match response_rx.await {
                     Ok(ConnectResponse::Accepted(sender, receiver)) => Ok((sender, receiver)),
                     Ok(ConnectResponse::Rejected { no_ports }) => {

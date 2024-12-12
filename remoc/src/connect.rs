@@ -119,13 +119,15 @@ impl<TransportSinkError, TransportStreamError> From<base::ConnectError>
 /// use std::net::Ipv4Addr;
 /// use tokio::net::{TcpStream, TcpListener};
 /// use remoc::prelude::*;
+/// # use remoc::executor;
+/// // for example: use tokio::task as executor;
 ///
 /// #[tokio::main]
 /// async fn main() {
 ///     // For demonstration we run both client and server in
 ///     // the same process. In real life connect_client() and
 ///     // connect_server() would run on different machines.
-///     futures::join!(connect_client(), connect_server());
+///     tokio::join!(connect_client(), connect_server());
 /// }
 ///
 /// // This would be run on the client.
@@ -140,7 +142,7 @@ impl<TransportSinkError, TransportStreamError> From<base::ConnectError>
 ///     // Establish Remoc connection over TCP.
 ///     let (conn, tx, rx) =
 ///         remoc::Connect::io(remoc::Cfg::default(), socket_rx, socket_tx).await.unwrap();
-///     tokio::spawn(conn);
+///     executor::spawn(conn);
 ///
 ///     // Run client.
 ///     client(tx, rx).await;
@@ -156,7 +158,7 @@ impl<TransportSinkError, TransportStreamError> From<base::ConnectError>
 ///     // Establish Remoc connection over TCP.
 ///     let (conn, tx, rx) =
 ///         remoc::Connect::io(remoc::Cfg::default(), socket_rx, socket_tx).await.unwrap();
-///     tokio::spawn(conn);
+///     executor::spawn(conn);
 ///
 ///     // Run server.
 ///     server(tx, rx).await;

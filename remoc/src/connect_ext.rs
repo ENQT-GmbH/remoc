@@ -6,6 +6,7 @@ use std::{error::Error, fmt};
 use crate::{
     chmux::ChMuxError,
     connect::ConnectError,
+    executor,
     rch::base::{RecvError, SendError},
 };
 
@@ -189,7 +190,7 @@ where
             res = tx.send(value) => res?,
         }
 
-        tokio::spawn(async move {
+        executor::spawn(async move {
             if let Err(err) = conn.await {
                 tracing::warn!(%err, "connection failed");
             }
@@ -215,7 +216,7 @@ where
             }
         };
 
-        tokio::spawn(async move {
+        executor::spawn(async move {
             if let Err(err) = conn.await {
                 tracing::warn!(%err, "connection failed");
             }

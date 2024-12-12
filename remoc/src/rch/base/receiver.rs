@@ -13,12 +13,13 @@ use std::{
     panic,
     rc::{Rc, Weak},
 };
-use tokio::task::{self, JoinHandle};
 
 use super::{super::DEFAULT_MAX_ITEM_SIZE, io::ChannelBytesReader, BIG_DATA_CHUNK_QUEUE};
 use crate::{
     chmux::{self, AnyStorage, Received, RecvChunkError},
     codec::{self, DeserializationError},
+    executor,
+    executor::task::{self, JoinHandle},
 };
 
 /// An error that occurred during receiving from a remote endpoint.
@@ -384,7 +385,7 @@ where
                 // forward compatibility.
                 for request in requests {
                     if let Some((local_port, callback)) = pds.expected.remove(&request.id()) {
-                        tokio::spawn(callback(local_port, request));
+                        executor::spawn(callback(local_port, request));
                     }
                 }
 
@@ -396,7 +397,7 @@ where
 
             // Spawn registered tasks.
             for task in pds.tasks.drain(..) {
-                tokio::spawn(task);
+                executor::spawn(task);
             }
 
             return Ok(Some(self.item.take().unwrap()));

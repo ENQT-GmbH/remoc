@@ -1,5 +1,3 @@
-use futures::join;
-
 use crate::loop_channel;
 
 // Avoid imports here to test if proc macro works without imports.
@@ -57,5 +55,5 @@ async fn simple() {
         assert_eq!(client.default_method().await.unwrap(), 3);
     };
 
-    join!(client_task, server.serve());
+    tokio::join!(client_task, server.serve());
 }

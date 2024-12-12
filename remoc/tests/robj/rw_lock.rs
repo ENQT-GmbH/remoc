@@ -1,6 +1,8 @@
-use remoc::robj::rw_lock::{Owner, RwLock};
-
 use crate::loop_channel;
+use remoc::{
+    executor,
+    robj::rw_lock::{Owner, RwLock},
+};
 
 #[tokio::test]
 async fn simple() {
@@ -40,7 +42,7 @@ async fn simple() {
         drop(read3);
 
         println!("Making write request");
-        let write_req = tokio::spawn(async move { rw_lock3.write().await.unwrap() });
+        let write_req = executor::spawn(async move { rw_lock3.write().await.unwrap() });
 
         println!("Waiting for invalidation");
         read1.invalidated().await;

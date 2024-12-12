@@ -69,7 +69,7 @@ use tokio::sync::Mutex;
 use crate::{
     chmux,
     chmux::DataBuf,
-    codec,
+    codec, executor,
     rch::{mpsc, ConnectError},
 };
 
@@ -199,7 +199,7 @@ where
         let mut req_rx = req_rx.set_buffer::<1>();
         let len = data.len() as _;
 
-        tokio::spawn(async move {
+        executor::spawn(async move {
             let do_send = async move {
                 loop {
                     let fw_tx: fw_bin::Sender = match req_rx.recv().await {
@@ -210,7 +210,7 @@ where
                     };
 
                     let data = data.clone();
-                    tokio::spawn(async move {
+                    executor::spawn(async move {
                         let bin_tx = if let Some(tx) = fw_tx.into_inner() { tx } else { return };
                         let mut tx = if let Ok(tx) = bin_tx.into_inner().await { tx } else { return };
                         let _ = tx.send(data).await;

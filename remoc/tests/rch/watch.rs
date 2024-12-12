@@ -1,10 +1,15 @@
 use futures::StreamExt;
-use remoc::rch::base::SendErrorKind;
 use std::time::Duration;
 use tokio::time::sleep;
 
 use crate::{droppable_loop_channel, loop_channel};
-use remoc::rch::watch::{self, ChangedError, ReceiverStream, SendError};
+use remoc::{
+    executor,
+    rch::{
+        base::SendErrorKind,
+        watch::{self, ChangedError, ReceiverStream, SendError},
+    },
+};
 
 #[tokio::test]
 async fn simple() {
@@ -25,7 +30,7 @@ async fn simple() {
         println!("Initial value: {value:?}");
     }
 
-    let recv_task = tokio::spawn(async move {
+    let recv_task = executor::spawn(async move {
         let mut value = *rx.borrow().unwrap();
         assert_eq!(value, start_value);
 
@@ -70,7 +75,7 @@ async fn simple_stream() {
     let rx = b_rx.recv().await.unwrap().unwrap();
     let mut rx = ReceiverStream::from(rx);
 
-    let recv_task = tokio::spawn(async move {
+    let recv_task = executor::spawn(async move {
         let mut value = 0;
         while let Some(rxed_value) = rx.next().await {
             value = rxed_value.unwrap();
@@ -119,7 +124,7 @@ async fn modify_stream() {
     let rx = b_rx.recv().await.unwrap().unwrap();
     let mut rx = ReceiverStream::from(rx);
 
-    let recv_task = tokio::spawn(async move {
+    let recv_task = executor::spawn(async move {
         let mut value = 0;
         while let Some(rxed_value) = rx.next().await {
             value = rxed_value.unwrap();
@@ -233,7 +238,7 @@ async fn max_item_size_exceeded() {
         println!("Initial value: {value:?}");
     }
 
-    let recv_task = tokio::spawn(async move {
+    let recv_task = executor::spawn(async move {
         loop {
             let res = rx.changed().await;
             println!("RX changed result: {res:?}");
@@ -299,7 +304,7 @@ async fn max_item_size_exceeded_check() {
         println!("Initial value: {value:?}");
     }
 
-    let recv_task = tokio::spawn(async move {
+    let recv_task = executor::spawn(async move {
         loop {
             let res = rx.changed().await;
             println!("RX changed result: {res:?}");

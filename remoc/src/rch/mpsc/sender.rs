@@ -15,7 +15,7 @@ use super::{
     },
     receiver::RecvError,
 };
-use crate::{chmux, codec, RemoteSend};
+use crate::{chmux, codec, executor, RemoteSend};
 
 /// An error occurred during sending over an mpsc channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -309,7 +309,7 @@ where
         };
 
         // Drop strong reference to sender when channel is closed.
-        tokio::spawn(async move {
+        executor::spawn(async move {
             loop {
                 tokio::select! {
                     res = closed_rx.changed() => {

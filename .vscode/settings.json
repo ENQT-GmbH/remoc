@@ -48,5 +48,7 @@
         "codec-json",
         "codec-message-pack",
         "codec-postcard"
-    ]
+    ],
+
+    "rust-analyzer.cargo.target": "wasm32-wasip1-threads"
 }

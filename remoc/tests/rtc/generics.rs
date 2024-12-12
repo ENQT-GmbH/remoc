@@ -1,5 +1,3 @@
-use futures::join;
-
 use crate::loop_channel;
 
 // Avoid imports here to test if proc macro works without imports.
@@ -103,7 +101,7 @@ async fn simple() {
 
         println!("Spawning watch...");
         let mut watch_rx = client.watch().await.unwrap();
-        tokio::spawn(async move {
+        remoc::executor::spawn(async move {
             while watch_rx.changed().await.is_ok() {
                 println!("Watch value: {}", *watch_rx.borrow_and_update().unwrap());
             }
@@ -123,5 +121,5 @@ async fn simple() {
         assert_eq!(client.value().await.unwrap(), 65);
     };
 
-    join!(client_task, server.serve());
+    tokio::join!(client_task, server.serve());
 }

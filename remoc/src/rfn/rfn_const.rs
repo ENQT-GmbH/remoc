@@ -4,7 +4,7 @@ use std::{fmt, sync::Arc};
 
 use super::{msg::RFnRequest, CallError};
 use crate::{
-    codec,
+    codec, executor,
     rch::{mpsc, oneshot},
     RemoteSend,
 };
@@ -125,7 +125,7 @@ where
         let (keep_tx, keep_rx) = tokio::sync::oneshot::channel();
         let fun = Arc::new(fun);
 
-        tokio::spawn(async move {
+        executor::spawn(async move {
             let term = async move {
                 if let Ok(()) = keep_rx.await {
                     future::pending().await
@@ -143,7 +143,7 @@ where
                         match req_res {
                             Ok(Some(RFnRequest {argument, result_tx})) => {
                                 let fun_task = fun.clone();
-                                tokio::spawn(async move {
+                                executor::spawn(async move {
                                     let result = fun_task(argument).await;
                                     let _ = result_tx.send(result);
                                 });

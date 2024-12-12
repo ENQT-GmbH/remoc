@@ -10,10 +10,9 @@ use std::{
     },
     task::{Context, Poll},
 };
-use tokio::{
-    sync::{mpsc, oneshot},
-    task::JoinHandle,
-};
+use tokio::sync::{mpsc, oneshot};
+
+use crate::{executor, executor::task::JoinHandle};
 
 use super::{
     port_allocator::{PortAllocator, PortNumber},
@@ -281,7 +280,7 @@ impl Client {
         let _ = self.tx.send(req);
 
         let listener_dropped = self.listener_dropped.clone();
-        let response = tokio::spawn(async move {
+        let response = executor::spawn(async move {
             // Credit must be kept until response is received.
             let _credit = credit;
 

@@ -1,6 +1,9 @@
 use chmux::{PortsExhausted, SendError};
 use futures::{channel::oneshot, future::try_join, stream::StreamExt};
-use remoc::chmux::{self, ReceiverStream};
+use remoc::{
+    chmux::{self, ReceiverStream},
+    executor,
+};
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing::Instrument;
@@ -48,7 +51,7 @@ async fn basic() {
     println!("Connected: a_mux={:?}, b_mux={:?}", &a_mux, &b_mux);
 
     let (a_mux_done_tx, a_mux_done_rx) = oneshot::channel();
-    tokio::spawn(
+    executor::spawn(
         async move {
             println!("A mux run");
             a_mux.run().await.expect("a_mux");
@@ -58,7 +61,7 @@ async fn basic() {
     );
 
     let (b_mux_done_tx, b_mux_done_rx) = oneshot::channel();
-    tokio::spawn(
+    executor::spawn(
         async move {
             println!("B mux run");
             b_mux.run().await.expect("b_mux");
@@ -70,10 +73,10 @@ async fn basic() {
     const N_MSG: usize = 500;
 
     let (server_done_tx, server_done_rx) = oneshot::channel();
-    tokio::spawn(async move {
+    executor::spawn(async move {
         println!("B server start");
         while let Some((mut tx, mut rx)) = b_server.accept().await.unwrap() {
-            tokio::spawn(async move {
+            executor::spawn(async move {
                 while let Some(msg) = rx.recv().await.unwrap() {
                     println!("Server received: {}", String::from_utf8(msg.into()).unwrap());
                 }
@@ -153,7 +156,7 @@ async fn receiver_stream() {
         try_join(chmux::ChMux::new(cfg(), a_tx, a_rx), chmux::ChMux::new(cfg2(), b_tx, b_rx)).await.unwrap();
 
     let (a_mux_done_tx, a_mux_done_rx) = oneshot::channel();
-    tokio::spawn(
+    executor::spawn(
         async move {
             a_mux.run().await.expect("a_mux");
             let _ = a_mux_done_tx.send(());
@@ -162,7 +165,7 @@ async fn receiver_stream() {
     );
 
     let (b_mux_done_tx, b_mux_done_rx) = oneshot::channel();
-    tokio::spawn(
+    executor::spawn(
         async move {
             b_mux.run().await.expect("b_mux");
             let _ = b_mux_done_tx.send(());
@@ -173,7 +176,7 @@ async fn receiver_stream() {
     const N_MSG: usize = 100;
 
     let (server_done_tx, server_done_rx) = oneshot::channel();
-    tokio::spawn(async move {
+    executor::spawn(async move {
         while let Some((mut tx, rx)) = b_server.accept().await.unwrap() {
             let mut n = 0;
             let mut rx = ReceiverStream::from(rx);
@@ -226,7 +229,8 @@ async fn receiver_stream() {
     b_mux_done_rx.await.unwrap();
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+#[cfg_attr(not(target_family = "wasm"), tokio::test(flavor = "multi_thread", worker_threads = 8))]
+#[cfg_attr(target_family = "wasm", tokio::test)]
 async fn hangup() {
     crate::init();
 
@@ -237,7 +241,7 @@ async fn hangup() {
     println!("Connected: a_mux={:?}, b_mux={:?}", &a_mux, &b_mux);
 
     let (a_mux_done_tx, a_mux_done_rx) = oneshot::channel();
-    tokio::spawn(
+    executor::spawn(
         async move {
             println!("A mux start");
             a_mux.run().await.unwrap();
@@ -247,7 +251,7 @@ async fn hangup() {
     );
 
     let (b_mux_done_tx, b_mux_done_rx) = oneshot::channel();
-    tokio::spawn(
+    executor::spawn(
         async move {
             println!("B mux start");
             b_mux.run().await.unwrap();
@@ -257,7 +261,7 @@ async fn hangup() {
     );
 
     let (server_done_tx, server_done_rx) = oneshot::channel();
-    tokio::spawn(async move {
+    executor::spawn(async move {
         println!("B server start");
         while let Some((mut tx, mut rx)) = b_server.accept().await.unwrap() {
             while let Some(msg) = rx.recv().await.unwrap() {

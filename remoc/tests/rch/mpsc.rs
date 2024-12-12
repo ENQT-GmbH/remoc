@@ -4,7 +4,10 @@ use std::time::Duration;
 use tokio::time::sleep;
 
 use crate::{droppable_loop_channel, loop_channel};
-use remoc::rch::{base::SendErrorKind, mpsc, mpsc::SendError, ClosedReason, SendResultExt};
+use remoc::{
+    executor,
+    rch::{base::SendErrorKind, mpsc, mpsc::SendError, ClosedReason, SendResultExt},
+};
 
 #[tokio::test]
 async fn simple() {
@@ -318,7 +321,7 @@ async fn multiple() {
         let n_tx = rx.recv().await.unwrap().unwrap();
 
         let dur = Duration::from_millis(rng.gen_range(0..100));
-        let task = tokio::spawn(async move {
+        let task = executor::spawn(async move {
             sleep(dur).await;
 
             println!("Sending {i}");

@@ -1,8 +1,8 @@
-use futures::join;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::loop_channel;
+use remoc::executor;
 
 // Avoid imports here to test if proc macro works without imports.
 
@@ -83,7 +83,7 @@ async fn simple() {
 
         println!("Spawning watch...");
         let mut watch_rx = client.watch().await.unwrap();
-        tokio::spawn(async move {
+        executor::spawn(async move {
             while watch_rx.changed().await.is_ok() {
                 println!("Watch value: {}", *watch_rx.borrow_and_update().unwrap());
             }
@@ -103,7 +103,7 @@ async fn simple() {
         assert_eq!(client.value().await.unwrap(), 65);
     };
 
-    join!(client_task, server.serve());
+    tokio::join!(client_task, server.serve());
 
     println!("Counter obj value: {}", counter_obj.value);
     assert_eq!(counter_obj.value, 65);
@@ -119,7 +119,7 @@ async fn simple_spawn() {
     println!("Spawning counter server");
     let counter_obj = Arc::new(RwLock::new(CounterObj::new()));
     let (server, client) = CounterServerSharedMut::new(counter_obj.clone(), 16);
-    let server_task = tokio::spawn(async move {
+    let server_task = executor::spawn(async move {
         server.serve(true).await;
         println!("Server done");
 
@@ -136,7 +136,7 @@ async fn simple_spawn() {
 
     println!("Spawning watch...");
     let mut watch_rx = client.watch().await.unwrap();
-    tokio::spawn(async move {
+    executor::spawn(async move {
         while watch_rx.changed().await.is_ok() {
             println!("Watch value: {}", *watch_rx.borrow_and_update().unwrap());
         }

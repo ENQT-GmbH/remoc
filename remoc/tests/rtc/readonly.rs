@@ -1,5 +1,3 @@
-use futures::join;
-
 use crate::loop_channel;
 
 // Avoid imports here to test if proc macro works without imports.
@@ -60,7 +58,7 @@ async fn simple() {
         assert_eq!(client.value().await.unwrap(), 123);
     };
 
-    join!(client_task, server.serve());
+    tokio::join!(client_task, server.serve());
 }
 
 #[tokio::test]
@@ -89,7 +87,7 @@ async fn closed() {
         assert!(!client.is_closed());
         println!("Client capacity: {}", client.capacity());
 
-        tokio::spawn(async move {
+        remoc::executor::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
             drop_tx.send(()).unwrap();
         });
@@ -109,5 +107,5 @@ async fn closed() {
         println!("Dropping server");
     };
 
-    join!(client_task, server_task);
+    tokio::join!(client_task, server_task);
 }

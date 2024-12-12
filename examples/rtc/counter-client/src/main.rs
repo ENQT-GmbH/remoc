@@ -23,7 +23,7 @@ async fn main() {
     // Subscribe to the counter watch and print each value change.
     println!("Subscribing to counter change notifications");
     let mut watch_rx = client.watch().await.unwrap();
-    let watch_task = tokio::spawn(async move {
+    let watch_task = executor::spawn(async move {
         loop {
             while let Ok(()) = watch_rx.changed().await {
                 let value = watch_rx.borrow_and_update().unwrap();

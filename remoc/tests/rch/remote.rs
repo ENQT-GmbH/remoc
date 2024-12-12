@@ -2,10 +2,13 @@ use rand::{Rng, RngCore};
 use std::time::Duration;
 use tokio::time::timeout;
 
-use crate::{loop_channel, tcp_loop_channel};
-use remoc::rch::{
-    base::{RecvError, SendError, SendErrorKind},
-    DEFAULT_MAX_ITEM_SIZE,
+use crate::loop_channel;
+use remoc::{
+    executor,
+    rch::{
+        base::{RecvError, SendError, SendErrorKind},
+        DEFAULT_MAX_ITEM_SIZE,
+    },
 };
 
 #[tokio::test]
@@ -13,7 +16,7 @@ async fn negation() {
     crate::init();
     let ((mut a_tx, mut a_rx), (mut b_tx, mut b_rx)) = loop_channel::<i32>().await;
 
-    let reply_task = tokio::spawn(async move {
+    let reply_task = executor::spawn(async move {
         while let Some(i) = b_rx.recv().await.unwrap() {
             match b_tx.send(-i).await {
                 Ok(()) => (),
@@ -40,7 +43,7 @@ async fn big_msg() {
     crate::init();
     let ((mut a_tx, mut a_rx), (mut b_tx, mut b_rx)) = loop_channel::<Vec<u8>>().await;
 
-    let reply_task = tokio::spawn(async move {
+    let reply_task = executor::spawn(async move {
         while let Some(mut msg) = b_rx.recv().await.unwrap() {
             msg.reverse();
             match b_tx.send(msg).await {
@@ -71,11 +74,12 @@ async fn big_msg() {
 }
 
 #[tokio::test]
+#[cfg(not(target_family = "wasm"))]
 async fn tcp_big_msg() {
     crate::init();
-    let ((mut a_tx, mut a_rx), (mut b_tx, mut b_rx)) = tcp_loop_channel::<Vec<u8>>(9877).await;
+    let ((mut a_tx, mut a_rx), (mut b_tx, mut b_rx)) = crate::tcp_loop_channel::<Vec<u8>>(9877).await;
 
-    let reply_task = tokio::spawn(async move {
+    let reply_task = executor::spawn(async move {
         while let Some(mut msg) = b_rx.recv().await.unwrap() {
             msg.reverse();
             match b_tx.send(msg).await {
@@ -135,7 +139,7 @@ async fn oversized_msg_send_error() {
     crate::init();
     let ((mut a_tx, _a_rx), (_b_tx, mut b_rx)) = loop_channel::<Vec<u8>>().await;
 
-    tokio::spawn(async move {
+    executor::spawn(async move {
         let _ = b_rx.recv().await;
     });
 
@@ -153,7 +157,7 @@ async fn oversized_msg_recv_error() {
     crate::init();
     let ((mut a_tx, _a_rx), (_b_tx, mut b_rx)) = loop_channel::<Vec<u8>>().await;
 
-    tokio::spawn(async move {
+    executor::spawn(async move {
         let data: Vec<u8> = vec![1u8; 100];
         println!("Sending message of length {}", data.len());
         a_tx.send(data).await.unwrap();

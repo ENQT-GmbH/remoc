@@ -8,6 +8,8 @@ use std::{collections::VecDeque, error::Error, fmt, mem, pin::Pin};
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::ReusableBoxFuture;
 
+use crate::executor;
+
 use super::{
     credit::{ChannelCreditReturner, UsedCredit},
     forward,
@@ -324,7 +326,7 @@ impl Receiver {
     ) -> Self {
         let (_drop_tx, drop_rx) = oneshot::channel();
         let tx_drop = tx.clone();
-        tokio::spawn(async move {
+        executor::spawn(async move {
             let _ = drop_rx.await;
             let _ = tx_drop.send(PortEvt::ReceiverDropped { local_port }).await;
         });

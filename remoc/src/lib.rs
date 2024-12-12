@@ -1,4 +1,5 @@
-#![forbid(unsafe_code)]
+#![cfg_attr(not(target_family = "wasm"), forbid(unsafe_code))]
+#![cfg_attr(target_family = "wasm", deny(unsafe_code))]
 #![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![doc(
@@ -116,13 +117,15 @@
 use std::net::Ipv4Addr;
 use tokio::net::{TcpStream, TcpListener};
 use remoc::prelude::*;
+# use remoc::executor;
+// for example: use tokio::task as executor;
 
 #[tokio::main]
 async fn main() {
     // For demonstration we run both client and server in
     // the same process. In real life connect_client() and
     // connect_server() would run on different machines.
-    futures::join!(connect_client(), connect_server());
+    tokio::join!(connect_client(), connect_server());
 }
 
 // This would be run on the client.
@@ -142,7 +145,7 @@ async fn connect_client() {
     let (conn, tx, _rx): (_, _, rch::base::Receiver<()>) =
         remoc::Connect::io(remoc::Cfg::default(), socket_rx, socket_tx)
         .await.unwrap();
-    tokio::spawn(conn);
+    executor::spawn(conn);
 
     // Run client.
     client(tx).await;
@@ -163,7 +166,7 @@ async fn connect_server() {
     let (conn, _tx, rx): (_, rch::base::Sender<()>, _) =
         remoc::Connect::io(remoc::Cfg::default(), socket_rx, socket_tx)
         .await.unwrap();
-    tokio::spawn(conn);
+    executor::spawn(conn);
 
     // Run server.
     server(rx).await;
@@ -214,6 +217,9 @@ async fn server(mut rx: rch::base::Receiver<CountReq>) {
 )]
 
 pub mod prelude;
+
+#[doc(hidden)]
+pub mod executor;
 
 pub mod chmux;
 pub use chmux::Cfg;

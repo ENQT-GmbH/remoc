@@ -14,7 +14,6 @@ use std::{
     rc::{Rc, Weak},
     sync::{Arc, Mutex},
 };
-use tokio::task;
 
 use super::{
     super::{SendErrorExt, DEFAULT_MAX_ITEM_SIZE},
@@ -24,6 +23,8 @@ use super::{
 use crate::{
     chmux::{self, AnyStorage, PortReq},
     codec::{self, SerializationError},
+    executor,
+    executor::task,
 };
 
 pub use crate::chmux::Closed;
@@ -450,12 +451,12 @@ where
         //
         // We have to spawn a task for this to ensure cancellation safety.
         for (callback, connect) in callbacks.into_iter().zip(connects.into_iter()) {
-            tokio::spawn(callback(connect));
+            executor::spawn(callback(connect));
         }
 
         // Spawn registered tasks.
         for task in tasks {
-            tokio::spawn(task);
+            executor::spawn(task);
         }
 
         Ok(())

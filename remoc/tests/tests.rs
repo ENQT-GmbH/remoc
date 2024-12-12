@@ -1,14 +1,17 @@
 #[cfg(feature = "rch")]
-use futures::{join, StreamExt};
+use futures::StreamExt;
 
 #[allow(unused_imports)]
 use std::{net::Ipv4Addr, sync::Once};
 
 #[cfg(feature = "rch")]
+#[cfg(not(target_family = "wasm"))]
 use tokio::net::{TcpListener, TcpStream};
 
 #[cfg(feature = "rch")]
 use remoc::{rch::base, RemoteSend};
+
+use remoc::executor;
 
 mod chmux;
 
@@ -80,7 +83,7 @@ where
     T: RemoteSend,
 {
     let (a, b, mut drop_rx) = droppable_loop_channel_with_cfg(cfg).await;
-    tokio::spawn(async move {
+    executor::spawn(async move {
         let _ = drop_rx.recv().await;
     });
     (a, b)
@@ -100,7 +103,7 @@ where
     let a_drop_tx = drop_tx.clone();
     let a = async move {
         let (conn, tx, rx) = remoc::Connect::framed(a_cfg, transport_a_tx, transport_a_rx).await.unwrap();
-        tokio::spawn(async move {
+        executor::spawn(async move {
             tokio::select! {
                 _ = conn => (),
                 _ = a_drop_tx.closed() => (),
@@ -112,7 +115,7 @@ where
     let b_cfg = cfg.clone();
     let b = async move {
         let (conn, tx, rx) = remoc::Connect::framed(b_cfg, transport_b_tx, transport_b_rx).await.unwrap();
-        tokio::spawn(async move {
+        executor::spawn(async move {
             tokio::select! {
                 _ = conn => (),
                 _ = drop_tx.closed() => (),
@@ -121,11 +124,12 @@ where
         (tx, rx)
     };
 
-    let (a, b) = join!(a, b);
+    let (a, b) = tokio::join!(a, b);
     (a, b, drop_rx)
 }
 
 #[cfg(feature = "rch")]
+#[cfg(not(target_family = "wasm"))]
 pub async fn tcp_loop_channel<T>(
     tcp_port: u16,
 ) -> ((base::Sender<T>, base::Receiver<T>), (base::Sender<T>, base::Receiver<T>))
@@ -138,7 +142,7 @@ where
         let (socket_rx, socket_tx) = socket.into_split();
         let (conn, tx, rx) =
             remoc::Connect::io_buffered(Default::default(), socket_rx, socket_tx, 100_000).await.unwrap();
-        tokio::spawn(conn);
+        executor::spawn(conn);
         (tx, rx)
     };
 
@@ -147,9 +151,9 @@ where
         let (socket_rx, socket_tx) = socket.into_split();
         let (conn, tx, rx) =
             remoc::Connect::io_buffered(Default::default(), socket_rx, socket_tx, 8721).await.unwrap();
-        tokio::spawn(conn);
+        executor::spawn(conn);
         (tx, rx)
     };
 
-    join!(server, client)
+    tokio::join!(server, client)
 }

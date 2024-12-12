@@ -3,6 +3,8 @@
 use bytes::Buf;
 use std::{fmt, num::Wrapping};
 
+use crate::executor;
+
 use super::{ConnectError, PortReq, Received, RecvChunkError, RecvError, SendError};
 
 /// An error occurred during forwarding of a message.
@@ -51,7 +53,7 @@ impl std::error::Error for ForwardError {}
 pub(crate) async fn forward(rx: &mut super::Receiver, tx: &mut super::Sender) -> Result<usize, ForwardError> {
     // Required to avoid borrow checking loop limitation.
     fn spawn_forward(id: u32, mut rx: super::Receiver, mut tx: super::Sender) {
-        tokio::spawn(async move {
+        executor::spawn(async move {
             if let Err(err) = forward(&mut rx, &mut tx).await {
                 tracing::debug!("port forwarding for id {id} failed: {err}");
             }
@@ -117,7 +119,7 @@ pub(crate) async fn forward(rx: &mut super::Receiver, tx: &mut super::Sender) ->
                 // Connect them.
                 let connects = tx.connect(ports, wait).await?;
                 for (req, connect) in reqs.into_iter().zip(connects) {
-                    tokio::spawn(async move {
+                    executor::spawn(async move {
                         let id = req.id();
                         match connect.await {
                             Ok((out_tx, out_rx)) => {

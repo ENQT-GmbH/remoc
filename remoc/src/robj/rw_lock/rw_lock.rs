@@ -8,7 +8,7 @@ use std::{
 
 use super::msg::{ReadRequest, Value, WriteRequest};
 use crate::{
-    chmux, codec,
+    chmux, codec, executor,
     rch::{base, mpsc, oneshot},
     RemoteSend,
 };
@@ -152,7 +152,7 @@ where
         // when it becomes invalid.
         let mut invalid_rx = value.invalid_rx.clone();
         let cache_lock = self.cache.clone();
-        tokio::spawn(async move {
+        executor::spawn(async move {
             // Wait for cache invalidation.
             loop {
                 match invalid_rx.borrow_and_update() {

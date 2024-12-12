@@ -10,7 +10,7 @@ use super::{
     super::{base, mpsc, SendErrorExt},
     BroadcastMsg, Receiver,
 };
-use crate::{chmux, codec, RemoteSend};
+use crate::{chmux, codec, executor, RemoteSend};
 
 /// An error occurred during sending over a broadcast channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -169,7 +169,7 @@ where
                     // Spawn task that waits for subscriber to become ready again,
                     // then add it back to subscriber list.
                     let ready_tx = inner.ready_tx.clone();
-                    tokio::spawn(async move {
+                    executor::spawn(async move {
                         let _ = sub.send(BroadcastMsg::Lagged).await;
                         // Make sure subscriber has space for next message.
                         let _permit = sub.reserve().await;
@@ -234,7 +234,7 @@ where
         let mut rx = rx.set_buffer::<1>();
         let this = self.clone();
 
-        tokio::spawn(async move {
+        executor::spawn(async move {
             while let Ok(Some(value)) = rx.recv().await {
                 if this.send(value).is_err() {
                     break;

@@ -53,7 +53,7 @@ impl Counter for CounterObj {
 
         // Spawn a task to perform the counting.
         let value = self.value;
-        tokio::spawn(async move {
+        executor::spawn(async move {
             // Counting loop.
             for i in (0..value).step_by(step as usize) {
                 // Send the value.
@@ -97,7 +97,7 @@ async fn main() {
         let counter_obj = counter_obj.clone();
 
         // Spawn a task for each incoming connection.
-        tokio::spawn(async move {
+        executor::spawn(async move {
             // Create a server proxy and client for the accepted connection.
             //
             // The server proxy executes all incoming method calls on the shared counter_obj
