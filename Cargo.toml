@@ -2,7 +2,7 @@
 version = "0.14.0"
 
 edition = "2021"
-rust-version = "1.72"
+rust-version = "1.80"
 license = "Apache-2.0"
 
 repository = "https://github.com/ENQT-GmbH/remoc/"
