@@ -22,7 +22,7 @@ use super::{
 };
 use crate::{
     chmux::{self, AnyStorage, PortReq},
-    codec::{self, SerializationError},
+    codec::{self, SerializationError, StreamingUnavailable},
     executor,
     executor::task,
 };
@@ -281,6 +281,10 @@ where
         allocator: chmux::PortAllocator, storage: AnyStorage, item: T, tx: tokio::sync::mpsc::Sender<BytesMut>,
         chunk_size: usize,
     ) -> Result<(T, PortSerializer, usize), (SerializationError, T)> {
+        if !executor::are_threads_available() {
+            return Err((SerializationError::new(StreamingUnavailable), item));
+        }
+
         let cbw = ChannelBytesWriter::new(tx);
         let mut cbw = BufWriter::with_capacity(chunk_size, cbw);
 

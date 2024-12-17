@@ -3,7 +3,7 @@
 //! On native platforms this uses Tokio.
 //! On WebAssembly this executes Futures as Promises.
 
-#[cfg(not(target_family = "wasm"))]
+#[cfg(not(feature = "web"))]
 mod native {
     pub mod task {
         pub use tokio::task::{spawn, spawn_blocking, JoinError, JoinHandle};
@@ -14,33 +14,33 @@ mod native {
     }
 }
 
-#[cfg(not(target_family = "wasm"))]
+#[cfg(not(feature = "web"))]
 pub use native::*;
 
-#[cfg(target_family = "wasm")]
+#[cfg(feature = "web")]
 pub mod task;
 
-#[cfg(target_family = "wasm")]
+#[cfg(feature = "web")]
 pub mod runtime;
 
-#[cfg(target_family = "wasm")]
+#[cfg(feature = "web")]
 mod thread_pool;
 
-#[cfg(target_family = "wasm")]
+#[cfg(feature = "web")]
 mod sync_wrapper;
 
 /// Whether blocking is allowed on this thread.
 ///
 /// On native targets blocking is always allowed.
-/// On WebAssembly blocking is only allowed on worker threads.
+/// On web blocking is only allowed on worker threads.
 #[inline]
-pub fn blocking_allowed() -> bool {
-    #[cfg(not(target_family = "wasm"))]
+pub fn is_blocking_allowed() -> bool {
+    #[cfg(not(feature = "web"))]
     {
         true
     }
 
-    #[cfg(target_family = "wasm")]
+    #[cfg(feature = "web")]
     {
         use std::cell::LazyCell;
         use wasm_bindgen::{prelude::*, JsCast};
@@ -61,6 +61,31 @@ pub fn blocking_allowed() -> bool {
     }
 }
 
+/// Whether threads are available and working on this platform.
+#[inline]
+pub fn are_threads_available() -> bool {
+    use std::sync::LazyLock;
+
+    static AVAILABLE: LazyLock<bool> = LazyLock::new(|| {
+        let res = std::thread::Builder::new().name("remoc thread test".into()).spawn(|| ());
+        match res {
+            Ok(hnd) => match hnd.join() {
+                Ok(()) => true,
+                Err(payload) => {
+                    tracing::warn!(?payload, "test thread panicked, streaming (de)serialization disabled");
+                    false
+                }
+            },
+            Err(os_error) => {
+                tracing::warn!(%os_error, "threads not available, streaming (de)serialization disabled");
+                false
+            }
+        }
+    });
+
+    *AVAILABLE
+}
+
 /// Mutex extensions for WebAssembly support.
 pub trait MutexExt<T> {
     /// Acquires a mutex, blocking the current thread until it is able to do so.
@@ -73,7 +98,7 @@ pub trait MutexExt<T> {
 impl<T> MutexExt<T> for std::sync::Mutex<T> {
     #[inline]
     fn xlock(&self) -> std::sync::LockResult<std::sync::MutexGuard<'_, T>> {
-        if blocking_allowed() {
+        if is_blocking_allowed() {
             return self.lock();
         }
 

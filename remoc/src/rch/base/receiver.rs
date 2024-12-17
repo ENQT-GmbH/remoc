@@ -17,7 +17,7 @@ use std::{
 use super::{super::DEFAULT_MAX_ITEM_SIZE, io::ChannelBytesReader, BIG_DATA_CHUNK_QUEUE};
 use crate::{
     chmux::{self, AnyStorage, Received, RecvChunkError},
-    codec::{self, DeserializationError},
+    codec::{self, DeserializationError, StreamingUnavailable},
     executor,
     executor::task::{self, JoinHandle},
 };
@@ -240,6 +240,12 @@ where
                     self.data = match self.recved.take().unwrap() {
                         Some(Received::Data(data)) => DataSource::Buffered(Some(data)),
                         Some(Received::Chunks) => {
+                            if !executor::are_threads_available() {
+                                return Err(RecvError::Deserialize(DeserializationError::new(
+                                    StreamingUnavailable,
+                                )));
+                            }
+
                             // Start deserialization thread.
                             let allocator = self.receiver.port_allocator();
                             let handle_storage = self.receiver.storage();

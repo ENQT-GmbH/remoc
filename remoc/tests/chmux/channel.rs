@@ -229,8 +229,12 @@ async fn receiver_stream() {
     b_mux_done_rx.await.unwrap();
 }
 
-#[cfg_attr(not(target_family = "wasm"), tokio::test(flavor = "multi_thread", worker_threads = 8))]
-#[cfg_attr(target_family = "wasm", tokio::test)]
+#[cfg_attr(
+    all(not(feature = "web"), not(target_family = "wasm")),
+    tokio::test(flavor = "multi_thread", worker_threads = 8)
+)]
+#[cfg_attr(all(not(feature = "web"), target_family = "wasm"), tokio::test)]
+#[cfg_attr(feature = "web", tokio::test)]
 async fn hangup() {
     crate::init();
 

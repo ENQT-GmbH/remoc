@@ -221,6 +221,11 @@ async fn conn_failure() {
 #[tokio::test]
 async fn max_item_size_exceeded() {
     crate::init();
+    if !remoc::executor::are_threads_available() {
+        println!("test requires threads");
+        return;
+    }
+
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<watch::Receiver<Vec<u8>>>().await;
 
     println!("Sending remote mpsc channel receiver");
@@ -287,6 +292,11 @@ async fn max_item_size_exceeded() {
 #[tokio::test]
 async fn max_item_size_exceeded_check() {
     crate::init();
+    if !remoc::executor::are_threads_available() {
+        println!("test requires threads");
+        return;
+    }
+
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<watch::Receiver<Vec<u8>>>().await;
 
     println!("Sending remote mpsc channel receiver");

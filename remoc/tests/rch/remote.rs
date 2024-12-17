@@ -1,4 +1,5 @@
 use rand::{Rng, RngCore};
+use remoc::codec::StreamingUnavailable;
 use std::time::Duration;
 use tokio::time::timeout;
 
@@ -62,7 +63,21 @@ async fn big_msg() {
 
         let data_send = data.clone();
         println!("Sending message of length {}", data.len());
-        a_tx.send(data_send).await.unwrap();
+        let res = a_tx.send(data_send).await;
+        if let Err(err) = &res {
+            println!("Send error: {err}");
+            match &err.kind {
+                SendErrorKind::Serialize(ser) if ser.0.is::<StreamingUnavailable>() => {
+                    if !remoc::executor::are_threads_available() {
+                        println!("Okay, because no threads available");
+                        return;
+                    }
+                }
+                _ => (),
+            }
+        }
+        res.unwrap();
+
         let mut data_recv = a_rx.recv().await.unwrap().unwrap();
         println!("Received reply of length {}", data_recv.len());
         data_recv.reverse();
@@ -146,10 +161,18 @@ async fn oversized_msg_send_error() {
     let data: Vec<u8> = vec![1u8; 2 * DEFAULT_MAX_ITEM_SIZE];
     println!("Sending message of length {}", data.len());
     let res = a_tx.send(data).await;
-    assert!(
-        matches!(res, Err(SendError { kind: SendErrorKind::MaxItemSizeExceeded, .. })),
-        "sending oversized item must fail"
-    )
+
+    if remoc::executor::are_threads_available() {
+        assert!(
+            matches!(res, Err(SendError { kind: SendErrorKind::MaxItemSizeExceeded, .. })),
+            "sending oversized item must fail"
+        )
+    } else {
+        assert!(
+            matches!(res, Err(SendError { kind: SendErrorKind::Serialize(ser), .. }) if ser.0.is::<StreamingUnavailable>()),
+            "sending oversized item must fail"
+        )
+    }
 }
 
 #[tokio::test]

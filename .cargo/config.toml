@@ -1,0 +1,5 @@
+[target.wasm32-wasip1]
+runner = "wasmtime -S inherit-env"
+
+[target.wasm32-wasip1-threads]
+runner = "wasmtime -S threads -S inherit-env"
