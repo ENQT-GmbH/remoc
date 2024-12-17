@@ -1,7 +1,7 @@
 use futures::StreamExt;
 use std::time::Duration;
 
-#[cfg(feature = "web")]
+#[cfg(feature = "js")]
 use wasm_bindgen_test::wasm_bindgen_test;
 
 use crate::{droppable_loop_channel, loop_channel};
@@ -14,8 +14,8 @@ use remoc::{
     },
 };
 
-#[cfg_attr(not(feature = "web"), tokio::test)]
-#[cfg_attr(feature = "web", wasm_bindgen_test)]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn simple() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<watch::Receiver<i16>>().await;
@@ -64,8 +64,8 @@ async fn simple() {
     recv_task.await.unwrap();
 }
 
-#[cfg_attr(not(feature = "web"), tokio::test)]
-#[cfg_attr(feature = "web", wasm_bindgen_test)]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn simple_stream() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<watch::Receiver<i16>>().await;
@@ -114,8 +114,8 @@ async fn simple_stream() {
     recv_task.await.unwrap();
 }
 
-#[cfg_attr(not(feature = "web"), tokio::test)]
-#[cfg_attr(feature = "web", wasm_bindgen_test)]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn modify_stream() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<watch::Receiver<i16>>().await;
@@ -156,8 +156,8 @@ async fn modify_stream() {
     recv_task.await.unwrap();
 }
 
-#[cfg_attr(not(feature = "web"), tokio::test)]
-#[cfg_attr(feature = "web", wasm_bindgen_test)]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn close() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<watch::Sender<i16>>().await;
@@ -193,8 +193,8 @@ async fn close() {
     }
 }
 
-#[cfg_attr(not(feature = "web"), tokio::test)]
-#[cfg_attr(feature = "web", wasm_bindgen_test)]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn conn_failure() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx), conn) = droppable_loop_channel::<watch::Sender<i16>>().await;
@@ -226,8 +226,8 @@ async fn conn_failure() {
     }
 }
 
-#[cfg_attr(not(feature = "web"), tokio::test)]
-#[cfg_attr(feature = "web", wasm_bindgen_test)]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn max_item_size_exceeded() {
     crate::init();
     if !remoc::executor::are_threads_available() {
@@ -298,8 +298,8 @@ async fn max_item_size_exceeded() {
     tx.check().unwrap();
 }
 
-#[cfg_attr(not(feature = "web"), tokio::test)]
-#[cfg_attr(feature = "web", wasm_bindgen_test)]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn max_item_size_exceeded_check() {
     crate::init();
     if !remoc::executor::are_threads_available() {

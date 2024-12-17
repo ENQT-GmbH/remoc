@@ -1,4 +1,4 @@
-#[cfg(feature = "web")]
+#[cfg(feature = "js")]
 use wasm_bindgen_test::wasm_bindgen_test;
 
 use crate::loop_channel;
@@ -84,8 +84,8 @@ where
     }
 }
 
-#[cfg_attr(not(feature = "web"), tokio::test)]
-#[cfg_attr(feature = "web", wasm_bindgen_test)]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn simple() {
     use remoc::rtc::Server;
 

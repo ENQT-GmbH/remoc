@@ -1,14 +1,14 @@
 use bytes::{Buf, Bytes};
 use rand::{Rng, RngCore};
 
-#[cfg(feature = "web")]
+#[cfg(feature = "js")]
 use wasm_bindgen_test::wasm_bindgen_test;
 
 use crate::loop_channel;
 use remoc::{chmux::Received, executor, rch::bin};
 
-#[cfg_attr(not(feature = "web"), tokio::test)]
-#[cfg_attr(feature = "web", wasm_bindgen_test)]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn loopback() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<(bin::Sender, bin::Receiver)>().await;
@@ -76,8 +76,8 @@ async fn loopback() {
     reply_task.await.unwrap();
 }
 
-#[cfg_attr(not(feature = "web"), tokio::test)]
-#[cfg_attr(feature = "web", wasm_bindgen_test)]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn forward() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<(bin::Sender, bin::Receiver)>().await;
@@ -153,8 +153,8 @@ async fn forward() {
     reply_task.await.unwrap();
 }
 
-#[cfg_attr(not(feature = "web"), tokio::test)]
-#[cfg_attr(feature = "web", wasm_bindgen_test)]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn double_forward() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<(bin::Sender, bin::Receiver)>().await;

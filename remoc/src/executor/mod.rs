@@ -3,16 +3,16 @@
 //! On native platforms this uses Tokio.
 //! On JavaScript this executes Futures as Promises.
 
-#[cfg(not(feature = "web"))]
+#[cfg(not(feature = "js"))]
 mod native;
 
-#[cfg(not(feature = "web"))]
+#[cfg(not(feature = "js"))]
 pub use native::*;
 
-#[cfg(feature = "web")]
+#[cfg(feature = "js")]
 mod js;
 
-#[cfg(feature = "web")]
+#[cfg(feature = "js")]
 pub use js::*;
 
 /// Whether threads are available and working on this platform.

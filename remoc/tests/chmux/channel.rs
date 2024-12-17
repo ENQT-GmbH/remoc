@@ -2,7 +2,7 @@ use futures::{channel::oneshot, future::try_join, stream::StreamExt};
 use std::time::Duration;
 use tracing::Instrument;
 
-#[cfg(feature = "web")]
+#[cfg(feature = "js")]
 use wasm_bindgen_test::wasm_bindgen_test;
 
 use crate::loop_transport;
@@ -42,8 +42,8 @@ fn cfg2() -> chmux::Cfg {
     }
 }
 
-#[cfg_attr(not(feature = "web"), tokio::test)]
-#[cfg_attr(feature = "web", wasm_bindgen_test)]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn basic() {
     crate::init();
 
@@ -150,8 +150,8 @@ async fn basic() {
     b_mux_done_rx.await.unwrap();
 }
 
-#[cfg_attr(not(feature = "web"), tokio::test)]
-#[cfg_attr(feature = "web", wasm_bindgen_test)]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn receiver_stream() {
     crate::init();
 
@@ -234,11 +234,11 @@ async fn receiver_stream() {
 }
 
 #[cfg_attr(
-    all(not(feature = "web"), not(target_family = "wasm")),
+    all(not(feature = "js"), not(target_family = "wasm")),
     tokio::test(flavor = "multi_thread", worker_threads = 8)
 )]
-#[cfg_attr(all(not(feature = "web"), target_family = "wasm"), tokio::test)]
-#[cfg_attr(feature = "web", wasm_bindgen_test)]
+#[cfg_attr(all(not(feature = "js"), target_family = "wasm"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn hangup() {
     crate::init();
 

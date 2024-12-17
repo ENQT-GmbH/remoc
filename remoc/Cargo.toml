@@ -20,7 +20,7 @@ rfn = ["rch"]
 robj = ["rch"]
 robs = ["rch"]
 rtc = ["rch", "remoc_macro", "async-trait"]
-web = [
+js = [
     "dep:getrandom",
     "dep:js-sys",
     "dep:web-sys",
