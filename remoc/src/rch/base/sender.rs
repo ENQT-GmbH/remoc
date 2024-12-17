@@ -150,7 +150,7 @@ pub struct PortSerializer {
 
 impl PortSerializer {
     thread_local! {
-        static INSTANCE: RefCell<Weak<RefCell<PortSerializer>>> = RefCell::new(Weak::new());
+        static INSTANCE: RefCell<Weak<RefCell<PortSerializer>>> = const { RefCell::new(Weak::new()) };
     }
 
     /// Create a new port serializer and register it as active.

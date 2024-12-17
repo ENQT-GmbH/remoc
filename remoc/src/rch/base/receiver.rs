@@ -92,7 +92,7 @@ pub struct PortDeserializer {
 
 impl PortDeserializer {
     thread_local! {
-        static INSTANCE: RefCell<Weak<RefCell<PortDeserializer>>> = RefCell::new(Weak::new());
+        static INSTANCE: RefCell<Weak<RefCell<PortDeserializer>>> = const { RefCell::new(Weak::new()) };
     }
 
     /// Create a new port deserializer and register it as active.
