@@ -1,15 +1,19 @@
 use futures::{future, StreamExt};
 use rand::Rng;
 use std::time::Duration;
-use tokio::time::sleep;
+
+#[cfg(feature = "web")]
+use wasm_bindgen_test::wasm_bindgen_test;
 
 use crate::{droppable_loop_channel, loop_channel};
 use remoc::{
     executor,
+    executor::time::sleep,
     rch::{base::SendErrorKind, mpsc, mpsc::SendError, ClosedReason, SendResultExt},
 };
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn simple() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<mpsc::Receiver<i16>>().await;
@@ -48,7 +52,8 @@ async fn simple() {
     }
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn simple_stream() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<mpsc::Receiver<i16>>().await;
@@ -87,7 +92,8 @@ async fn simple_stream() {
     }
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn simple_close() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<mpsc::Receiver<i16>>().await;
@@ -130,7 +136,8 @@ async fn simple_close() {
     }
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn simple_drop() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<mpsc::Receiver<i16>>().await;
@@ -171,7 +178,8 @@ async fn simple_drop() {
     }
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn simple_conn_failure() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx), conn) = droppable_loop_channel::<mpsc::Receiver<i16>>().await;
@@ -211,7 +219,8 @@ async fn simple_conn_failure() {
     }
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn two_sender_conn_failure() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx), conn1) = droppable_loop_channel::<mpsc::Sender<i16>>().await;
@@ -299,7 +308,8 @@ async fn two_sender_conn_failure() {
     }
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn multiple() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<mpsc::Receiver<mpsc::Sender<i16>>>().await;
@@ -339,7 +349,8 @@ async fn multiple() {
     future::try_join_all(tasks).await.unwrap();
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn forward() {
     crate::init();
     let ((mut a0_tx, _), (_, mut b0_rx)) = loop_channel::<mpsc::Sender<i16>>().await;
@@ -396,7 +407,8 @@ async fn forward() {
     }
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn max_item_size_exceeded() {
     crate::init();
     if !remoc::executor::are_threads_available() {

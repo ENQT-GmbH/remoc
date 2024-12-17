@@ -1,12 +1,18 @@
 use std::time::Duration;
 
-use remoc::robs::{
-    list::{ListEvent, ObservableList},
-    RecvError,
-};
-use tokio::time::sleep;
+#[cfg(feature = "web")]
+use wasm_bindgen_test::wasm_bindgen_test;
 
-#[tokio::test]
+use remoc::{
+    executor::time::sleep,
+    robs::{
+        list::{ListEvent, ObservableList},
+        RecvError,
+    },
+};
+
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn standalone() {
     let mut obs: ObservableList<_, remoc::codec::Default> = ObservableList::new();
 
@@ -16,7 +22,8 @@ async fn standalone() {
     assert_eq!(obs.len(), 3);
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn events() {
     let mut obs: ObservableList<_, remoc::codec::Default> = ObservableList::new();
 
@@ -42,7 +49,8 @@ async fn events() {
     assert!(sub.is_done());
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn events_incremental() {
     let hs = vec![0u32, 1, 2];
     let mut obs: ObservableList<_, remoc::codec::Default> = ObservableList::from(hs.clone());
@@ -71,7 +79,8 @@ async fn events_incremental() {
     assert!(sub.is_done());
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn mirrored() {
     let mut pre = Vec::new();
     for i in 1000..1500i32 {
@@ -117,7 +126,8 @@ async fn mirrored() {
     }
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn mirrored_disconnect() {
     let mut obs: ObservableList<_, remoc::codec::Default> = ObservableList::new();
 
@@ -139,7 +149,8 @@ async fn mirrored_disconnect() {
     }
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn mirrored_disconnect_after_done() {
     let mut obs: ObservableList<_, remoc::codec::Default> = ObservableList::new();
 

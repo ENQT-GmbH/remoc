@@ -5,6 +5,9 @@ use std::{
     fmt,
 };
 
+#[cfg(feature = "web")]
+use wasm_bindgen_test::wasm_bindgen_test;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TestEnum {
     One(u16),
@@ -81,38 +84,44 @@ where
 }
 
 #[cfg(feature = "codec-bincode")]
-#[test]
+#[cfg_attr(not(feature = "web"), test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 fn bincode() {
     roundtrip::<TestStruct, codec::Bincode>()
 }
 
 #[cfg(feature = "codec-ciborium")]
-#[test]
+#[cfg_attr(not(feature = "web"), test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 fn ciborium() {
     roundtrip::<TestStruct, codec::Ciborium>()
 }
 
 #[cfg(feature = "codec-json")]
-#[test]
+#[cfg_attr(not(feature = "web"), test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 #[should_panic]
 fn json_without_attr() {
     roundtrip::<TestStruct, codec::Json>()
 }
 
 #[cfg(feature = "codec-json")]
-#[test]
+#[cfg_attr(not(feature = "web"), test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 fn json_with_attr() {
     roundtrip::<TestStructWithAttr, codec::Json>()
 }
 
 #[cfg(feature = "codec-message-pack")]
-#[test]
+#[cfg_attr(not(feature = "web"), test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 fn message_pack() {
     roundtrip::<TestStruct, codec::MessagePack>()
 }
 
 #[cfg(feature = "codec-postcard")]
-#[test]
+#[cfg_attr(not(feature = "web"), test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 fn postcard() {
     roundtrip::<TestStruct, codec::Postcard>()
 }

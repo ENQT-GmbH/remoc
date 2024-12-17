@@ -1,5 +1,7 @@
+#[cfg(feature = "web")]
+use wasm_bindgen_test::wasm_bindgen_test;
+
 use crate::loop_channel;
-use remoc::executor;
 
 // Avoid imports here to test if proc macro works without imports.
 
@@ -60,7 +62,8 @@ impl Counter for CounterObj {
     }
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn simple_clone() {
     use remoc::rtc::ServerRefMut;
 
@@ -80,7 +83,7 @@ async fn simple_clone() {
 
         println!("Spawning watch...");
         let mut watch_rx = client.watch().await.unwrap();
-        executor::spawn(async move {
+        remoc::executor::spawn(async move {
             while watch_rx.changed().await.is_ok() {
                 println!("Watch value: {}", *watch_rx.borrow_and_update().unwrap());
             }

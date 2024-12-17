@@ -1,5 +1,9 @@
 use futures::StreamExt;
 
+#[cfg(feature = "web")]
+use wasm_bindgen_test::wasm_bindgen_test;
+
+use crate::loop_channel_with_cfg;
 use remoc::{
     codec, executor,
     rch::{
@@ -8,9 +12,8 @@ use remoc::{
     },
 };
 
-use crate::loop_channel_with_cfg;
-
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn simple() {
     crate::init();
     let cfg = remoc::chmux::Cfg { chunk_size: 4, receive_buffer: 4, ..Default::default() };
@@ -110,7 +113,8 @@ async fn simple() {
     tokio::try_join!(rx1_task, rx2_task, rx3_task).unwrap();
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn simple_stream() {
     crate::init();
     let cfg = remoc::chmux::Cfg { chunk_size: 4, receive_buffer: 4, ..Default::default() };

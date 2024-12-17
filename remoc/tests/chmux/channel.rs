@@ -1,14 +1,16 @@
-use chmux::{PortsExhausted, SendError};
 use futures::{channel::oneshot, future::try_join, stream::StreamExt};
-use remoc::{
-    chmux::{self, ReceiverStream},
-    executor,
-};
 use std::time::Duration;
-use tokio::time::sleep;
 use tracing::Instrument;
 
+#[cfg(feature = "web")]
+use wasm_bindgen_test::wasm_bindgen_test;
+
 use crate::loop_transport;
+use remoc::{
+    chmux::{self, PortsExhausted, ReceiverStream, SendError},
+    executor,
+    executor::time::sleep,
+};
 
 fn cfg() -> chmux::Cfg {
     chmux::Cfg {
@@ -40,7 +42,8 @@ fn cfg2() -> chmux::Cfg {
     }
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn basic() {
     crate::init();
 
@@ -147,7 +150,8 @@ async fn basic() {
     b_mux_done_rx.await.unwrap();
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn receiver_stream() {
     crate::init();
 
@@ -234,7 +238,7 @@ async fn receiver_stream() {
     tokio::test(flavor = "multi_thread", worker_threads = 8)
 )]
 #[cfg_attr(all(not(feature = "web"), target_family = "wasm"), tokio::test)]
-#[cfg_attr(feature = "web", tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn hangup() {
     crate::init();
 

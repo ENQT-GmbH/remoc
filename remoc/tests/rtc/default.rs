@@ -1,3 +1,6 @@
+#[cfg(feature = "web")]
+use wasm_bindgen_test::wasm_bindgen_test;
+
 use crate::loop_channel;
 
 // Avoid imports here to test if proc macro works without imports.
@@ -30,7 +33,8 @@ impl DefaultTrait for CounterObj {
     }
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn simple() {
     use remoc::rtc::ServerRefMut;
 

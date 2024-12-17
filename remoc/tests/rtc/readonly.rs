@@ -1,3 +1,6 @@
+#[cfg(feature = "web")]
+use wasm_bindgen_test::wasm_bindgen_test;
+
 use crate::loop_channel;
 
 // Avoid imports here to test if proc macro works without imports.
@@ -36,7 +39,8 @@ impl ReadValue for ReadValueObj {
     }
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn simple() {
     use remoc::rtc::ServerRef;
 
@@ -61,7 +65,8 @@ async fn simple() {
     tokio::join!(client_task, server.serve());
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn closed() {
     use remoc::rtc::{Client, ServerRef};
 
@@ -88,7 +93,7 @@ async fn closed() {
         println!("Client capacity: {}", client.capacity());
 
         remoc::executor::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            remoc::executor::time::sleep(std::time::Duration::from_millis(500)).await;
             drop_tx.send(()).unwrap();
         });
 

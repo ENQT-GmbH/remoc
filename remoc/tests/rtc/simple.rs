@@ -1,8 +1,7 @@
-use std::sync::Arc;
-use tokio::sync::RwLock;
+#[cfg(feature = "web")]
+use wasm_bindgen_test::wasm_bindgen_test;
 
 use crate::loop_channel;
-use remoc::executor;
 
 // Avoid imports here to test if proc macro works without imports.
 
@@ -63,7 +62,8 @@ impl Counter for CounterObj {
     }
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn simple() {
     use remoc::rtc::ServerRefMut;
 
@@ -83,7 +83,7 @@ async fn simple() {
 
         println!("Spawning watch...");
         let mut watch_rx = client.watch().await.unwrap();
-        executor::spawn(async move {
+        remoc::executor::spawn(async move {
             while watch_rx.changed().await.is_ok() {
                 println!("Watch value: {}", *watch_rx.borrow_and_update().unwrap());
             }
@@ -109,7 +109,8 @@ async fn simple() {
     assert_eq!(counter_obj.value, 65);
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn simple_spawn() {
     use remoc::rtc::ServerSharedMut;
 
@@ -117,9 +118,9 @@ async fn simple_spawn() {
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<CounterClient>().await;
 
     println!("Spawning counter server");
-    let counter_obj = Arc::new(RwLock::new(CounterObj::new()));
+    let counter_obj = std::sync::Arc::new(tokio::sync::RwLock::new(CounterObj::new()));
     let (server, client) = CounterServerSharedMut::new(counter_obj.clone(), 16);
-    let server_task = executor::spawn(async move {
+    let server_task = remoc::executor::spawn(async move {
         server.serve(true).await;
         println!("Server done");
 
@@ -136,7 +137,7 @@ async fn simple_spawn() {
 
     println!("Spawning watch...");
     let mut watch_rx = client.watch().await.unwrap();
-    executor::spawn(async move {
+    remoc::executor::spawn(async move {
         while watch_rx.changed().await.is_ok() {
             println!("Watch value: {}", *watch_rx.borrow_and_update().unwrap());
         }

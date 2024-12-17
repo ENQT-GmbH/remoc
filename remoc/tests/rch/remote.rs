@@ -1,18 +1,22 @@
 use rand::{Rng, RngCore};
-use remoc::codec::StreamingUnavailable;
 use std::time::Duration;
-use tokio::time::timeout;
+
+#[cfg(feature = "web")]
+use wasm_bindgen_test::wasm_bindgen_test;
 
 use crate::loop_channel;
 use remoc::{
+    codec::StreamingUnavailable,
     executor,
+    executor::time::timeout,
     rch::{
         base::{RecvError, SendError, SendErrorKind},
         DEFAULT_MAX_ITEM_SIZE,
     },
 };
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn negation() {
     crate::init();
     let ((mut a_tx, mut a_rx), (mut b_tx, mut b_rx)) = loop_channel::<i32>().await;
@@ -39,7 +43,8 @@ async fn negation() {
     reply_task.await.expect("reply task failed");
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn big_msg() {
     crate::init();
     let ((mut a_tx, mut a_rx), (mut b_tx, mut b_rx)) = loop_channel::<Vec<u8>>().await;
@@ -124,7 +129,8 @@ async fn tcp_big_msg() {
     reply_task.await.expect("reply task failed");
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn close_notify() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<u8>().await;
@@ -149,7 +155,8 @@ async fn close_notify() {
     }
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn oversized_msg_send_error() {
     crate::init();
     let ((mut a_tx, _a_rx), (_b_tx, mut b_rx)) = loop_channel::<Vec<u8>>().await;
@@ -175,7 +182,8 @@ async fn oversized_msg_send_error() {
     }
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn oversized_msg_recv_error() {
     crate::init();
     let ((mut a_tx, _a_rx), (_b_tx, mut b_rx)) = loop_channel::<Vec<u8>>().await;

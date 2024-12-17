@@ -1,8 +1,12 @@
 use remoc::rch::oneshot;
 
+#[cfg(feature = "web")]
+use wasm_bindgen_test::wasm_bindgen_test;
+
 use crate::loop_channel;
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn simple() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<(oneshot::Sender<i16>, oneshot::Receiver<i16>)>().await;
@@ -22,7 +26,8 @@ async fn simple() {
     assert_eq!(i, r, "send/receive mismatch");
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn close() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<oneshot::Sender<i16>>().await;

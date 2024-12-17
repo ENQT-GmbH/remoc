@@ -1,11 +1,18 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, time::Duration};
 
-use remoc::robs::{
-    hash_map::{HashMapEvent, ObservableHashMap},
-    RecvError,
+#[cfg(feature = "web")]
+use wasm_bindgen_test::wasm_bindgen_test;
+
+use remoc::{
+    executor::time::sleep,
+    robs::{
+        hash_map::{HashMapEvent, ObservableHashMap},
+        RecvError,
+    },
 };
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn standalone() {
     let mut obs: ObservableHashMap<_, _, remoc::codec::Default> = ObservableHashMap::new();
 
@@ -20,7 +27,8 @@ async fn standalone() {
     obs.clear();
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn events() {
     let mut obs: ObservableHashMap<_, _, remoc::codec::Default> = ObservableHashMap::new();
 
@@ -49,7 +57,8 @@ async fn events() {
     assert!(sub.is_done());
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn events_incremental() {
     let mut hm = HashMap::new();
     hm.insert(0, "zero".to_string());
@@ -82,7 +91,8 @@ async fn events_incremental() {
     assert!(sub.is_done());
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn mirrored() {
     let mut pre = HashMap::new();
     for i in 1000..1500 {
@@ -110,6 +120,9 @@ async fn mirrored() {
         if *mb == *obs {
             break;
         }
+
+        drop(mb);
+        sleep(Duration::from_millis(100)).await;
     }
 
     println!("remove");
@@ -145,7 +158,8 @@ async fn mirrored() {
     }
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn mirrored_disconnect() {
     let mut obs: ObservableHashMap<_, _, remoc::codec::Default> = ObservableHashMap::new();
 
@@ -162,7 +176,8 @@ async fn mirrored_disconnect() {
     assert!(matches!(mirror.borrow().await, Err(RecvError::Closed)));
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn mirrored_disconnect_after_done() {
     let mut obs: ObservableHashMap<_, _, remoc::codec::Default> = ObservableHashMap::new();
 
@@ -186,13 +201,17 @@ async fn mirrored_disconnect_after_done() {
         if *mb == hm {
             break;
         }
+
+        drop(mb);
+        sleep(Duration::from_millis(100)).await;
     }
 
     let mb = mirror.borrow_and_update().await.unwrap();
     assert!(mb.is_done());
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "web"), tokio::test)]
+#[cfg_attr(feature = "web", wasm_bindgen_test)]
 async fn incremental() {
     let mut pre = HashMap::new();
     for i in 0..5000 {
@@ -220,5 +239,8 @@ async fn incremental() {
         if *mb == *obs {
             break;
         }
+
+        drop(mb);
+        sleep(Duration::from_millis(100)).await;
     }
 }
