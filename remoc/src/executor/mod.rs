@@ -1,65 +1,19 @@
-//! Executor for futures.
+//! Async executor for futures.
 //!
 //! On native platforms this uses Tokio.
-//! On WebAssembly this executes Futures as Promises.
+//! On JavaScript this executes Futures as Promises.
 
 #[cfg(not(feature = "web"))]
-mod native {
-    pub mod task {
-        pub use tokio::task::{spawn, spawn_blocking, JoinError, JoinHandle};
-    }
-
-    pub mod runtime {
-        pub use tokio::runtime::Handle;
-    }
-}
+mod native;
 
 #[cfg(not(feature = "web"))]
 pub use native::*;
 
 #[cfg(feature = "web")]
-pub mod task;
+mod js;
 
 #[cfg(feature = "web")]
-pub mod runtime;
-
-#[cfg(feature = "web")]
-mod thread_pool;
-
-#[cfg(feature = "web")]
-mod sync_wrapper;
-
-/// Whether blocking is allowed on this thread.
-///
-/// On native targets blocking is always allowed.
-/// On web blocking is only allowed on worker threads.
-#[inline]
-pub fn is_blocking_allowed() -> bool {
-    #[cfg(not(feature = "web"))]
-    {
-        true
-    }
-
-    #[cfg(feature = "web")]
-    {
-        use std::cell::LazyCell;
-        use wasm_bindgen::{prelude::*, JsCast};
-
-        #[wasm_bindgen]
-        extern "C" {
-            #[wasm_bindgen(js_name = WorkerGlobalScope)]
-            pub type WorkerGlobalScope;
-        }
-
-        thread_local! {
-            static ALLOWED: LazyCell<bool> = LazyCell::new(||
-                js_sys::global().is_instance_of::<WorkerGlobalScope>()
-            );
-        }
-
-        ALLOWED.with(|allowed| **allowed)
-    }
-}
+pub use js::*;
 
 /// Whether threads are available and working on this platform.
 #[inline]

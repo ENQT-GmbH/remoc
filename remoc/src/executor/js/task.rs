@@ -173,3 +173,10 @@ where
 {
     Handle::current().spawn_blocking(f)
 }
+
+/// Runs a future to completion.
+#[track_caller]
+pub fn block_on<F: Future>(future: F) -> F::Output {
+    let rt = tokio::runtime::Builder::new_current_thread().build().unwrap();
+    rt.block_on(future)
+}

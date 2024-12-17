@@ -117,8 +117,6 @@
 use std::net::Ipv4Addr;
 use tokio::net::{TcpStream, TcpListener};
 use remoc::prelude::*;
-# use remoc::executor;
-// for example: use tokio::task as executor;
 
 #[tokio::main]
 async fn main() {
@@ -145,7 +143,7 @@ async fn connect_client() {
     let (conn, tx, _rx): (_, _, rch::base::Receiver<()>) =
         remoc::Connect::io(remoc::Cfg::default(), socket_rx, socket_tx)
         .await.unwrap();
-    executor::spawn(conn);
+    tokio::spawn(conn);
 
     // Run client.
     client(tx).await;
@@ -166,7 +164,7 @@ async fn connect_server() {
     let (conn, _tx, rx): (_, rch::base::Sender<()>, _) =
         remoc::Connect::io(remoc::Cfg::default(), socket_rx, socket_tx)
         .await.unwrap();
-    executor::spawn(conn);
+    tokio::spawn(conn);
 
     // Run server.
     server(rx).await;

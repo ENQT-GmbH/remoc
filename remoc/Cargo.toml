@@ -23,6 +23,7 @@ rtc = ["rch", "remoc_macro", "async-trait"]
 web = [
     "dep:getrandom",
     "dep:js-sys",
+    "dep:web-sys",
     "dep:wasm-bindgen",
     "dep:wasm-bindgen-futures",
 ]
@@ -72,6 +73,7 @@ postcard = { version = "1.0", features = ["use-std"], optional = true }
 # Web support
 getrandom = { version = "0.2", features = ["js"], optional = true }
 js-sys = { version = "0.3.72", optional = true }
+web-sys = { version = "0.3.72", features = ["Window", "WorkerGlobalScope"], optional = true }
 wasm-bindgen = { version = "0.2.95", optional = true }
 wasm-bindgen-futures = { version = "0.4.45", optional = true }
 
@@ -80,6 +82,7 @@ tracing-subscriber = { version = "0.3.7", features = ["env-filter"] }
 [dev-dependencies]
 tracing-subscriber = { version = "0.3.7", features = ["env-filter"] }
 tokio = { version = "1.42", features = ["io-util", "rt"] }
+wasm-bindgen-test = "0.3.45"
 
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 tokio = { version = "1.42", features = ["net", "rt-multi-thread"] }
@@ -89,3 +92,7 @@ tokio-test = "0.4"
 [package.metadata.docs.rs]
 features = ["full", "full-codecs", "default-codec-json"]
 rustdoc-args = ["--cfg", "docsrs"]
+
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(wasm_bindgen_unstable_test_coverage)'] }

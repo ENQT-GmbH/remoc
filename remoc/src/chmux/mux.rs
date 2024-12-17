@@ -22,7 +22,6 @@ use std::{
 };
 use tokio::{
     sync::{mpsc, mpsc::Permit, oneshot},
-    time::{sleep, timeout},
     try_join,
 };
 
@@ -36,6 +35,7 @@ use super::{
     sender::Sender,
     AnyStorage, Cfg, ChMuxError, PortReq, PROTOCOL_VERSION, PROTOCOL_VERSION_PORT_ID,
 };
+use crate::executor::time::{sleep, timeout};
 
 /// Multiplexer protocol error.
 fn protocol_err<SinkError, StreamError>(msg: impl AsRef<str>) -> super::ChMuxError<SinkError, StreamError> {

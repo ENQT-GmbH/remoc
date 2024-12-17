@@ -9,7 +9,7 @@ use std::{
     thread::Thread,
 };
 
-use super::MutexExt;
+use super::super::MutexExt;
 
 /// Thread pool.
 pub struct ThreadPool {
