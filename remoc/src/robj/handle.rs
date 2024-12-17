@@ -377,15 +377,16 @@ where
                     loop {
                         if *keep_rx.borrow_and_update() {
                             let _ = dropped_rx.recv().await;
+                            break;
                         } else {
                             tokio::select! {
                                 biased;
                                 res = keep_rx.changed() => {
-                                    if res.is_err() {
+                                    if !*keep_rx.borrow_and_update() && res.is_err() {
                                         break;
                                     }
                                 },
-                                _ = dropped_rx.recv() => (),
+                                _ = dropped_rx.recv() => break,
                             }
                         }
                     }
