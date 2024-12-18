@@ -10,7 +10,7 @@ use super::{
     super::{base, mpsc, SendErrorExt},
     BroadcastMsg, Receiver,
 };
-use crate::{chmux, codec, executor, RemoteSend};
+use crate::{chmux, codec, executor, executor::MutexExt, RemoteSend};
 
 /// An error occurred during sending over a broadcast channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -149,7 +149,7 @@ where
     /// No back-pressure is provided.
     #[inline]
     pub fn send(&self, value: T) -> Result<(), SendError<T>> {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.xlock().unwrap();
 
         // Fetch subscribers that have become ready again.
         while let Ok(sub) = inner.ready_rx.try_recv() {
@@ -201,7 +201,7 @@ where
     pub fn subscribe<const RECEIVE_BUFFER: usize>(
         &self, send_buffer: usize,
     ) -> Receiver<T, Codec, RECEIVE_BUFFER> {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.xlock().unwrap();
 
         let (tx, rx) = mpsc::channel(send_buffer);
         let tx = tx.set_buffer();
@@ -214,7 +214,7 @@ where
     pub fn subscribe_with_max_item_size<const RECEIVE_BUFFER: usize, const MAX_ITEM_SIZE: usize>(
         &self, send_buffer: usize,
     ) -> Receiver<T, Codec, RECEIVE_BUFFER, MAX_ITEM_SIZE> {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = self.inner.xlock().unwrap();
 
         let (tx, rx) = mpsc::channel(send_buffer);
         let mut tx = tx.set_buffer();

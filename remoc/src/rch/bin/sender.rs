@@ -12,7 +12,7 @@ use super::{
     },
     Interlock, Location,
 };
-use crate::chmux;
+use crate::{chmux, executor::MutexExt};
 
 /// A binary channel sender.
 pub struct Sender {
@@ -76,7 +76,7 @@ impl Serialize for Sender {
     {
         let receiver_tx = self.receiver_tx.clone();
         let interlock_confirm = {
-            let mut interlock = self.interlock.lock().unwrap();
+            let mut interlock = self.interlock.xlock().unwrap();
             if interlock.receiver.check_local() {
                 Some(interlock.receiver.start_send())
             } else {
@@ -109,7 +109,7 @@ impl Serialize for Sender {
             // Forwarding.
             _ => {
                 let (successor_tx, successor_rx) = tokio::sync::oneshot::channel();
-                *self.successor_tx.lock().unwrap() = Some(successor_tx);
+                *self.successor_tx.xlock().unwrap() = Some(successor_tx);
                 let (tx, rx) = super::channel();
                 PortSerializer::spawn(Self::forward(successor_rx, rx))?;
 
@@ -154,7 +154,7 @@ impl<'de> Deserialize<'de> for Sender {
 
 impl Drop for Sender {
     fn drop(&mut self) {
-        let successor_tx = self.successor_tx.lock().unwrap().take();
+        let successor_tx = self.successor_tx.xlock().unwrap().take();
         if let Some(successor_tx) = successor_tx {
             let dummy = Self {
                 sender: None,

@@ -12,13 +12,15 @@ use std::{
 };
 use tokio::sync::{mpsc, oneshot};
 
-use crate::{executor, executor::task::JoinHandle};
-
 use super::{
     port_allocator::{PortAllocator, PortNumber},
     receiver::Receiver,
     sender::Sender,
     PortReq,
+};
+use crate::{
+    executor,
+    executor::{task::JoinHandle, MutexExt},
 };
 
 /// An error occurred during connecting to a remote service.
@@ -87,7 +89,7 @@ impl ConntectRequestCrediter {
     pub async fn request(&self) -> ConnectRequestCredit {
         loop {
             let rx = {
-                let mut inner = self.0.lock().unwrap();
+                let mut inner = self.0.xlock().unwrap();
 
                 if inner.used < inner.limit {
                     inner.used += 1;
@@ -107,7 +109,7 @@ impl ConntectRequestCrediter {
     ///
     /// Does not wait for the credit to become available.
     pub fn try_request(&self) -> Option<ConnectRequestCredit> {
-        let mut inner = self.0.lock().unwrap();
+        let mut inner = self.0.xlock().unwrap();
 
         if inner.used < inner.limit {
             inner.used += 1;
@@ -124,7 +126,7 @@ pub(crate) struct ConnectRequestCredit(Arc<Mutex<ConntectRequestCrediterInner>>)
 impl Drop for ConnectRequestCredit {
     fn drop(&mut self) {
         let notify_tx = {
-            let mut inner = self.0.lock().unwrap();
+            let mut inner = self.0.xlock().unwrap();
             inner.used -= 1;
             mem::take(&mut inner.notify_tx)
         };

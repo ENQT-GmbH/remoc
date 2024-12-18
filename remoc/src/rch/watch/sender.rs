@@ -10,7 +10,7 @@ use super::{
     receiver::RecvError,
     Receiver, Ref,
 };
-use crate::{chmux, codec, RemoteSend};
+use crate::{chmux, codec, executor::MutexExt, RemoteSend};
 
 /// An error occurred during sending over an mpsc channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -228,12 +228,12 @@ where
 
     fn update_error(&self) {
         let inner = self.inner.as_ref().unwrap();
-        let mut current_err = inner.current_err.lock().unwrap();
+        let mut current_err = inner.current_err.xlock().unwrap();
         if current_err.is_some() {
             return;
         }
 
-        let mut remote_send_err_rx = inner.remote_send_err_rx.lock().unwrap();
+        let mut remote_send_err_rx = inner.remote_send_err_rx.xlock().unwrap();
         if let Ok(err) = remote_send_err_rx.try_recv() {
             *current_err = Some(err);
         }
@@ -248,7 +248,7 @@ where
         self.update_error();
 
         let inner = self.inner.as_ref().unwrap();
-        let current_err = inner.current_err.lock().unwrap();
+        let current_err = inner.current_err.xlock().unwrap();
         current_err.clone().map(|err| err.into())
     }
 
@@ -257,7 +257,7 @@ where
         self.update_error();
 
         let inner = self.inner.as_ref().unwrap();
-        let mut current_err = inner.current_err.lock().unwrap();
+        let mut current_err = inner.current_err.xlock().unwrap();
         *current_err = None;
     }
 
@@ -296,7 +296,7 @@ where
 
 impl<T, Codec> Drop for Sender<T, Codec> {
     fn drop(&mut self) {
-        if let Some(successor_tx) = self.successor_tx.lock().unwrap().take() {
+        if let Some(successor_tx) = self.successor_tx.xlock().unwrap().take() {
             let _ = successor_tx.send(self.inner.take().unwrap());
         }
     }
@@ -317,7 +317,7 @@ where
 
         // Prepare channel for takeover.
         let (successor_tx, successor_rx) = tokio::sync::oneshot::channel();
-        *self.successor_tx.lock().unwrap() = Some(successor_tx);
+        *self.successor_tx.xlock().unwrap() = Some(successor_tx);
 
         let port = PortSerializer::connect(move |connect| {
             async move {

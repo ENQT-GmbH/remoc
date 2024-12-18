@@ -17,6 +17,7 @@ use super::{
 use crate::{
     chmux,
     codec::{self, DeserializationError},
+    executor::MutexExt,
 };
 
 /// An error that occurred during receiving from a remote endpoint.
@@ -183,7 +184,7 @@ where
             self.sender_tx.clone().ok_or_else(|| ser::Error::custom("cannot forward received receiver"))?;
 
         let interlock_confirm = {
-            let mut interlock = self.interlock.lock().unwrap();
+            let mut interlock = self.interlock.xlock().unwrap();
             if !interlock.sender.check_local() {
                 return Err(ser::Error::custom("cannot send receiver because sender has been sent"));
             }

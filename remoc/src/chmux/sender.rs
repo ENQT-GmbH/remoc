@@ -18,14 +18,13 @@ use std::{
 use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio_util::sync::ReusableBoxFuture;
 
-use crate::executor;
-
 use super::{
     client::ConnectResponse,
     credit::{AssignedCredits, CreditUser},
     mux::PortEvt,
     AnyStorage, Connect, ConnectError, PortAllocator, PortReq,
 };
+use crate::executor::{self, MutexExt};
 
 /// An error occurred during sending of a message.
 #[derive(Debug, Clone)]
@@ -163,7 +162,7 @@ impl fmt::Debug for Closed {
 impl Closed {
     fn new(hangup_notify: &Weak<std::sync::Mutex<Option<Vec<oneshot::Sender<()>>>>>) -> Self {
         if let Some(hangup_notify) = hangup_notify.upgrade() {
-            if let Some(notifiers) = hangup_notify.lock().unwrap().as_mut() {
+            if let Some(notifiers) = hangup_notify.xlock().unwrap().as_mut() {
                 let (tx, rx) = oneshot::channel();
                 notifiers.push(tx);
                 Self {

@@ -17,7 +17,7 @@ use super::{
     },
     Distributor,
 };
-use crate::{chmux, codec, executor, RemoteSend};
+use crate::{chmux, codec, executor, executor::MutexExt, RemoteSend};
 
 /// An error occurred during receiving over an mpsc channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -384,7 +384,7 @@ impl<T, Codec, const BUFFER: usize, const MAX_ITEM_SIZE: usize> Drop
 {
     fn drop(&mut self) {
         if let Some(inner) = self.inner.take() {
-            let mut successor_tx = self.successor_tx.lock().unwrap();
+            let mut successor_tx = self.successor_tx.xlock().unwrap();
             if let Some(successor_tx) = successor_tx.take() {
                 let _ = successor_tx.send(inner);
             } else if !inner.closed {
@@ -408,7 +408,7 @@ where
     {
         // Register successor of this receiver.
         let (successor_tx, successor_rx) = tokio::sync::oneshot::channel();
-        *self.successor_tx.lock().unwrap() = Some(successor_tx);
+        *self.successor_tx.xlock().unwrap() = Some(successor_tx);
 
         let port = PortSerializer::connect(|connect| {
             async move {

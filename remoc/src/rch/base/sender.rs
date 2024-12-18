@@ -24,7 +24,7 @@ use crate::{
     chmux::{self, AnyStorage, PortReq},
     codec::{self, SerializationError, StreamingUnavailable},
     executor,
-    executor::task,
+    executor::{task, MutexExt},
 };
 
 pub use crate::chmux::Closed;
@@ -294,7 +294,7 @@ where
         let result = task::spawn_blocking(move || {
             let ps_ref = PortSerializer::start(allocator, storage);
 
-            let item = item_arc_task.lock().unwrap();
+            let item = item_arc_task.xlock().unwrap();
             <Codec as codec::Codec>::serialize(&mut cbw, &*item)?;
 
             let cbw = cbw.into_inner().map_err(|_| {

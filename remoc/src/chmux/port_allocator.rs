@@ -9,6 +9,8 @@ use std::{
 };
 use tokio::sync::oneshot;
 
+use crate::executor::MutexExt;
+
 struct PortAllocatorInner {
     used: HashSet<u32>,
     limit: u32,
@@ -45,7 +47,7 @@ pub struct PortAllocator(Arc<Mutex<PortAllocatorInner>>);
 
 impl fmt::Debug for PortAllocator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let inner = self.0.lock().unwrap();
+        let inner = self.0.xlock().unwrap();
         f.debug_struct("PortAllocator").field("used", &inner.used.len()).field("limit", &inner.limit).finish()
     }
 }
@@ -64,7 +66,7 @@ impl PortAllocator {
     pub async fn allocate(&self) -> PortNumber {
         loop {
             let rx = {
-                let mut inner = self.0.lock().unwrap();
+                let mut inner = self.0.xlock().unwrap();
                 match inner.try_allocate(self.0.clone()) {
                     Some(number) => return number,
                     None => {
@@ -83,7 +85,7 @@ impl PortAllocator {
     ///
     /// If all port are currently in use, this returns [None].
     pub fn try_allocate(&self) -> Option<PortNumber> {
-        let mut inner = self.0.lock().unwrap();
+        let mut inner = self.0.xlock().unwrap();
         inner.try_allocate(self.0.clone())
     }
 }
@@ -151,7 +153,7 @@ impl Borrow<u32> for PortNumber {
 impl Drop for PortNumber {
     fn drop(&mut self) {
         let notify_tx = {
-            let mut inner = self.allocator.lock().unwrap();
+            let mut inner = self.allocator.xlock().unwrap();
             inner.used.remove(&self.number);
             mem::take(&mut inner.notify_tx)
         };

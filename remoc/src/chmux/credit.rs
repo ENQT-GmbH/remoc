@@ -9,6 +9,7 @@ use tokio::sync::{
 };
 
 use super::{mux::PortEvt, ChMuxError, SendError};
+use crate::executor::MutexExt;
 
 // ===========================================================================
 // Credit accounting for sending data
@@ -56,7 +57,7 @@ impl Drop for AssignedCredits {
     fn drop(&mut self) {
         if self.port > 0 {
             if let Some(port) = self.port_inner.upgrade() {
-                let mut port = port.lock().unwrap();
+                let mut port = port.xlock().unwrap();
                 port.credits += self.port;
             }
         }
@@ -80,7 +81,7 @@ impl CreditProvider {
         &self, credits: u32,
     ) -> Result<(), ChMuxError<SinkError, StreamError>> {
         let notify = {
-            let mut inner = self.0.lock().unwrap();
+            let mut inner = self.0.xlock().unwrap();
 
             match inner.credits.checked_add(credits) {
                 Some(new_credits) => inner.credits = new_credits,
@@ -100,7 +101,7 @@ impl CreditProvider {
     /// Closes the channel.
     pub fn close(&self, gracefully: bool) {
         let notify = {
-            let mut inner = self.0.lock().unwrap();
+            let mut inner = self.0.xlock().unwrap();
 
             inner.closed = Some(gracefully);
 
@@ -132,7 +133,7 @@ impl CreditUser {
                     Some(channel) => channel,
                     None => return Err(SendError::ChMux),
                 };
-                let mut channel = channel.lock().unwrap();
+                let mut channel = channel.xlock().unwrap();
                 if let Some(gracefully) = channel.closed {
                     if !self.override_graceful_close || !gracefully {
                         return Err(SendError::Closed { gracefully });
@@ -164,7 +165,7 @@ impl CreditUser {
             Some(channel) => channel,
             None => return Err(SendError::ChMux),
         };
-        let mut channel = channel.lock().unwrap();
+        let mut channel = channel.xlock().unwrap();
         if let Some(gracefully) = channel.closed {
             if !self.override_graceful_close || !gracefully {
                 return Err(SendError::Closed { gracefully });
@@ -213,7 +214,7 @@ impl ChannelCreditMonitor {
     pub fn use_credits<SinkError, StreamError>(
         &self, credits: u32,
     ) -> Result<UsedCredit, ChMuxError<SinkError, StreamError>> {
-        let mut inner = self.0.lock().unwrap();
+        let mut inner = self.0.xlock().unwrap();
         match inner.used.checked_add(credits) {
             Some(new_used) if new_used <= inner.limit => {
                 inner.used = new_used;
@@ -239,7 +240,7 @@ impl ChannelCreditReturner {
         assert!(self.return_fut.is_none(), "start_return_one called without poll_return_flush");
 
         if let Some(monitor) = self.monitor.upgrade() {
-            let mut monitor = monitor.lock().unwrap();
+            let mut monitor = monitor.xlock().unwrap();
 
             monitor.used -= credit.0;
             self.to_return += credit.0;

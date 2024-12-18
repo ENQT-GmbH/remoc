@@ -15,6 +15,8 @@ mod js;
 #[cfg(feature = "js")]
 pub use js::*;
 
+pub use task::spawn;
+
 /// Whether threads are available and working on this platform.
 #[inline]
 pub fn are_threads_available() -> bool {
@@ -61,10 +63,13 @@ impl<T> MutexExt<T> for std::sync::Mutex<T> {
             match self.try_lock() {
                 Ok(guard) => return Ok(guard),
                 Err(std::sync::TryLockError::Poisoned(p)) => return Err(p),
-                Err(std::sync::TryLockError::WouldBlock) => (),
+                Err(std::sync::TryLockError::WouldBlock) => {
+                    std::thread::yield_now();
+
+                    #[cfg(all(target_family = "wasm", not(target_feature = "atomics")))]
+                    panic!("mutex deadlock");
+                }
             }
         }
     }
 }
-
-pub use task::spawn;
