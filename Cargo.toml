@@ -16,3 +16,19 @@ authors = [
 resolver = "2"
 members = ["remoc", "remoc_macro"]
 exclude = ["examples"]
+
+
+[patch.crates-io]
+tokio = { git = "https://github.com/surban/tokio.git", branch = "fix/wasm-park" }
+
+# js-sys = { git = "https://github.com/rust-wasi-web/wasm-bindgen.git" }
+# web-sys = { git = "https://github.com/rust-wasi-web/wasm-bindgen.git" }
+# wasm-bindgen = { git = "https://github.com/rust-wasi-web/wasm-bindgen.git" }
+# wasm-bindgen-futures = { git = "https://github.com/rust-wasi-web/wasm-bindgen.git" }
+# wasm-bindgen-test = { git = "https://github.com/rust-wasi-web/wasm-bindgen.git" }
+
+js-sys = { path = "/data/surban/dev/rust-wasi-web/wasm-bindgen/crates/js-sys" }
+web-sys = { path = "/data/surban/dev/rust-wasi-web/wasm-bindgen/crates/web-sys" }
+wasm-bindgen = { path = "/data/surban/dev/rust-wasi-web/wasm-bindgen" }
+wasm-bindgen-futures = { path = "/data/surban/dev/rust-wasi-web/wasm-bindgen/crates/futures" }
+wasm-bindgen-test = { path = "/data/surban/dev/rust-wasi-web/wasm-bindgen/crates/test" }

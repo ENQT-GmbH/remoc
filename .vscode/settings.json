@@ -1,4 +1,7 @@
 {
+    "files.exclude": {
+        "target": true,
+    },
     "cSpell.languageSettings": [
         {
             "languageId": "rust",
@@ -47,8 +50,8 @@
         "codec-ciborium",
         "codec-json",
         "codec-message-pack",
-        "codec-postcard"
+        "codec-postcard",
+        "js",
     ],
-
-    "rust-analyzer.cargo.target": "wasm32-wasip1-threads"
+    "rust-analyzer.cargo.target": "wasm32-unknown-unknown"
 }
