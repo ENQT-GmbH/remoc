@@ -418,7 +418,7 @@ where
         // Ensures that all ports are closed on both sides.
         terminate &= self.ports.is_empty();
         // Ensures that local clients are all dropped or remote listener is dropped.
-        terminate &= self.all_clients_dropped || self.remote_listener_dropped.load(Ordering::SeqCst);
+        terminate &= self.all_clients_dropped || self.remote_listener_dropped.load(Ordering::Relaxed);
         // Ensures that local listener or all remote clients are dropped.
         terminate &= self.listen_tx.is_none() || self.remote_client_dropped;
         // No remote port requests are outstanding.
@@ -745,7 +745,7 @@ where
         match event {
             // Process local connect request.
             GlobalEvt::ConnectReq(ConnectRequest { local_port, id, sent_tx: _sent_tx, response_tx, wait }) => {
-                if !self.remote_listener_dropped.load(Ordering::SeqCst) {
+                if !self.remote_listener_dropped.load(Ordering::Relaxed) {
                     let local_port_num = *local_port;
                     if self.ports.insert(local_port, PortState::Connecting { response_tx }).is_some() {
                         panic!("ConnectRequest for already used local port {local_port_num}");
@@ -1086,12 +1086,12 @@ where
                     ..
                 }) = self.ports.get_mut(&port)
                 {
-                    if !remote_receiver_closed.load(Ordering::SeqCst) {
+                    if !remote_receiver_closed.load(Ordering::Relaxed) {
                         // Disable credits provider.
                         sender_credit_provider.close(true);
 
                         // Send hangup notifications.
-                        remote_receiver_closed.store(true, Ordering::SeqCst);
+                        remote_receiver_closed.store(true, Ordering::Relaxed);
                         let notifies = remote_receiver_closed_notify.xlock().unwrap().take().unwrap();
                         for tx in notifies {
                             let _ = tx.send(());
@@ -1122,12 +1122,12 @@ where
                     ..
                 }) = self.ports.get_mut(&port)
                 {
-                    if !remote_receiver_closed.load(Ordering::SeqCst) {
+                    if !remote_receiver_closed.load(Ordering::Relaxed) {
                         // Disable credits provider.
                         sender_credit_provider.close(false);
 
                         // Send hangup notifications.
-                        remote_receiver_closed.store(true, Ordering::SeqCst);
+                        remote_receiver_closed.store(true, Ordering::Relaxed);
                         let notifies = remote_receiver_closed_notify.xlock().unwrap().take().unwrap();
                         for tx in notifies {
                             let _ = tx.send(());
@@ -1172,7 +1172,7 @@ where
 
             // Remote endpoint will process no more connect requests.
             MultiplexMsg::ListenerFinish => {
-                self.remote_listener_dropped.store(true, Ordering::SeqCst);
+                self.remote_listener_dropped.store(true, Ordering::Relaxed);
             }
 
             // Remote endpoint terminates connection.

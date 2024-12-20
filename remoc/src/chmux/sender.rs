@@ -435,7 +435,7 @@ impl Sender {
     /// True, once the remote endpoint has closed its receiver.
     #[inline]
     pub fn is_closed(&self) -> bool {
-        self.hangup_recved.upgrade().map(|hr| hr.load(Ordering::SeqCst)).unwrap_or_default()
+        self.hangup_recved.upgrade().map(|hr| hr.load(Ordering::Relaxed)).unwrap_or_default()
     }
 
     /// Returns a future that will resolve when the remote endpoint closes its receiver.

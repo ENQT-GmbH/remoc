@@ -297,7 +297,7 @@ impl Client {
                     }
                 }
                 Err(_) => {
-                    if listener_dropped.load(Ordering::SeqCst) {
+                    if listener_dropped.load(Ordering::Relaxed) {
                         Err(ConnectError::Rejected)
                     } else {
                         Err(ConnectError::ChMux)
