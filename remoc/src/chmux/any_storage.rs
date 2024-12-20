@@ -8,7 +8,7 @@ use std::{
 };
 use uuid::Uuid;
 
-use crate::executor::MutexExt;
+use crate::exec::MutexExt;
 
 /// Box containing any value that is Send, Sync and static.
 pub type AnyBox = Box<dyn Any + Send + Sync + 'static>;

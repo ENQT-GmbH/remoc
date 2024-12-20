@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 use super::{msg::RFnRequest, CallError};
-use crate::{codec, executor, rch::oneshot, RemoteSend};
+use crate::{codec, exec, rch::oneshot, RemoteSend};
 
 /// Provides a remotely callable async [FnOnce] function.
 ///
@@ -109,7 +109,7 @@ where
         let (request_tx, request_rx) = oneshot::channel();
         let (keep_tx, keep_rx) = tokio::sync::oneshot::channel();
 
-        executor::spawn(async move {
+        exec::spawn(async move {
             tokio::select! {
                 biased;
 

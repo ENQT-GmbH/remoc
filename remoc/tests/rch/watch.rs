@@ -6,8 +6,8 @@ use wasm_bindgen_test::wasm_bindgen_test;
 
 use crate::{droppable_loop_channel, loop_channel};
 use remoc::{
-    executor,
-    executor::time::sleep,
+    exec,
+    exec::time::sleep,
     rch::{
         base::SendErrorKind,
         watch::{self, ChangedError, ReceiverStream, SendError},
@@ -34,7 +34,7 @@ async fn simple() {
         println!("Initial value: {value:?}");
     }
 
-    let recv_task = executor::spawn(async move {
+    let recv_task = exec::spawn(async move {
         let mut value = *rx.borrow().unwrap();
         assert_eq!(value, start_value);
 
@@ -80,7 +80,7 @@ async fn simple_stream() {
     let rx = b_rx.recv().await.unwrap().unwrap();
     let mut rx = ReceiverStream::from(rx);
 
-    let recv_task = executor::spawn(async move {
+    let recv_task = exec::spawn(async move {
         let mut value = 0;
         while let Some(rxed_value) = rx.next().await {
             value = rxed_value.unwrap();
@@ -130,7 +130,7 @@ async fn modify_stream() {
     let rx = b_rx.recv().await.unwrap().unwrap();
     let mut rx = ReceiverStream::from(rx);
 
-    let recv_task = executor::spawn(async move {
+    let recv_task = exec::spawn(async move {
         let mut value = 0;
         while let Some(rxed_value) = rx.next().await {
             value = rxed_value.unwrap();
@@ -230,7 +230,7 @@ async fn conn_failure() {
 #[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn max_item_size_exceeded() {
     crate::init();
-    if !remoc::executor::are_threads_available() {
+    if !remoc::exec::are_threads_available() {
         println!("test requires threads");
         return;
     }
@@ -252,7 +252,7 @@ async fn max_item_size_exceeded() {
         println!("Initial value: {value:?}");
     }
 
-    let recv_task = executor::spawn(async move {
+    let recv_task = exec::spawn(async move {
         loop {
             let res = rx.changed().await;
             println!("RX changed result: {res:?}");
@@ -302,7 +302,7 @@ async fn max_item_size_exceeded() {
 #[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn max_item_size_exceeded_check() {
     crate::init();
-    if !remoc::executor::are_threads_available() {
+    if !remoc::exec::are_threads_available() {
         println!("test requires threads");
         return;
     }
@@ -324,7 +324,7 @@ async fn max_item_size_exceeded_check() {
         println!("Initial value: {value:?}");
     }
 
-    let recv_task = executor::spawn(async move {
+    let recv_task = exec::spawn(async move {
         loop {
             let res = rx.changed().await;
             println!("RX changed result: {res:?}");

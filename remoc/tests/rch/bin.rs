@@ -5,7 +5,7 @@ use rand::{Rng, RngCore};
 use wasm_bindgen_test::wasm_bindgen_test;
 
 use crate::loop_channel;
-use remoc::{chmux::Received, executor, rch::bin};
+use remoc::{chmux::Received, exec, rch::bin};
 
 #[cfg_attr(not(feature = "js"), tokio::test)]
 #[cfg_attr(feature = "js", wasm_bindgen_test)]
@@ -20,7 +20,7 @@ async fn loopback() {
     println!("Receiving remote bin channel sender and receiver");
     let (tx1, rx2) = b_rx.recv().await.unwrap().unwrap();
 
-    let reply_task = executor::spawn(async move {
+    let reply_task = exec::spawn(async move {
         let mut rx1 = rx1.into_inner().await.unwrap();
         let mut tx2 = tx2.into_inner().await.unwrap();
 
@@ -97,7 +97,7 @@ async fn forward() {
     println!("Receiving forwarded remote bin channel sender and receiver");
     let (tx1, rx2) = d_rx.recv().await.unwrap().unwrap();
 
-    let reply_task = executor::spawn(async move {
+    let reply_task = exec::spawn(async move {
         let mut rx1 = rx1.into_inner().await.unwrap();
         let mut tx2 = tx2.into_inner().await.unwrap();
 
@@ -181,7 +181,7 @@ async fn double_forward() {
     println!("Receiving forwarded remote bin channel sender and receiver again");
     let (tx1, rx2) = f_rx.recv().await.unwrap().unwrap();
 
-    let reply_task = executor::spawn(async move {
+    let reply_task = exec::spawn(async move {
         let mut rx1 = rx1.into_inner().await.unwrap();
         let mut tx2 = tx2.into_inner().await.unwrap();
 

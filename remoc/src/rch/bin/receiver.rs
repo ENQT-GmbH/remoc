@@ -12,7 +12,7 @@ use super::{
     },
     Interlock, Location,
 };
-use crate::{chmux, executor::MutexExt};
+use crate::{chmux, exec::MutexExt};
 
 /// A binary channel receiver.
 pub struct Receiver {

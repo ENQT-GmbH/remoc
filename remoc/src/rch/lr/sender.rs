@@ -17,7 +17,7 @@ use super::{
 use crate::{
     chmux,
     codec::{self, SerializationError},
-    executor::MutexExt,
+    exec::MutexExt,
 };
 
 pub use super::super::base::Closed;

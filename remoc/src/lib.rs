@@ -217,7 +217,7 @@ async fn server(mut rx: rch::base::Receiver<CountReq>) {
 pub mod prelude;
 
 #[doc(hidden)]
-pub mod executor;
+pub mod exec;
 
 pub mod chmux;
 pub use chmux::Cfg;

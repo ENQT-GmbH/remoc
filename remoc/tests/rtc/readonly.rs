@@ -92,8 +92,8 @@ async fn closed() {
         assert!(!client.is_closed());
         println!("Client capacity: {}", client.capacity());
 
-        remoc::executor::spawn(async move {
-            remoc::executor::time::sleep(std::time::Duration::from_millis(500)).await;
+        remoc::exec::spawn(async move {
+            remoc::exec::time::sleep(std::time::Duration::from_millis(500)).await;
             drop_tx.send(()).unwrap();
         });
 

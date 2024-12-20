@@ -1,4 +1,4 @@
-//! JavaScript async executor.
+//! JavaScript async executive.
 
 use std::cell::LazyCell;
 use wasm_bindgen::JsCast;

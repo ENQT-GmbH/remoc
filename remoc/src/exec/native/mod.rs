@@ -1,4 +1,4 @@
-//! Native async executor using Tokio.
+//! Native async executive using Tokio.
 
 pub mod runtime {
     pub use tokio::runtime::Handle;

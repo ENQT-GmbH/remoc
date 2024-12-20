@@ -83,7 +83,7 @@ async fn simple() {
 
         println!("Spawning watch...");
         let mut watch_rx = client.watch().await.unwrap();
-        remoc::executor::spawn(async move {
+        remoc::exec::spawn(async move {
             while watch_rx.changed().await.is_ok() {
                 println!("Watch value: {}", *watch_rx.borrow_and_update().unwrap());
             }
@@ -120,7 +120,7 @@ async fn simple_spawn() {
     println!("Spawning counter server");
     let counter_obj = std::sync::Arc::new(tokio::sync::RwLock::new(CounterObj::new()));
     let (server, client) = CounterServerSharedMut::new(counter_obj.clone(), 16);
-    let server_task = remoc::executor::spawn(async move {
+    let server_task = remoc::exec::spawn(async move {
         server.serve(true).await;
         println!("Server done");
 
@@ -137,7 +137,7 @@ async fn simple_spawn() {
 
     println!("Spawning watch...");
     let mut watch_rx = client.watch().await.unwrap();
-    remoc::executor::spawn(async move {
+    remoc::exec::spawn(async move {
         while watch_rx.changed().await.is_ok() {
             println!("Watch value: {}", *watch_rx.borrow_and_update().unwrap());
         }

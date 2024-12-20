@@ -6,7 +6,7 @@ use std::{error::Error, fmt};
 use crate::{
     chmux::ChMuxError,
     connect::ConnectError,
-    executor,
+    exec,
     rch::base::{RecvError, SendError},
 };
 
@@ -190,7 +190,7 @@ where
             res = tx.send(value) => res?,
         }
 
-        executor::spawn(async move {
+        exec::spawn(async move {
             if let Err(err) = conn.await {
                 tracing::warn!(%err, "connection failed");
             }
@@ -216,7 +216,7 @@ where
             }
         };
 
-        executor::spawn(async move {
+        exec::spawn(async move {
             if let Err(err) = conn.await {
                 tracing::warn!(%err, "connection failed");
             }

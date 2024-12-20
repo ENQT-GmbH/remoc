@@ -35,7 +35,7 @@ use super::{
     sender::Sender,
     AnyStorage, Cfg, ChMuxError, PortReq, PROTOCOL_VERSION, PROTOCOL_VERSION_PORT_ID,
 };
-use crate::executor::{
+use crate::exec::{
     time::{sleep, timeout},
     MutexExt,
 };

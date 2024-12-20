@@ -17,7 +17,7 @@ use super::{
     },
     Distributor,
 };
-use crate::{chmux, codec, executor, executor::MutexExt, RemoteSend};
+use crate::{chmux, codec, exec, exec::MutexExt, RemoteSend};
 
 /// An error occurred during receiving over an mpsc channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -283,7 +283,7 @@ impl<T, Codec, const BUFFER: usize, const MAX_ITEM_SIZE: usize> Receiver<T, Code
     /// This function panics if called within an asynchronous execution context.
     #[inline]
     pub fn blocking_recv(&mut self) -> Result<Option<T>, RecvError> {
-        executor::task::block_on(self.recv())
+        exec::task::block_on(self.recv())
     }
 
     /// Closes the receiving half of a channel without dropping it.

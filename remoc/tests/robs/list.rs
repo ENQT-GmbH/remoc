@@ -4,7 +4,7 @@ use std::time::Duration;
 use wasm_bindgen_test::wasm_bindgen_test;
 
 use remoc::{
-    executor::time::sleep,
+    exec::time::sleep,
     robs::{
         list::{ListEvent, ObservableList},
         RecvError,

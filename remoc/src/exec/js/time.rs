@@ -14,7 +14,7 @@ use std::{
 use wasm_bindgen::{prelude::*, JsCast};
 use web_sys::{Window, WorkerGlobalScope};
 
-use crate::executor::MutexExt;
+use super::MutexExt;
 
 /// Future returned by [`sleep`].
 pub struct Sleep {

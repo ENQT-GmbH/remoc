@@ -144,7 +144,7 @@ async fn simple_spawn() {
     println!("Spawning counter server");
     let counter_obj = CounterObj::new();
     let (server, client) = CounterServer::new(counter_obj, 1);
-    let server_task = remoc::executor::spawn(async move {
+    let server_task = remoc::exec::spawn(async move {
         let counter_obj = server.serve().await.unwrap();
         println!("Server done");
 

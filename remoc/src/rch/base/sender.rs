@@ -23,8 +23,8 @@ use super::{
 use crate::{
     chmux::{self, AnyStorage, PortReq},
     codec::{self, SerializationError, StreamingUnavailable},
-    executor,
-    executor::{task, MutexExt},
+    exec,
+    exec::{task, MutexExt},
 };
 
 pub use crate::chmux::Closed;
@@ -281,7 +281,7 @@ where
         allocator: chmux::PortAllocator, storage: AnyStorage, item: T, tx: tokio::sync::mpsc::Sender<BytesMut>,
         chunk_size: usize,
     ) -> Result<(T, PortSerializer, usize), (SerializationError, T)> {
-        if !executor::are_threads_available() {
+        if !exec::are_threads_available() {
             return Err((SerializationError::new(StreamingUnavailable), item));
         }
 
@@ -455,12 +455,12 @@ where
         //
         // We have to spawn a task for this to ensure cancellation safety.
         for (callback, connect) in callbacks.into_iter().zip(connects.into_iter()) {
-            executor::spawn(callback(connect));
+            exec::spawn(callback(connect));
         }
 
         // Spawn registered tasks.
         for task in tasks {
-            executor::spawn(task);
+            exec::spawn(task);
         }
 
         Ok(())

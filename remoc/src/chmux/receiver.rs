@@ -8,14 +8,13 @@ use std::{collections::VecDeque, error::Error, fmt, mem, pin::Pin};
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::ReusableBoxFuture;
 
-use crate::executor;
-
 use super::{
     credit::{ChannelCreditReturner, UsedCredit},
     forward,
     mux::PortEvt,
     AnyStorage, ForwardError, PortAllocator, Request, Sender,
 };
+use crate::exec;
 
 /// An error occurred during receiving a data message.
 #[derive(Debug, Clone)]
@@ -326,7 +325,7 @@ impl Receiver {
     ) -> Self {
         let (_drop_tx, drop_rx) = oneshot::channel();
         let tx_drop = tx.clone();
-        executor::spawn(async move {
+        exec::spawn(async move {
             let _ = drop_rx.await;
             let _ = tx_drop.send(PortEvt::ReceiverDropped { local_port }).await;
         });

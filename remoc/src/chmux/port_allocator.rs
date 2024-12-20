@@ -9,7 +9,7 @@ use std::{
 };
 use tokio::sync::oneshot;
 
-use crate::executor::MutexExt;
+use crate::exec::MutexExt;
 
 struct PortAllocatorInner {
     used: HashSet<u32>,

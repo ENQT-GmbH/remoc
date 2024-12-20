@@ -52,7 +52,7 @@ use std::{error::Error, fmt, marker::PhantomData, ops::Deref, pin::Pin, sync::Ar
 use tokio::sync::Mutex;
 
 use crate::{
-    chmux, codec, executor,
+    chmux, codec, exec,
     rch::{base, mpsc, oneshot},
     RemoteSend,
 };
@@ -198,7 +198,7 @@ where
         let mut request_rx = request_rx.set_buffer::<1>();
         let (keep_tx, keep_rx) = tokio::sync::oneshot::channel();
 
-        executor::spawn(async move {
+        exec::spawn(async move {
             tokio::select! {
                 res = request_rx.recv() => {
                     if let Ok(Some(value_tx)) = res {

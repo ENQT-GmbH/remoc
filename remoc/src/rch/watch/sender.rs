@@ -10,7 +10,7 @@ use super::{
     receiver::RecvError,
     Receiver, Ref,
 };
-use crate::{chmux, codec, executor::MutexExt, RemoteSend};
+use crate::{chmux, codec, exec::MutexExt, RemoteSend};
 
 /// An error occurred during sending over an mpsc channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]

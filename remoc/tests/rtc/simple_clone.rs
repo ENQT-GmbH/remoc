@@ -83,7 +83,7 @@ async fn simple_clone() {
 
         println!("Spawning watch...");
         let mut watch_rx = client.watch().await.unwrap();
-        remoc::executor::spawn(async move {
+        remoc::exec::spawn(async move {
             while watch_rx.changed().await.is_ok() {
                 println!("Watch value: {}", *watch_rx.borrow_and_update().unwrap());
             }

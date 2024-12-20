@@ -7,8 +7,8 @@ use wasm_bindgen_test::wasm_bindgen_test;
 
 use crate::{droppable_loop_channel, loop_channel};
 use remoc::{
-    executor,
-    executor::time::sleep,
+    exec,
+    exec::time::sleep,
     rch::{base::SendErrorKind, mpsc, mpsc::SendError, ClosedReason, SendResultExt},
 };
 
@@ -331,7 +331,7 @@ async fn multiple() {
         let n_tx = rx.recv().await.unwrap().unwrap();
 
         let dur = Duration::from_millis(rng.gen_range(0..100));
-        let task = executor::spawn(async move {
+        let task = exec::spawn(async move {
             sleep(dur).await;
 
             println!("Sending {i}");
@@ -411,7 +411,7 @@ async fn forward() {
 #[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn max_item_size_exceeded() {
     crate::init();
-    if !remoc::executor::are_threads_available() {
+    if !remoc::exec::are_threads_available() {
         println!("test requires threads");
         return;
     }

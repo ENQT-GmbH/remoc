@@ -1,4 +1,4 @@
-//! Async executor for futures.
+//! Async executive for futures.
 //!
 //! On native platforms this uses Tokio.
 //! On JavaScript this executes Futures as Promises.

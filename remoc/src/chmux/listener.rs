@@ -7,14 +7,13 @@ use std::{error::Error, fmt, pin::Pin, sync::Arc};
 use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio_util::sync::ReusableBoxFuture;
 
-use crate::executor;
-
 use super::{
     mux::PortEvt,
     port_allocator::{PortAllocator, PortNumber},
     receiver::Receiver,
     sender::Sender,
 };
+use crate::exec;
 
 /// An multiplexer listener error.
 #[derive(Debug, Clone)]
@@ -75,7 +74,7 @@ impl Request {
     ) -> Self {
         let (done_tx, done_rx) = oneshot::channel();
         let drop_tx = tx.clone();
-        executor::spawn(async move {
+        exec::spawn(async move {
             if done_rx.await.is_err() {
                 let _ = drop_tx.send(PortEvt::Rejected { remote_port, no_ports: false }).await;
             }

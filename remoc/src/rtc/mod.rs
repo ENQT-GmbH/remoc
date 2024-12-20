@@ -549,7 +549,7 @@ where
 
 // Re-exports for proc macro usage.
 #[doc(hidden)]
-pub use crate::executor::task::spawn;
+pub use crate::exec::task::spawn;
 #[doc(hidden)]
 pub use serde::{Deserialize, Serialize};
 #[doc(hidden)]

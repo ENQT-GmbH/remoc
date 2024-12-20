@@ -31,7 +31,7 @@ use std::{
 use tokio::sync::{oneshot, watch, RwLock, RwLockReadGuard};
 
 use super::{default_on_err, send_event, ChangeNotifier, ChangeSender, RecvError, SendError};
-use crate::{executor, prelude::*};
+use crate::{exec, prelude::*};
 
 /// A hash map change event.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -773,7 +773,7 @@ where
         let (tx, rx) = rch::mpsc::channel(128);
         let len = hm.len();
 
-        executor::spawn(async move {
+        exec::spawn(async move {
             for (k, v) in hm.into_iter() {
                 match tx.send((k, v)).await {
                     Ok(()) => (),
@@ -943,7 +943,7 @@ where
 
         // Process change events.
         let tx_send = tx.clone();
-        executor::spawn(async move {
+        exec::spawn(async move {
             loop {
                 let event = tokio::select! {
                     event = self.recv() => event,

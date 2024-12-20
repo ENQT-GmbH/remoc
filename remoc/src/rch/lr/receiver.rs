@@ -17,7 +17,7 @@ use super::{
 use crate::{
     chmux,
     codec::{self, DeserializationError},
-    executor::MutexExt,
+    exec::MutexExt,
 };
 
 /// An error that occurred during receiving from a remote endpoint.

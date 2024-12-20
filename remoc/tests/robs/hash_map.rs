@@ -4,7 +4,7 @@ use std::{collections::HashMap, time::Duration};
 use wasm_bindgen_test::wasm_bindgen_test;
 
 use remoc::{
-    executor::time::sleep,
+    exec::time::sleep,
     robs::{
         hash_map::{HashMapEvent, ObservableHashMap},
         RecvError,

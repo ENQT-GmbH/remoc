@@ -5,8 +5,8 @@ use super::{
     ReadLock, RwLock,
 };
 use crate::{
-    codec, executor,
-    executor::task::JoinHandle,
+    codec, exec,
+    exec::task::JoinHandle,
     rch::{mpsc, watch},
     RemoteSend,
 };
@@ -43,7 +43,7 @@ where
         let write_req_rx = write_req_rx.set_buffer();
         let (term_tx, term_rx) = tokio::sync::oneshot::channel();
 
-        let task = executor::spawn(async move {
+        let task = exec::spawn(async move {
             tokio::select! {
                 _ = Self::owner_task(&mut value, read_req_rx, write_req_rx) => (),
                 _ = term_rx => (),

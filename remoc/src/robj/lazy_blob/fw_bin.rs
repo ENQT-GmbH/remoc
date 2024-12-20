@@ -3,7 +3,7 @@
 use serde::{ser, Deserialize, Serialize};
 use std::sync::Mutex;
 
-use crate::{executor, executor::MutexExt, rch::bin};
+use crate::{exec, exec::MutexExt, rch::bin};
 
 /// A chmux sender that can be remotely sent and forwarded.
 pub(crate) struct Sender {
@@ -43,7 +43,7 @@ impl Serialize for Sender {
             // Forwarded send.
             (Some(bin_tx), None) => {
                 let (bin_fw_tx, bin_fw_rx) = bin::channel();
-                executor::spawn(async move {
+                exec::spawn(async move {
                     let Ok(mut bin_tx) = bin_tx.into_inner().await else { return };
                     let Ok(mut bin_fw_rx) = bin_fw_rx.into_inner().await else { return };
 

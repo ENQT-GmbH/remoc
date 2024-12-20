@@ -4,7 +4,7 @@ use super::{
     super::{DEFAULT_BUFFER, DEFAULT_MAX_ITEM_SIZE},
     channel, Permit, Receiver, Sender,
 };
-use crate::{codec, executor, RemoteSend};
+use crate::{codec, exec, RemoteSend};
 
 struct DistributedReceiver<T, Codec, const BUFFER: usize = DEFAULT_BUFFER> {
     tx: Sender<T, Codec, BUFFER>,
@@ -78,7 +78,7 @@ where
 {
     pub(crate) fn new(rx: Receiver<T, Codec, BUFFER, MAX_ITEM_SIZE>, wait_on_empty: bool) -> Self {
         let (sub_tx, sub_rx) = tokio::sync::mpsc::channel(1);
-        executor::spawn(Self::distribute(rx, sub_rx, wait_on_empty));
+        exec::spawn(Self::distribute(rx, sub_rx, wait_on_empty));
         Self { sub_tx }
     }
 

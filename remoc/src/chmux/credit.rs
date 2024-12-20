@@ -9,7 +9,7 @@ use tokio::sync::{
 };
 
 use super::{mux::PortEvt, ChMuxError, SendError};
-use crate::executor::MutexExt;
+use crate::exec::MutexExt;
 
 // ===========================================================================
 // Credit accounting for sending data

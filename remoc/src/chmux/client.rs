@@ -18,7 +18,7 @@ use super::{
     sender::Sender,
     PortReq,
 };
-use crate::{executor, executor::task::JoinHandle};
+use crate::{exec, exec::task::JoinHandle};
 
 /// An error occurred during connecting to a remote service.
 #[derive(Debug, Clone)]
@@ -242,7 +242,7 @@ impl Client {
         let _ = self.tx.send(req);
 
         let listener_dropped = self.listener_dropped.clone();
-        let response = executor::spawn(async move {
+        let response = exec::spawn(async move {
             // Credit must be kept until response is received.
             let _credit = credit;
 

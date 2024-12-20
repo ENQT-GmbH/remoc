@@ -23,7 +23,7 @@ use std::{collections::HashSet, fmt, hash::Hash, mem::take, ops::Deref, sync::Ar
 use tokio::sync::{oneshot, watch, RwLock, RwLockReadGuard};
 
 use super::{default_on_err, send_event, ChangeNotifier, ChangeSender, RecvError, SendError};
-use crate::{executor, prelude::*};
+use crate::{exec, prelude::*};
 
 /// A hash set change event.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -411,7 +411,7 @@ where
         let (tx, rx) = rch::mpsc::channel(128);
         let len = hs.len();
 
-        executor::spawn(async move {
+        exec::spawn(async move {
             for v in hs.into_iter() {
                 match tx.send(v).await {
                     Ok(()) => (),
@@ -578,7 +578,7 @@ where
 
         // Process change events.
         let tx_send = tx.clone();
-        executor::spawn(async move {
+        exec::spawn(async move {
             loop {
                 let event = tokio::select! {
                     event = self.recv() => event,
