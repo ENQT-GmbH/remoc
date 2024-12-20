@@ -35,10 +35,7 @@ use super::{
     sender::Sender,
     AnyStorage, Cfg, ChMuxError, PortReq, PROTOCOL_VERSION, PROTOCOL_VERSION_PORT_ID,
 };
-use crate::exec::{
-    time::{sleep, timeout},
-    MutexExt,
-};
+use crate::exec::time::{sleep, timeout};
 
 /// Multiplexer protocol error.
 fn protocol_err<SinkError, StreamError>(msg: impl AsRef<str>) -> super::ChMuxError<SinkError, StreamError> {
@@ -1092,7 +1089,7 @@ where
 
                         // Send hangup notifications.
                         remote_receiver_closed.store(true, Ordering::Relaxed);
-                        let notifies = remote_receiver_closed_notify.xlock().unwrap().take().unwrap();
+                        let notifies = remote_receiver_closed_notify.lock().unwrap().take().unwrap();
                         for tx in notifies {
                             let _ = tx.send(());
                         }
@@ -1128,7 +1125,7 @@ where
 
                         // Send hangup notifications.
                         remote_receiver_closed.store(true, Ordering::Relaxed);
-                        let notifies = remote_receiver_closed_notify.xlock().unwrap().take().unwrap();
+                        let notifies = remote_receiver_closed_notify.lock().unwrap().take().unwrap();
                         for tx in notifies {
                             let _ = tx.send(());
                         }

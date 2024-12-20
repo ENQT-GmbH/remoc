@@ -17,7 +17,6 @@ use super::{
 use crate::{
     chmux,
     codec::{self, SerializationError},
-    exec::MutexExt,
 };
 
 pub use super::super::base::Closed;
@@ -229,7 +228,7 @@ where
             self.receiver_tx.clone().ok_or_else(|| ser::Error::custom("cannot forward received sender"))?;
 
         let interlock_confirm = {
-            let mut interlock = self.interlock.xlock().unwrap();
+            let mut interlock = self.interlock.lock().unwrap();
             if !interlock.receiver.check_local() {
                 return Err(ser::Error::custom("cannot send sender because receiver has been sent"));
             }

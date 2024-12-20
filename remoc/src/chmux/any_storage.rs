@@ -8,8 +8,6 @@ use std::{
 };
 use uuid::Uuid;
 
-use crate::exec::MutexExt;
-
 /// Box containing any value that is Send, Sync and static.
 pub type AnyBox = Box<dyn Any + Send + Sync + 'static>;
 
@@ -28,7 +26,7 @@ pub struct AnyStorage {
 
 impl fmt::Debug for AnyStorage {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let entries = self.entries.xlock().unwrap();
+        let entries = self.entries.lock().unwrap();
         write!(f, "{:?}", *entries)
     }
 }
@@ -41,7 +39,7 @@ impl AnyStorage {
 
     /// Insert a new entry into the storage and return its key.
     pub fn insert(&self, entry: AnyEntry) -> Uuid {
-        let mut entries = self.entries.xlock().unwrap();
+        let mut entries = self.entries.lock().unwrap();
         loop {
             let key = Uuid::new_v4();
             if let Entry::Vacant(e) = entries.entry(key) {
@@ -53,13 +51,13 @@ impl AnyStorage {
 
     /// Returns the value from the storage for the specified key.
     pub fn get(&self, key: Uuid) -> Option<AnyEntry> {
-        let entries = self.entries.xlock().unwrap();
+        let entries = self.entries.lock().unwrap();
         entries.get(&key).cloned()
     }
 
     /// Removes the value for the specified key from the storage and returns it.
     pub fn remove(&self, key: Uuid) -> Option<AnyEntry> {
-        let mut entries = self.entries.xlock().unwrap();
+        let mut entries = self.entries.lock().unwrap();
         entries.remove(&key)
     }
 }

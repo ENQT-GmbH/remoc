@@ -41,35 +41,3 @@ pub fn are_threads_available() -> bool {
 
     *AVAILABLE
 }
-
-/// Mutex extensions for WebAssembly support.
-pub trait MutexExt<T> {
-    /// Acquires a mutex, blocking the current thread until it is able to do so.
-    ///
-    /// If blocking is not allowed on the current thread, it spins until the
-    /// lock is acquired.
-    fn xlock(&self) -> std::sync::LockResult<std::sync::MutexGuard<'_, T>>;
-}
-
-impl<T> MutexExt<T> for std::sync::Mutex<T> {
-    #[inline]
-    fn xlock(&self) -> std::sync::LockResult<std::sync::MutexGuard<'_, T>> {
-        if is_blocking_allowed() {
-            return self.lock();
-        }
-
-        // Spin until lock is acquired.
-        loop {
-            match self.try_lock() {
-                Ok(guard) => return Ok(guard),
-                Err(std::sync::TryLockError::Poisoned(p)) => return Err(p),
-                Err(std::sync::TryLockError::WouldBlock) => {
-                    std::thread::yield_now();
-
-                    #[cfg(all(target_family = "wasm", not(target_feature = "atomics")))]
-                    panic!("mutex deadlock");
-                }
-            }
-        }
-    }
-}

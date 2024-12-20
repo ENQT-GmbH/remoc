@@ -14,8 +14,6 @@ use std::{
 use wasm_bindgen::{prelude::*, JsCast};
 use web_sys::{Window, WorkerGlobalScope};
 
-use super::MutexExt;
-
 /// Future returned by [`sleep`].
 pub struct Sleep {
     inner: Arc<Mutex<SleepInner>>,
@@ -48,7 +46,7 @@ impl Sleep {
         let callback = {
             let inner = inner.clone();
             Closure::new(move || {
-                let mut inner = inner.xlock().unwrap();
+                let mut inner = inner.lock().unwrap();
                 inner.fired = true;
                 if let Some(waker) = inner.waker.take() {
                     waker.wake();
@@ -92,7 +90,7 @@ impl Future for Sleep {
 
     /// Waits until the sleep duration has elapsed.
     fn poll(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let mut inner = self.inner.xlock().unwrap();
+        let mut inner = self.inner.lock().unwrap();
 
         if inner.fired {
             return Poll::Ready(());
@@ -105,7 +103,7 @@ impl Future for Sleep {
 
 impl Drop for Sleep {
     fn drop(&mut self) {
-        let inner = self.inner.xlock().unwrap();
+        let inner = self.inner.lock().unwrap();
         if !inner.fired {
             Self::unregister_timeout(self.timeout_id);
         }

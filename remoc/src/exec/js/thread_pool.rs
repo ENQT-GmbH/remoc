@@ -9,8 +9,6 @@ use std::{
     thread::Thread,
 };
 
-use super::super::MutexExt;
-
 /// Thread pool.
 pub struct ThreadPool {
     max_workers: usize,
@@ -43,7 +41,7 @@ impl ThreadPool {
     ///
     /// Returns an error if worker thread spawning failed.
     pub fn exec(&self, f: impl FnOnce() + Send + 'static) -> Result<(), std::io::Error> {
-        let mut inner = self.inner.xlock().unwrap();
+        let mut inner = self.inner.lock().unwrap();
         inner.tasks.push_back(Box::new(f));
 
         // Check if we need to spawn a new worker.
@@ -69,7 +67,7 @@ impl ThreadPool {
         let mut idle = false;
 
         loop {
-            let mut inner = inner.xlock().unwrap();
+            let mut inner = inner.lock().unwrap();
             if let Some(task) = inner.tasks.pop_front() {
                 if idle {
                     inner.idle -= 1;
@@ -95,7 +93,7 @@ impl ThreadPool {
 
 impl Drop for ThreadPool {
     fn drop(&mut self) {
-        let mut inner = self.inner.xlock().unwrap();
+        let mut inner = self.inner.lock().unwrap();
 
         inner.exit = true;
 

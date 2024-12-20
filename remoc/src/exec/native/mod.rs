@@ -24,11 +24,3 @@ pub mod time {
         pub use tokio::time::error::Elapsed;
     }
 }
-
-/// Whether blocking is allowed on this thread.
-///
-/// On native targets blocking is always allowed.
-#[inline]
-pub fn is_blocking_allowed() -> bool {
-    true
-}
