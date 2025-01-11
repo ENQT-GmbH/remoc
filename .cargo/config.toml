@@ -5,7 +5,9 @@ runner = "cargo run --release --quiet --manifest-path /data/surban/dev/rust-wasi
 [target.wasm32-wasip1]
 runner = "cargo run --release --quiet --manifest-path /data/surban/dev/rust-wasi-web/wasm-bindgen/crates/cli/Cargo.toml --bin wasm-bindgen-test-runner --"
 #runner = "wasmtime -S inherit-env"
+rustflags = ["-Z", "wasi-exec-model=reactor"]
 
 [target.wasm32-wasip1-threads]
 runner = "cargo run --release --quiet --manifest-path /data/surban/dev/rust-wasi-web/wasm-bindgen/crates/cli/Cargo.toml --bin wasm-bindgen-test-runner --"
 #runner = "wasmtime -S threads -S inherit-env"
+rustflags = ["-Z", "wasi-exec-model=reactor"]
