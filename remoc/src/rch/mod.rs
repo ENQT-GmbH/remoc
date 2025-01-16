@@ -95,8 +95,15 @@
 //! to query whether a send error occurred due to the above cause and exit the sending process gracefully.
 //!
 
+use futures::FutureExt;
 use serde::{Deserialize, Serialize};
-use std::{error::Error, fmt};
+use std::{
+    error::Error,
+    fmt,
+    future::Future,
+    pin::Pin,
+    task::{ready, Context, Poll},
+};
 
 use crate::chmux;
 
@@ -105,7 +112,6 @@ mod interlock;
 pub mod base;
 pub mod bin;
 pub mod broadcast;
-//pub mod buffer;
 pub mod lr;
 pub mod mpsc;
 pub mod oneshot;
@@ -314,6 +320,21 @@ where
     }
 }
 
+impl<T, E> SendResultExt for Result<Sending<T>, E>
+where
+    E: SendErrorExt,
+{
+    type Err = E;
+
+    fn into_closed(self) -> Result<bool, E> {
+        self.map(|_| ()).into_closed()
+    }
+
+    fn into_disconnected(self) -> Result<bool, E> {
+        self.map(|_| ()).into_disconnected()
+    }
+}
+
 /// Default buffer size in items, when the sender or receiver half of a channel *is received*.
 ///
 /// This can be changed via a const generic type parameter of a sender or receiver.
@@ -325,3 +346,109 @@ pub const DEFAULT_BUFFER: usize = 2;
 ///
 /// The current default maximum allowed item size is 16 MB.
 pub const DEFAULT_MAX_ITEM_SIZE: usize = 16_777_216;
+
+/// Reason for why a value queued for sending failed to send.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SendingErrorKind {
+    /// Sending failed.
+    Send(base::SendErrorKind),
+    /// The value was dropped while it was in the send queue or
+    /// the result of the sending operation has already been read
+    /// using [`Sending::try_result`].    
+    Dropped,
+}
+
+impl fmt::Display for SendingErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Send(err) => write!(f, "{err}"),
+            Self::Dropped => write!(f, "dropped"),
+        }
+    }
+}
+
+/// A value queued for sending failed to send.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SendingError<T> {
+    /// Sending failed.
+    Send(base::SendError<T>),
+    /// The value was dropped while it was in the send queue or
+    /// the result of the sending operation has already been read
+    /// using [`Sending::try_result`].
+    ///
+    /// This can happen when the channel is closed before the value
+    /// is sent.
+    Dropped,
+}
+
+impl<T> fmt::Display for SendingError<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Send(err) => write!(f, "{err}"),
+            Self::Dropped => write!(f, "dropped"),
+        }
+    }
+}
+
+impl<T> Error for SendingError<T> where T: fmt::Debug {}
+
+impl<T> SendingError<T> {
+    /// Error kind.
+    pub fn kind(&self) -> SendingErrorKind {
+        match self {
+            Self::Send(err) => SendingErrorKind::Send(err.kind.clone()),
+            Self::Dropped => SendingErrorKind::Dropped,
+        }
+    }
+}
+
+/// Handle to obtain the result of a queued send operation.
+///
+/// Await this handle to obtain the result of the sending operation.
+/// This is optional and only necessary if you want to explicitly handle errors
+/// that can occur during sending; for example serialization errors or exceedence
+/// of maximum item size.
+///
+/// Dropping the handle *does not* abort sending the value.
+pub struct Sending<T>(tokio::sync::oneshot::Receiver<Result<(), base::SendError<T>>>);
+
+impl<T> fmt::Debug for Sending<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_tuple("Sending").finish()
+    }
+}
+
+impl<T> Sending<T> {
+    /// Tries to obtain the result of the sending operation.
+    ///
+    /// If the value is still queued for sending `None` is returned.
+    pub fn try_result(&mut self) -> Option<Result<(), SendingError<T>>> {
+        match self.0.try_recv() {
+            Ok(Ok(())) => Some(Ok(())),
+            Ok(Err(err)) => Some(Err(SendingError::Send(err))),
+            Err(tokio::sync::oneshot::error::TryRecvError::Empty) => None,
+            Err(tokio::sync::oneshot::error::TryRecvError::Closed) => Some(Err(SendingError::Dropped)),
+        }
+    }
+}
+
+impl<T> Future for Sending<T> {
+    type Output = Result<(), SendingError<T>>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        let res = match ready!(self.0.poll_unpin(cx)) {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(err)) => Err(SendingError::Send(err)),
+            Err(_) => Err(SendingError::Dropped),
+        };
+        Poll::Ready(res)
+    }
+}
+
+impl<T> Drop for Sending<T> {
+    fn drop(&mut self) {
+        if let Ok(Err(err)) = self.0.try_recv() {
+            tracing::warn!(%err, "sending over remote channel failed");
+        }
+    }
+}

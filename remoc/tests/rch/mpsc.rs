@@ -9,7 +9,7 @@ use crate::{droppable_loop_channel, loop_channel};
 use remoc::{
     exec,
     exec::time::sleep,
-    rch::{base::SendErrorKind, mpsc, mpsc::SendError, ClosedReason, SendResultExt},
+    rch::{base, base::SendErrorKind, mpsc, mpsc::SendError, ClosedReason, SendResultExt, SendingError},
 };
 
 #[cfg_attr(not(feature = "js"), tokio::test)]
@@ -240,7 +240,7 @@ async fn two_sender_conn_failure() {
     for i in 1..100 {
         println!("Sending {i} over connection 1");
         match tx1.send(i).await {
-            Ok(()) => println!("Send ok"),
+            Ok(sent) => println!("Send ok: {sent:?}"),
             Err(err) => {
                 if conn1.is_some() {
                     panic!("Send failed before connection drop");
@@ -433,23 +433,32 @@ async fn max_item_size_exceeded() {
     let elems = max_item_size / 10;
     let data = vec![127; elems];
     println!("Sending {elems} elements, which is under limit");
-    tx.send(data.clone()).await.unwrap();
+    let mut sendings = Vec::new();
+    sendings.push(tx.send(data.clone()).await.unwrap());
     println!("Receiving...");
     let rxed = rx.recv().await.unwrap().unwrap();
     println!("Received {} elements", rxed.len());
     assert_eq!(data, rxed, "send/receive mismatch");
     println!();
 
+    for sending in sendings {
+        sending.await.unwrap();
+    }
+
     // Failure case: sent data size exceeds limits.
     let elems = max_item_size * 10;
     let data = vec![127; elems];
     println!("Sending {elems} elements, which is over limit");
-    tx.send(data.clone()).await.unwrap();
+    let failed_sending = tx.send(data.clone()).await.unwrap();
 
     println!("Receiving...");
     let rxed = rx.recv().await;
     println!("Receive result: {rxed:?}");
     assert!(matches!(rxed, Ok(None)));
+    assert!(matches!(
+        failed_sending.await,
+        Err(SendingError::Send(base::SendError { kind: SendErrorKind::MaxItemSizeExceeded, .. }))
+    ));
 
     // Send one more element to obtain error.
     println!("Sending 1 element");

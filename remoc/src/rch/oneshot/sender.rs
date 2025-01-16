@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt};
 
-use super::super::{mpsc, ClosedReason, SendErrorExt};
+use super::super::{mpsc, ClosedReason, SendErrorExt, Sending};
 use crate::{codec, RemoteSend};
 
 /// An error occurred during sending over an mpsc channel.
@@ -102,7 +102,7 @@ where
 {
     /// Sends a value over this channel.
     #[inline]
-    pub fn send(self, value: T) -> Result<(), SendError<T>> {
+    pub fn send(self, value: T) -> Result<Sending<T>, SendError<T>> {
         self.0.try_send(value).map_err(|err| err.into())
     }
 

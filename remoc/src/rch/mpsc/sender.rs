@@ -11,9 +11,10 @@ use std::{
 use super::{
     super::{
         base::{self, PortDeserializer, PortSerializer},
-        ClosedReason, RemoteSendError, SendErrorExt, DEFAULT_BUFFER, DEFAULT_MAX_ITEM_SIZE,
+        ClosedReason, RemoteSendError, SendErrorExt, Sending, DEFAULT_BUFFER, DEFAULT_MAX_ITEM_SIZE,
     },
     receiver::RecvError,
+    send_req, SendReq,
 };
 use crate::{chmux, codec, exec, RemoteSend};
 
@@ -241,7 +242,7 @@ impl<T> Error for TrySendError<T> where T: fmt::Debug {}
 ///
 /// Instances are created by the [channel](super::channel) function.
 pub struct Sender<T, Codec = codec::Default, const BUFFER: usize = DEFAULT_BUFFER> {
-    tx: Weak<tokio::sync::mpsc::Sender<Result<T, RecvError>>>,
+    tx: Weak<tokio::sync::mpsc::Sender<SendReq<T>>>,
     closed_rx: tokio::sync::watch::Receiver<Option<ClosedReason>>,
     remote_send_err_rx: tokio::sync::watch::Receiver<Option<RemoteSendError>>,
     dropped_tx: tokio::sync::mpsc::Sender<()>,
@@ -292,7 +293,7 @@ where
 {
     /// Creates a new sender.
     pub(crate) fn new(
-        tx: tokio::sync::mpsc::Sender<Result<T, RecvError>>,
+        tx: tokio::sync::mpsc::Sender<SendReq<T>>,
         mut closed_rx: tokio::sync::watch::Receiver<Option<ClosedReason>>,
         remote_send_err_rx: tokio::sync::watch::Receiver<Option<RemoteSendError>>,
     ) -> Self {
@@ -348,20 +349,21 @@ where
     /// Thus, the reporting of an error may be delayed and this function may
     /// return errors caused by previous invocations.
     #[inline]
-    pub async fn send(&self, value: T) -> Result<(), SendError<T>> {
+    pub async fn send(&self, value: T) -> Result<Sending<T>, SendError<T>> {
         if let Some(err) = self.remote_send_err_rx.borrow().as_ref() {
             return Err(SendError::from_remote_send_error(err.clone(), value));
         }
 
-        if let Some(tx) = self.tx.upgrade() {
-            if let Err(err) = tx.send(Ok(value)).await {
-                return Err(SendError::Closed(err.0.expect("unreachable")));
+        match self.tx.upgrade() {
+            Some(tx) => {
+                let (req, sent) = send_req(Ok(value));
+                match tx.send(req).await {
+                    Ok(()) => Ok(sent),
+                    Err(err) => Err(SendError::Closed(err.0.value.expect("unreachable"))),
+                }
             }
-        } else {
-            return Err(SendError::Closed(value));
+            None => Err(SendError::Closed(value)),
         }
-
-        Ok(())
     }
 
     /// Attempts to immediately send a message over this channel.
@@ -371,21 +373,24 @@ where
     /// Thus, the reporting of an error may be delayed and this function may
     /// return errors caused by previous invocations.
     #[inline]
-    pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
+    pub fn try_send(&self, value: T) -> Result<Sending<T>, TrySendError<T>> {
         if let Some(err) = self.remote_send_err_rx.borrow().as_ref() {
             return Err(TrySendError::from_remote_send_error(err.clone(), value));
         }
 
         match self.tx.upgrade() {
-            Some(tx) => match tx.try_send(Ok(value)) {
-                Ok(()) => Ok(()),
-                Err(tokio::sync::mpsc::error::TrySendError::Full(err)) => {
-                    Err(TrySendError::Full(err.expect("unreachable")))
+            Some(tx) => {
+                let (req, sent) = send_req(Ok(value));
+                match tx.try_send(req) {
+                    Ok(()) => Ok(sent),
+                    Err(tokio::sync::mpsc::error::TrySendError::Full(err)) => {
+                        Err(TrySendError::Full(err.value.expect("unreachable")))
+                    }
+                    Err(tokio::sync::mpsc::error::TrySendError::Closed(err)) => {
+                        Err(TrySendError::Closed(err.value.expect("unreachable")))
+                    }
                 }
-                Err(tokio::sync::mpsc::error::TrySendError::Closed(err)) => {
-                    Err(TrySendError::Closed(err.expect("unreachable")))
-                }
-            },
+            }
             None => Err(TrySendError::Closed(value)),
         }
     }
@@ -400,7 +405,7 @@ where
     /// # Panics
     /// This function panics if called within an asynchronous execution context.
     #[inline]
-    pub fn blocking_send(&self, value: T) -> Result<(), SendError<T>> {
+    pub fn blocking_send(&self, value: T) -> Result<Sending<T>, SendError<T>> {
         exec::task::block_on(self.send(value))
     }
 
@@ -509,7 +514,7 @@ where
 }
 
 /// Owned permit to send one value into the channel.
-pub struct Permit<T>(tokio::sync::mpsc::OwnedPermit<Result<T, RecvError>>);
+pub struct Permit<T>(tokio::sync::mpsc::OwnedPermit<SendReq<T>>);
 
 impl<T> Permit<T>
 where
@@ -517,8 +522,10 @@ where
 {
     /// Sends a value using the reserved capacity.
     #[inline]
-    pub fn send(self, value: T) {
-        self.0.send(Ok(value));
+    pub fn send(self, value: T) -> Sending<T> {
+        let (req, sent) = send_req(Ok(value));
+        self.0.send(req);
+        sent
     }
 }
 
@@ -553,7 +560,7 @@ where
                         let (raw_tx, raw_rx) = match connect.await {
                             Ok(tx_rx) => tx_rx,
                             Err(err) => {
-                                let _ = tx.send(Err(RecvError::RemoteConnect(err))).await;
+                                let _ = tx.send(SendReq::new(Err(RecvError::RemoteConnect(err)))).await;
                                 return;
                             }
                         };

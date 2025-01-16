@@ -48,7 +48,7 @@
 use bytes::Buf;
 use serde::{de::DeserializeOwned, Serialize};
 
-use super::{base, ClosedReason, RemoteSendError};
+use super::{base, ClosedReason, RemoteSendError, Sending};
 use crate::{
     chmux, codec,
     rch::{BACKCHANNEL_MSG_CLOSE, BACKCHANNEL_MSG_ERROR},
@@ -119,10 +119,34 @@ where
     }
 }
 
+pub(crate) struct SendReq<T> {
+    pub value: Result<T, RecvError>,
+    pub result_tx: tokio::sync::oneshot::Sender<Result<(), base::SendError<T>>>,
+}
+
+impl<T> SendReq<T> {
+    fn new(value: Result<T, RecvError>) -> Self {
+        Self { value, result_tx: tokio::sync::oneshot::channel().0 }
+    }
+
+    fn ack(self) -> Result<T, RecvError> {
+        let Self { value, result_tx } = self;
+        let _ = result_tx.send(Ok(()));
+        value
+    }
+}
+
+pub(crate) fn send_req<T>(value: Result<T, RecvError>) -> (SendReq<T>, Sending<T>) {
+    let (result_tx, result_rx) = tokio::sync::oneshot::channel();
+    let this = SendReq { value, result_tx };
+    let sent = Sending(result_rx);
+    (this, sent)
+}
+
 /// Send implementation for deserializer of Sender and serializer of Receiver.
 async fn send_impl<T, Codec>(
-    mut rx: tokio::sync::mpsc::Receiver<Result<T, RecvError>>, raw_tx: chmux::Sender,
-    mut raw_rx: chmux::Receiver, remote_send_err_tx: tokio::sync::watch::Sender<Option<RemoteSendError>>,
+    mut rx: tokio::sync::mpsc::Receiver<SendReq<T>>, raw_tx: chmux::Sender, mut raw_rx: chmux::Receiver,
+    remote_send_err_tx: tokio::sync::watch::Sender<Option<RemoteSendError>>,
     closed_tx: tokio::sync::watch::Sender<Option<ClosedReason>>, max_item_size: usize,
 ) where
     T: Serialize + Send + 'static,
@@ -177,9 +201,25 @@ async fn send_impl<T, Codec>(
             value_opt = rx.recv() => {
                 match value_opt {
                     Some(value) => {
-                        if let Err(err) = remote_tx.send(value).await {
-                            let _ = remote_send_err_tx.send(Some(RemoteSendError::Send(err.kind)));
-                            let _ = closed_tx.send(Some(ClosedReason::Failed));
+                        let SendReq { value, result_tx } = value;
+                        match remote_tx.send(value).await {
+                            Ok(()) => {
+                                let _ = result_tx.send(Ok(()));
+                            }
+                            Err(err) => {
+                                let _ = remote_send_err_tx.send(Some(RemoteSendError::Send(err.kind.clone())));
+                                let _ = closed_tx.send(Some(ClosedReason::Failed));
+                                if let Ok(item) = err.item {
+                                    if let Err(Err(err)) = result_tx.send(Err(base::SendError {
+                                        kind: err.kind,
+                                        item,
+                                    })) {
+                                        if err.is_item_specific() {
+                                            tracing::warn!(%err, "sending over remote channel failed");
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                     None => break,
@@ -191,7 +231,7 @@ async fn send_impl<T, Codec>(
 
 /// Receive implementation for serializer of Sender and deserializer of Receiver.
 async fn recv_impl<T, Codec>(
-    tx: &tokio::sync::mpsc::Sender<Result<T, RecvError>>, mut raw_tx: chmux::Sender, raw_rx: chmux::Receiver,
+    tx: &tokio::sync::mpsc::Sender<SendReq<T>>, mut raw_tx: chmux::Sender, raw_rx: chmux::Receiver,
     mut remote_send_err_rx: tokio::sync::watch::Receiver<Option<RemoteSendError>>,
     mut closed_rx: tokio::sync::watch::Receiver<Option<ClosedReason>>, max_item_size: usize,
 ) where
@@ -245,7 +285,7 @@ async fn recv_impl<T, Codec>(
                         Err(RecvError::RemoteReceive(err))
                     },
                 };
-                if tx.send(value).await.is_err() {
+                if tx.send(SendReq::new(value)).await.is_err() {
                     break;
                 }
                 if is_final_err {

@@ -15,7 +15,7 @@ use super::{
         base::{self, PortDeserializer, PortSerializer},
         ClosedReason, RemoteSendError, DEFAULT_BUFFER, DEFAULT_MAX_ITEM_SIZE,
     },
-    Distributor,
+    Distributor, SendReq,
 };
 use crate::{chmux, codec, exec, RemoteSend};
 
@@ -144,7 +144,7 @@ impl<T, Codec, const BUFFER: usize, const MAX_ITEM_SIZE: usize> fmt::Debug
 }
 
 pub(crate) struct ReceiverInner<T> {
-    rx: tokio::sync::mpsc::Receiver<Result<T, RecvError>>,
+    rx: tokio::sync::mpsc::Receiver<SendReq<T>>,
     closed_tx: tokio::sync::watch::Sender<Option<ClosedReason>>,
     remote_send_err_tx: tokio::sync::watch::Sender<Option<RemoteSendError>>,
     closed: bool,
@@ -169,9 +169,8 @@ pub(crate) struct TransportedReceiver<T, Codec> {
 
 impl<T, Codec, const BUFFER: usize, const MAX_ITEM_SIZE: usize> Receiver<T, Codec, BUFFER, MAX_ITEM_SIZE> {
     pub(crate) fn new(
-        rx: tokio::sync::mpsc::Receiver<Result<T, RecvError>>,
-        closed_tx: tokio::sync::watch::Sender<Option<ClosedReason>>, closed: bool,
-        remote_send_err_tx: tokio::sync::watch::Sender<Option<RemoteSendError>>,
+        rx: tokio::sync::mpsc::Receiver<SendReq<T>>, closed_tx: tokio::sync::watch::Sender<Option<ClosedReason>>,
+        closed: bool, remote_send_err_tx: tokio::sync::watch::Sender<Option<RemoteSendError>>,
         remote_max_item_size: Option<usize>,
     ) -> Self {
         Self {
@@ -194,17 +193,19 @@ impl<T, Codec, const BUFFER: usize, const MAX_ITEM_SIZE: usize> Receiver<T, Code
     pub async fn recv(&mut self) -> Result<Option<T>, RecvError> {
         loop {
             match self.inner.as_mut().unwrap().rx.recv().await {
-                Some(Ok(value_opt)) => return Ok(Some(value_opt)),
-                Some(Err(err)) => {
-                    if err.is_final() {
-                        if self.final_err.is_none() {
-                            self.final_err = Some(err);
+                Some(send_req) => match send_req.ack() {
+                    Ok(value_opt) => return Ok(Some(value_opt)),
+                    Err(err) => {
+                        if err.is_final() {
+                            if self.final_err.is_none() {
+                                self.final_err = Some(err);
+                            }
+                            continue;
+                        } else {
+                            return Err(err);
                         }
-                        continue;
-                    } else {
-                        return Err(err);
                     }
-                }
+                },
                 None => match self.take_error() {
                     Some(err) => return Err(err),
                     None => return Ok(None),
@@ -224,17 +225,19 @@ impl<T, Codec, const BUFFER: usize, const MAX_ITEM_SIZE: usize> Receiver<T, Code
     pub fn poll_recv(&mut self, cx: &mut Context) -> Poll<Result<Option<T>, RecvError>> {
         loop {
             match ready!(self.inner.as_mut().unwrap().rx.poll_recv(cx)) {
-                Some(Ok(value_opt)) => return Poll::Ready(Ok(Some(value_opt))),
-                Some(Err(err)) => {
-                    if err.is_final() {
-                        if self.final_err.is_none() {
-                            self.final_err = Some(err);
+                Some(send_req) => match send_req.ack() {
+                    Ok(value_opt) => return Poll::Ready(Ok(Some(value_opt))),
+                    Err(err) => {
+                        if err.is_final() {
+                            if self.final_err.is_none() {
+                                self.final_err = Some(err);
+                            }
+                            continue;
+                        } else {
+                            return Poll::Ready(Err(err));
                         }
-                        continue;
-                    } else {
-                        return Poll::Ready(Err(err));
                     }
-                }
+                },
                 None => match self.take_error() {
                     Some(err) => return Poll::Ready(Err(err)),
                     None => return Poll::Ready(Ok(None)),
@@ -255,17 +258,19 @@ impl<T, Codec, const BUFFER: usize, const MAX_ITEM_SIZE: usize> Receiver<T, Code
     pub fn try_recv(&mut self) -> Result<T, TryRecvError> {
         loop {
             match self.inner.as_mut().unwrap().rx.try_recv() {
-                Ok(Ok(value_opt)) => return Ok(value_opt),
-                Ok(Err(err)) => {
-                    if err.is_final() {
-                        if self.final_err.is_none() {
-                            self.final_err = Some(err);
+                Ok(send_req) => match send_req.ack() {
+                    Ok(value_opt) => return Ok(value_opt),
+                    Err(err) => {
+                        if err.is_final() {
+                            if self.final_err.is_none() {
+                                self.final_err = Some(err);
+                            }
+                            continue;
+                        } else {
+                            return Err(err.into());
                         }
-                        continue;
-                    } else {
-                        return Err(err.into());
                     }
-                }
+                },
                 Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => match self.take_error() {
                     Some(err) => return Err(err.into()),
                     None => return Err(TryRecvError::Closed),
@@ -482,7 +487,7 @@ where
                 let (raw_tx, raw_rx) = match request.accept_from(local_port).await {
                     Ok(tx_rx) => tx_rx,
                     Err(err) => {
-                        let _ = tx.send(Err(RecvError::RemoteListen(err))).await;
+                        let _ = tx.send(SendReq::new(Err(RecvError::RemoteListen(err)))).await;
                         return;
                     }
                 };

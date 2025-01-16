@@ -138,7 +138,7 @@ where
     E: RemoteSend + Clone,
 {
     match tx.send(event) {
-        Ok(()) => (),
+        Ok(_) => (),
         Err(err) if err.is_disconnected() => (),
         Err(err) => match err.try_into() {
             Ok(err) => (on_err)(err),

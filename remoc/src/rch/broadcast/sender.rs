@@ -1,13 +1,18 @@
+use futures::FutureExt;
 use serde::{Deserialize, Serialize};
 use std::{
     convert::{TryFrom, TryInto},
     error::Error,
-    fmt, mem,
+    fmt,
+    future::Future,
+    mem,
+    pin::Pin,
     sync::{Arc, Mutex},
+    task::{ready, Context, Poll},
 };
 
 use super::{
-    super::{base, mpsc, SendErrorExt},
+    super::{base, mpsc, SendErrorExt, Sending as BaseSending, SendingError},
     BroadcastMsg, Receiver,
 };
 use crate::{chmux, codec, exec, RemoteSend};
@@ -148,7 +153,7 @@ where
     ///
     /// No back-pressure is provided.
     #[inline]
-    pub fn send(&self, value: T) -> Result<(), SendError<T>> {
+    pub fn send(&self, value: T) -> Result<Broadcasting<T>, SendError<T>> {
         let mut inner = self.inner.lock().unwrap();
 
         // Fetch subscribers that have become ready again.
@@ -162,9 +167,13 @@ where
 
         // Broadcast value to all subscribers that are ready.
         let subs = mem::take(&mut inner.subs);
+        let mut broadcasted = Vec::with_capacity(subs.len());
         for sub in subs {
             match sub.try_send(BroadcastMsg::Value(value.clone())) {
-                Ok(()) => keep.push(sub),
+                Ok(sent) => {
+                    broadcasted.push(Sending(sent));
+                    keep.push(sub);
+                }
                 Err(mpsc::TrySendError::Full(BroadcastMsg::Value(_))) => {
                     // Spawn task that waits for subscriber to become ready again,
                     // then add it back to subscriber list.
@@ -185,7 +194,7 @@ where
 
         // Return detailed error if last subscriber was disconnected because of error.
         if !(inner.subs.is_empty() && inner.not_ready == 0) {
-            Ok(())
+            Ok(Broadcasting(broadcasted))
         } else {
             match last_err {
                 Some(err) => match err.try_into() {
@@ -256,5 +265,72 @@ where
 impl<T, Codec> Drop for Sender<T, Codec> {
     fn drop(&mut self) {
         // empty
+    }
+}
+
+/// Handle to obtain the result of a queued send operation that is
+/// part of a broadcast.
+///
+/// Await this handle to obtain the result of the sending operation.
+/// This is optional and only necessary if you want to explicitly handle errors
+/// that can occur during sending; for example serialization errors or exceedence
+/// of maximum item size.
+///
+/// Dropping the handle *does not* abort sending the value.
+pub struct Sending<T>(BaseSending<BroadcastMsg<T>>);
+
+impl<T> fmt::Debug for Sending<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_tuple("Sending").finish()
+    }
+}
+
+impl<T> Sending<T> {
+    fn map_result(res: Result<(), SendingError<BroadcastMsg<T>>>) -> Result<(), SendingError<T>> {
+        match res {
+            Ok(()) => Ok(()),
+            Err(SendingError::Dropped) => Err(SendingError::Dropped),
+            Err(SendingError::Send(base::SendError { kind, item })) => Err(SendingError::Send(base::SendError {
+                kind,
+                item: match item {
+                    BroadcastMsg::Value(value) => value,
+                    BroadcastMsg::Lagged => unreachable!("result of sending lagged is ignored"),
+                },
+            })),
+        }
+    }
+
+    /// Tries to obtain the result of the sending operation.
+    ///
+    /// If the value is still queued for sending `None` is returned.
+    pub fn try_result(&mut self) -> Option<Result<(), SendingError<T>>> {
+        self.0.try_result().map(Self::map_result)
+    }
+}
+
+impl<T> Future for Sending<T> {
+    type Output = Result<(), SendingError<T>>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
+        Poll::Ready(Self::map_result(ready!(self.0.poll_unpin(cx))))
+    }
+}
+
+/// Handle to obtain the result of a queued broadcast operation.
+///
+/// Dropping the handle *does not* abort the broadcast.
+pub struct Broadcasting<T>(Vec<Sending<T>>);
+
+impl<T> fmt::Debug for Broadcasting<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Broadcasting").field("sendings", &self.0.len()).finish()
+    }
+}
+
+impl<T> Broadcasting<T> {
+    /// Returns the handles to the queued send operations that make
+    /// up this broadcast operation.
+    pub fn into_sendings(self) -> Vec<Sending<T>> {
+        self.0
     }
 }

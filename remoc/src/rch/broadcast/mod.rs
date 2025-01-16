@@ -16,7 +16,7 @@ mod receiver;
 mod sender;
 
 pub use receiver::{Receiver, ReceiverStream, RecvError, StreamError, TryRecvError};
-pub use sender::{SendError, Sender};
+pub use sender::{Broadcasting, SendError, Sender, Sending};
 
 /// Broadcast transport message.
 #[derive(Clone, Debug, Serialize, Deserialize)]

@@ -159,6 +159,7 @@ async fn send_impl<T, Codec>(
                         if let Err(err) = remote_tx.send(value).await {
                             let _ = remote_send_err_tx.send(RemoteSendError::Send(err.kind.clone()));
                             if err.is_item_specific() {
+                                tracing::warn!(%err, "sending over remote channel failed");
                                 break
                             }
                         }

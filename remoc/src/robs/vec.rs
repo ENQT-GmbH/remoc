@@ -729,7 +729,7 @@ where
         exec::spawn(async move {
             for v in hs.into_iter() {
                 match tx.send(v).await {
-                    Ok(()) => (),
+                    Ok(_) => (),
                     Err(err) if err.is_disconnected() => break,
                     Err(err) => match err.try_into() {
                         Ok(err) => (on_err)(err),

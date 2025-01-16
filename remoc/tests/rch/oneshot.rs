@@ -19,11 +19,13 @@ async fn simple() {
 
     let i = 512;
     println!("Sending {i}");
-    tx.send(i).unwrap();
+    let mut sending = tx.send(i).unwrap();
 
     let r = rx.await.unwrap();
     println!("Received {r}");
     assert_eq!(i, r, "send/receive mismatch");
+
+    sending.try_result().unwrap().unwrap();
 }
 
 #[cfg_attr(not(feature = "js"), tokio::test)]
@@ -47,7 +49,7 @@ async fn close() {
     tx.closed().await;
 
     match tx.send(0) {
-        Ok(()) => panic!("send after close succeeded"),
+        Ok(_) => panic!("send after close succeeded"),
         #[allow(deprecated)]
         Err(err) if err.is_closed() => (),
         Err(err) => panic!("wrong error after close: {err}"),
