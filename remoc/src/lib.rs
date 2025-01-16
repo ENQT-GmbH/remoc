@@ -90,6 +90,14 @@
 //! For ease of use all features are enabled by default.
 //! See the [codec module](codec) documentation on how to select a default codec.
 //!
+//! ### JavaScript and web support
+//!
+//! Remoc supports compiling to the WebAssembly targets `wasm32-unknown-unknown`,
+//! `wasm32-wasip1` and `wasm32-wasip1-threads`. If you are targeting a JavaScript
+//! execution environment (like a web browser) you must enable the `js` crate feature.
+//! This will enable JavaScript promises support and spawn tasks onto the browser's
+//! native event queue.
+//!
 //! # Tracing
 //!
 //! Remoc uses the [Tracing crate](tracing) for logging of events.
