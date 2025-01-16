@@ -89,7 +89,9 @@ jobs:
         uses: Swatinem/rust-cache@v1
 
       - name: Install nightly Rust
-        run: rustup install nightly
+        run: |
+          rustup install nightly
+          rustup component add --toolchain nightly clippy
 
       - name: Run clippy
         run: cargo +nightly clippy --tests
