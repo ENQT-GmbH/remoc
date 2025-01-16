@@ -107,7 +107,8 @@ async fn simple_clone() {
         assert_eq!(client.value().await.unwrap(), 65);
     };
 
-    tokio::join!(client_task, server.serve());
+    let ((), res) = tokio::join!(client_task, server.serve());
+    res.unwrap();
 
     println!("Counter obj value: {}", counter_obj.value);
     assert_eq!(counter_obj.value, 65);

@@ -267,7 +267,7 @@ impl TraitDef {
             }
 
             impl #impl_generics_impl #req_value #impl_generics_ty #impl_generics_where {
-                async fn dispatch<Target>(self, target: Target) where Target: #ident #trait_generics {
+                async fn dispatch<Target>(self, __target: Target, __err_tx: ::remoc::rtc::ReplyErrorSender) where Target: #ident #trait_generics {
                     match self {
                         #value_clauses
                         Self::__Phantom(_) => ()
@@ -286,7 +286,7 @@ impl TraitDef {
             }
 
             impl #impl_generics_impl #req_ref #impl_generics_ty #impl_generics_where {
-                async fn dispatch<Target>(self, target: &Target) where Target: #ident #trait_generics {
+                async fn dispatch<Target>(self, __target: &Target, __err_tx: ::remoc::rtc::ReplyErrorSender) where Target: #ident #trait_generics {
                     match self {
                         #ref_clauses
                         Self::__Phantom(_) => ()
@@ -305,7 +305,7 @@ impl TraitDef {
             }
 
             impl #impl_generics_impl #req_ref_mut #impl_generics_ty #impl_generics_where {
-                async fn dispatch<Target>(self, target: &mut Target) where Target: #ident #trait_generics {
+                async fn dispatch<Target>(self, __target: &mut Target, __err_tx: ::remoc::rtc::ReplyErrorSender) where Target: #ident #trait_generics {
                     match self {
                         #ref_mut_clauses
                         Self::__Phantom(_) => ()
@@ -412,11 +412,16 @@ impl TraitDef {
                     >,
                     Codec,
                 >,
+                on_req_receive_error: ::remoc::rtc::OnReqReceiveError,
             }
 
             impl #impl_generics_impl ::remoc::rtc::ServerBase for #server #impl_generics_ty #impl_generics_where
             {
                 type Client = #client #req_generics;
+
+                fn set_on_req_receive_error(&mut self, on_req_receive_error: ::remoc::rtc::OnReqReceiveError) {
+                    self.on_req_receive_error = on_req_receive_error;
+                }
             }
 
             #[::remoc::rtc::async_trait]
@@ -424,28 +429,44 @@ impl TraitDef {
             {
                 fn new(target: Target, request_buffer: usize) -> (Self, Self::Client) {
                     let (req_tx, req_rx) = ::remoc::rch::mpsc::channel(request_buffer);
-                    (Self { target, req_rx }, Self::Client::new(req_tx))
+                    (
+                        Self { target, req_rx, on_req_receive_error: ::remoc::rtc::OnReqReceiveError::default() },
+                        Self::Client::new(req_tx),
+                    )
                 }
 
-                async fn serve(self) -> Option<Target> {
-                    let Self { mut target, mut req_rx } = self;
+                async fn serve(self) -> ::std::result::Result<Option<Target>, ::remoc::rtc::ServeError> {
+                    let Self { mut target, mut req_rx, on_req_receive_error } = self;
+                    let (err_tx, mut err_rx) = ::remoc::rtc::reply_error_channel();
 
-                    loop {
-                        match req_rx.recv().await {
-                            Ok(Some(::remoc::rtc::Req::Value(req))) => {
-                                req.dispatch(target).await;
-                                return None;
-                            },
-                            Ok(Some(::remoc::rtc::Req::Ref(req))) => {
-                                req.dispatch(&target).await;
-                            },
-                            Ok(Some(::remoc::rtc::Req::RefMut(req))) => {
-                                req.dispatch(&mut target).await;
-                            },
-                            Ok(None) => return Some(target),
-                            Err(err) if err.is_final() => return Some(target),
-                            Err(err) => ::remoc::rtc::receiving_request_failed(err),
+                    let ret = loop {
+                        ::remoc::rtc::select! {
+                            biased;
+                            Some(err) = err_rx.recv() => return Err(err.into()),
+                            req = req_rx.recv() => {
+                                match req {
+                                    Ok(Some(::remoc::rtc::Req::Value(req))) => {
+                                        req.dispatch(target, err_tx.clone()).await;
+                                        break None;
+                                    },
+                                    Ok(Some(::remoc::rtc::Req::Ref(req))) => {
+                                        req.dispatch(&target, err_tx.clone()).await;
+                                    },
+                                    Ok(Some(::remoc::rtc::Req::RefMut(req))) => {
+                                        req.dispatch(&mut target, err_tx.clone()).await;
+                                    },
+                                    Ok(None) => break Some(target),
+                                    Err(err) if err.is_final() => break Some(target),
+                                    Err(err) => on_req_receive_error.handle(err).await?,
+                                }
+                            }
                         }
+                    };
+
+                    drop(err_tx);
+                    match err_rx.recv().await {
+                        None => Ok(ret),
+                        Some(err) => Err(err.into()),
                     }
                 }
             }
@@ -479,11 +500,16 @@ impl TraitDef {
                     >,
                     Codec,
                 >,
+                on_req_receive_error: ::remoc::rtc::OnReqReceiveError,
             }
 
             impl #impl_generics_impl ::remoc::rtc::ServerBase for #server #impl_generics_ty #impl_generics_where
             {
                 type Client = #client #req_generics;
+
+                fn set_on_req_receive_error(&mut self, on_req_receive_error: ::remoc::rtc::OnReqReceiveError) {
+                    self.on_req_receive_error = on_req_receive_error;
+                }
             }
 
             #[::remoc::rtc::async_trait(?Send)]
@@ -491,22 +517,38 @@ impl TraitDef {
             {
                 fn new(target: &'target Target, request_buffer: usize) -> (Self, Self::Client) {
                     let (req_tx, req_rx) = ::remoc::rch::mpsc::channel(request_buffer);
-                    (Self { target, req_rx }, Self::Client::new(req_tx))
+                    (
+                        Self { target, req_rx, on_req_receive_error: ::remoc::rtc::OnReqReceiveError::default() },
+                        Self::Client::new(req_tx),
+                    )
                 }
 
-                async fn serve(self) {
-                    let Self { target, mut req_rx } = self;
+                async fn serve(self) -> ::std::result::Result<(), ::remoc::rtc::ServeError> {
+                    let Self { target, mut req_rx, on_req_receive_error } = self;
+                    let (err_tx, mut err_rx) = ::remoc::rtc::reply_error_channel();
 
-                    loop {
-                        match req_rx.recv().await {
-                            Ok(Some(::remoc::rtc::Req::Ref(req))) => {
-                                req.dispatch(target).await;
-                            },
-                            Ok(Some(_)) => (),
-                            Ok(None) => break,
-                            Err(err) if err.is_final() => break,
-                            Err(err) => ::remoc::rtc::receiving_request_failed(err),
+                    let ret = loop {
+                        ::remoc::rtc::select! {
+                            biased;
+                            Some(err) = err_rx.recv() => return Err(err.into()),
+                            req = req_rx.recv() => {
+                                match req {
+                                    Ok(Some(::remoc::rtc::Req::Ref(req))) => {
+                                        req.dispatch(target, err_tx.clone()).await;
+                                    },
+                                    Ok(Some(_)) => (),
+                                    Ok(None) => break,
+                                    Err(err) if err.is_final() => break,
+                                    Err(err) => on_req_receive_error.handle(err).await?,
+                                }
+                            }
                         }
+                    };
+
+                    drop(err_tx);
+                    match err_rx.recv().await {
+                        None => Ok(ret),
+                        Some(err) => Err(err.into()),
                     }
                 }
             }
@@ -540,11 +582,16 @@ impl TraitDef {
                     >,
                     Codec,
                 >,
+                on_req_receive_error: ::remoc::rtc::OnReqReceiveError,
             }
 
             impl #impl_generics_impl ::remoc::rtc::ServerBase for #server #impl_generics_ty #impl_generics_where
             {
                 type Client = #client #req_generics;
+
+                fn set_on_req_receive_error(&mut self, on_req_receive_error: ::remoc::rtc::OnReqReceiveError) {
+                    self.on_req_receive_error = on_req_receive_error;
+                }
             }
 
             #[::remoc::rtc::async_trait(?Send)]
@@ -552,25 +599,41 @@ impl TraitDef {
             {
                 fn new(target: &'target mut Target, request_buffer: usize) -> (Self, Self::Client) {
                     let (req_tx, req_rx) = ::remoc::rch::mpsc::channel(request_buffer);
-                    (Self { target, req_rx }, Self::Client::new(req_tx))
+                    (
+                        Self { target, req_rx, on_req_receive_error: ::remoc::rtc::OnReqReceiveError::default()  },
+                        Self::Client::new(req_tx),
+                    )
                 }
 
-                async fn serve(self) {
-                    let Self { target, mut req_rx } = self;
+                async fn serve(self) -> ::std::result::Result<(), ::remoc::rtc::ServeError> {
+                    let Self { target, mut req_rx, on_req_receive_error } = self;
+                    let (err_tx, mut err_rx) = ::remoc::rtc::reply_error_channel();
 
-                    loop {
-                        match req_rx.recv().await {
-                            Ok(Some(::remoc::rtc::Req::Ref(req))) => {
-                                req.dispatch(target).await;
-                            },
-                            Ok(Some(::remoc::rtc::Req::RefMut(req))) => {
-                                req.dispatch(target).await;
-                            },
-                            Ok(Some(_)) => (),
-                            Ok(None) => break,
-                            Err(err) if err.is_final() => break,
-                            Err(err) => ::remoc::rtc::receiving_request_failed(err),
+                    let ret = loop {
+                        ::remoc::rtc::select! {
+                            biased;
+                            Some(err) = err_rx.recv() => return Err(err.into()),
+                            req = req_rx.recv() => {
+                                match req {
+                                    Ok(Some(::remoc::rtc::Req::Ref(req))) => {
+                                        req.dispatch(target, err_tx.clone()).await;
+                                    },
+                                    Ok(Some(::remoc::rtc::Req::RefMut(req))) => {
+                                        req.dispatch(target, err_tx.clone()).await;
+                                    },
+                                    Ok(Some(_)) => (),
+                                    Ok(None) => break,
+                                    Err(err) if err.is_final() => break,
+                                    Err(err) => on_req_receive_error.handle(err).await?,
+                                }
+                            }
                         }
+                    };
+
+                    drop(err_tx);
+                    match err_rx.recv().await {
+                        None => Ok(ret),
+                        Some(err) => Err(err.into()),
                     }
                 }
             }
@@ -604,11 +667,16 @@ impl TraitDef {
                     >,
                     Codec,
                 >,
+                on_req_receive_error: ::remoc::rtc::OnReqReceiveError,
             }
 
             impl #impl_generics_impl ::remoc::rtc::ServerBase for #server #impl_generics_ty #impl_generics_where
             {
                 type Client = #client #req_generics;
+
+                fn set_on_req_receive_error(&mut self, on_req_receive_error: ::remoc::rtc::OnReqReceiveError) {
+                    self.on_req_receive_error = on_req_receive_error;
+                }
             }
 
             #[::remoc::rtc::async_trait]
@@ -616,29 +684,46 @@ impl TraitDef {
             {
                 fn new(target: ::std::sync::Arc<Target>, request_buffer: usize) -> (Self, Self::Client) {
                     let (req_tx, req_rx) = ::remoc::rch::mpsc::channel(request_buffer);
-                    (Self { target, req_rx }, Self::Client::new(req_tx))
+                    (
+                        Self { target, req_rx, on_req_receive_error: ::remoc::rtc::OnReqReceiveError::default() },
+                        Self::Client::new(req_tx),
+                    )
                 }
 
-                async fn serve(self, spawn: bool) {
-                    let Self { target, mut req_rx } = self;
+                async fn serve(self, spawn: bool) -> ::std::result::Result<(), ::remoc::rtc::ServeError> {
+                    let Self { target, mut req_rx, on_req_receive_error } = self;
+                    let (err_tx, mut err_rx) = ::remoc::rtc::reply_error_channel();
 
-                    loop {
-                        match req_rx.recv().await {
-                            Ok(Some(::remoc::rtc::Req::Ref(req))) => {
-                                if spawn {
-                                    let target = target.clone();
-                                    ::remoc::rtc::spawn(async move {
-                                        req.dispatch(&*target).await;
-                                    });
-                                } else {
-                                    req.dispatch(&*target).await;
+                    let ret = loop {
+                        ::remoc::rtc::select! {
+                            biased;
+                            Some(err) = err_rx.recv() => return Err(err.into()),
+                            req = req_rx.recv() => {
+                                match req {
+                                    Ok(Some(::remoc::rtc::Req::Ref(req))) => {
+                                        if spawn {
+                                            let target = target.clone();
+                                            let err_tx = err_tx.clone();
+                                            ::remoc::rtc::spawn(async move {
+                                                req.dispatch(&*target, err_tx).await;
+                                            });
+                                        } else {
+                                            req.dispatch(&*target, err_tx.clone()).await;
+                                        }
+                                    },
+                                    Ok(Some(_)) => (),
+                                    Ok(None) => break,
+                                    Err(err) if err.is_final() => break,
+                                    Err(err) => on_req_receive_error.handle(err).await?,
                                 }
-                            },
-                            Ok(Some(_)) => (),
-                            Ok(None) => break,
-                            Err(err) if err.is_final() => break,
-                            Err(err) => ::remoc::rtc::receiving_request_failed(err),
+                            }
                         }
+                    };
+
+                    drop(err_tx);
+                    match err_rx.recv().await {
+                        None => Ok(ret),
+                        Some(err) => Err(err.into()),
                     }
                 }
             }
@@ -672,11 +757,16 @@ impl TraitDef {
                     >,
                     Codec,
                 >,
+                on_req_receive_error: ::remoc::rtc::OnReqReceiveError,
             }
 
             impl #impl_generics_impl ::remoc::rtc::ServerBase for #server #impl_generics_ty #impl_generics_where
             {
                 type Client = #client #req_generics;
+
+                fn set_on_req_receive_error(&mut self, on_req_receive_error: ::remoc::rtc::OnReqReceiveError) {
+                    self.on_req_receive_error = on_req_receive_error;
+                }
             }
 
             #[::remoc::rtc::async_trait]
@@ -684,34 +774,51 @@ impl TraitDef {
             {
                 fn new(target: ::std::sync::Arc<::remoc::rtc::LocalRwLock<Target>>, request_buffer: usize) -> (Self, Self::Client) {
                     let (req_tx, req_rx) = ::remoc::rch::mpsc::channel(request_buffer);
-                    (Self { target, req_rx }, Self::Client::new(req_tx))
+                    (
+                        Self { target, req_rx, on_req_receive_error: ::remoc::rtc::OnReqReceiveError::default() },
+                        Self::Client::new(req_tx),
+                    )
                 }
 
-                async fn serve(self, spawn: bool) {
-                    let Self { target, mut req_rx } = self;
+                async fn serve(self, spawn: bool) -> ::std::result::Result<(), ::remoc::rtc::ServeError> {
+                    let Self { target, mut req_rx, on_req_receive_error } = self;
+                    let (err_tx, mut err_rx) = ::remoc::rtc::reply_error_channel();
 
-                    loop {
-                        match req_rx.recv().await {
-                            Ok(Some(::remoc::rtc::Req::Ref(req))) => {
-                                if spawn {
-                                    let target = target.clone().read_owned().await;
-                                    ::remoc::rtc::spawn(async move {
-                                        req.dispatch(&*target).await;
-                                    });
-                                } else {
-                                    let target = target.read().await;
-                                    req.dispatch(&*target).await;
+                    let ret = loop {
+                        ::remoc::rtc::select! {
+                            biased;
+                            Some(err) = err_rx.recv() => return Err(err.into()),
+                            req = req_rx.recv() => {
+                                match req {
+                                    Ok(Some(::remoc::rtc::Req::Ref(req))) => {
+                                        if spawn {
+                                            let target = target.clone().read_owned().await;
+                                            let err_tx = err_tx.clone();
+                                            ::remoc::rtc::spawn(async move {
+                                                req.dispatch(&*target, err_tx).await;
+                                            });
+                                        } else {
+                                            let target = target.read().await;
+                                            req.dispatch(&*target, err_tx.clone()).await;
+                                        }
+                                    },
+                                    Ok(Some(::remoc::rtc::Req::RefMut(req))) => {
+                                        let mut target = target.write().await;
+                                        req.dispatch(&mut *target, err_tx.clone()).await;
+                                    },
+                                    Ok(Some(_)) => (),
+                                    Ok(None) => break,
+                                    Err(err) if err.is_final() => break,
+                                    Err(err) => on_req_receive_error.handle(err).await?,
                                 }
-                            },
-                            Ok(Some(::remoc::rtc::Req::RefMut(req))) => {
-                                let mut target = target.write().await;
-                                req.dispatch(&mut *target).await;
-                            },
-                            Ok(Some(_)) => (),
-                            Ok(None) => break,
-                            Err(err) if err.is_final() => break,
-                            Err(err) => ::remoc::rtc::receiving_request_failed(err),
+                            }
                         }
+                    };
+
+                    drop(err_tx);
+                    match err_rx.recv().await {
+                        None => Ok(ret),
+                        Some(err) => Err(err.into()),
                     }
                 }
             }
@@ -749,6 +856,10 @@ impl TraitDef {
             impl #impl_generics_impl ::remoc::rtc::ServerBase for #server #impl_generics_ty #impl_generics_where
             {
                 type Client = #client #req_generics;
+
+                fn set_on_req_receive_error(&mut self, _on_req_receive_error: ::remoc::rtc::OnReqReceiveError) {
+                    // ignored since all errors are reported directly
+                }
             }
 
             #[::remoc::rtc::async_trait]

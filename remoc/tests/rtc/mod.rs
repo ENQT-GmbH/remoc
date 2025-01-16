@@ -1,4 +1,5 @@
 mod default;
+mod errors;
 mod generics;
 mod readonly;
 mod simple;

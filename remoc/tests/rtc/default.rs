@@ -59,5 +59,6 @@ async fn simple() {
         assert_eq!(client.default_method().await.unwrap(), 3);
     };
 
-    tokio::join!(client_task, server.serve());
+    let ((), res) = tokio::join!(client_task, server.serve());
+    res.unwrap();
 }

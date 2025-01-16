@@ -103,7 +103,8 @@ async fn simple() {
         assert_eq!(client.value().await.unwrap(), 65);
     };
 
-    tokio::join!(client_task, server.serve());
+    let ((), res) = tokio::join!(client_task, server.serve());
+    res.unwrap();
 
     println!("Counter obj value: {}", counter_obj.value);
     assert_eq!(counter_obj.value, 65);
@@ -121,7 +122,7 @@ async fn simple_spawn() {
     let counter_obj = std::sync::Arc::new(tokio::sync::RwLock::new(CounterObj::new()));
     let (server, client) = CounterServerSharedMut::new(counter_obj.clone(), 16);
     let server_task = remoc::exec::spawn(async move {
-        server.serve(true).await;
+        server.serve(true).await.unwrap();
         println!("Server done");
 
         let value = counter_obj.read().await.value;

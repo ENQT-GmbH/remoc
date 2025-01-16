@@ -62,7 +62,8 @@ async fn simple() {
         assert_eq!(client.value().await.unwrap(), 123);
     };
 
-    tokio::join!(client_task, server.serve());
+    let ((), res) = tokio::join!(client_task, server.serve());
+    res.unwrap();
 }
 
 #[cfg_attr(not(feature = "js"), tokio::test)]
@@ -106,7 +107,7 @@ async fn closed() {
 
     let server_task = async move {
         tokio::select! {
-            () = server.serve() => (),
+            res = server.serve() => res.unwrap(),
             res = drop_rx => res.unwrap(),
         }
         println!("Dropping server");

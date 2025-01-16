@@ -215,7 +215,7 @@
 //!
 //!     let (server, client) = CounterServerSharedMut::new(counter_obj, 1);
 //!     tx.send(client).await.unwrap();
-//!     server.serve(true).await;
+//!     server.serve(true).await.unwrap();
 //! }
 //! # tokio_test::block_on(remoc::doctest::client_server(server, client));
 //! ```
@@ -232,8 +232,9 @@ use std::{
 use tokio_util::sync::ReusableBoxFuture;
 
 use crate::{
-    chmux,
-    rch::{base, mpsc, oneshot},
+    chmux, codec, exec,
+    rch::{base, mpsc, oneshot, SendingError, SendingErrorKind},
+    RemoteSend,
 };
 
 /// Attribute that must be applied on all implementations of a trait
@@ -268,7 +269,7 @@ pub use async_trait::async_trait;
 /// # Generics and lifetimes
 ///
 /// The trait may be generic with constraints on the generic arguments.
-/// You will probably need to constrain them on [RemoteSend](crate::RemoteSend).
+/// You will probably need to constrain them on [RemoteSend].
 /// Method definitions within the remote trait may use generic arguments from the trait
 /// definition, but must not introduce generic arguments in the method definition.
 ///
@@ -302,7 +303,10 @@ pub use remoc_macro::remote;
 /// Call a method on a remotable trait failed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CallError {
-    /// Server has been dropped.
+    /// Processing request failed.
+    ///
+    /// The server may have been dropped or it may have panicked.
+    /// Sending the response may have failed on the server-side.
     Dropped,
     /// Sending to a remote endpoint failed.
     RemoteSend(base::SendErrorKind),
@@ -319,7 +323,7 @@ pub enum CallError {
 impl fmt::Display for CallError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::Dropped => write!(f, "provider dropped or function panicked"),
+            Self::Dropped => write!(f, "processing request failed"),
             Self::RemoteSend(err) => write!(f, "send error: {err}"),
             Self::RemoteReceive(err) => write!(f, "receive error: {err}"),
             Self::RemoteConnect(err) => write!(f, "connect error: {err}"),
@@ -432,6 +436,12 @@ impl Future for Closed {
 pub trait ServerBase {
     /// The client type, which can be sent to a remote endpoint.
     type Client: Client;
+
+    /// Determines what should happen on the server-side if receiving an RTC
+    /// request fails.
+    ///
+    /// The default is to ignore the receive error.
+    fn set_on_req_receive_error(&mut self, on_req_receive_error: OnReqReceiveError);
 }
 
 /// A server of a remotable trait taking the target object by value.
@@ -449,7 +459,7 @@ where
     /// Serving ends when the client is dropped or a method taking self by value
     /// is called. In the first case, the target object is returned and, in the
     /// second case, None is returned.
-    async fn serve(self) -> Option<Target>;
+    async fn serve(self) -> Result<Option<Target>, ServeError>;
 }
 
 /// A server of a remotable trait taking the target object by reference.
@@ -464,7 +474,7 @@ where
     /// Serves the target object.
     ///
     /// Serving ends when the client is dropped.
-    async fn serve(self);
+    async fn serve(self) -> Result<(), ServeError>;
 }
 
 /// A server of a remotable trait taking the target object by mutable reference.
@@ -479,7 +489,7 @@ where
     /// Serves the target object.
     ///
     /// Serving ends when the client is dropped.
-    async fn serve(self);
+    async fn serve(self) -> Result<(), ServeError>;
 }
 
 /// A server of a remotable trait taking the target object by shared reference.
@@ -498,7 +508,7 @@ where
     /// If `spawn` is true, remote calls are executed in parallel by spawning a task per call.
     ///
     /// Serving ends when the client is dropped.
-    async fn serve(self, spawn: bool);
+    async fn serve(self, spawn: bool) -> Result<(), ServeError>;
 }
 
 /// A server of a remotable trait taking the target object by shared mutable reference.
@@ -518,7 +528,7 @@ where
     /// Remote calls taking a `&mut self` reference are serialized by obtaining a write lock.
     ///
     /// Serving ends when the client is dropped.
-    async fn serve(self, spawn: bool);
+    async fn serve(self, spawn: bool) -> Result<(), ServeError>;
 }
 
 /// A receiver of requests made by the client of a remotable trait.
@@ -547,6 +557,77 @@ where
     fn close(&mut self);
 }
 
+/// Determines what should happen on the server-side if receiving an RTC
+/// request fails.
+///
+/// Client-side behavior is unaffected by this choice, and will always
+/// result in a [`CallError`] if the RTC request fails for any reason.
+#[derive(Debug, Default, Clone)]
+pub enum OnReqReceiveError {
+    /// Ignore the failure to receive the request and write a log message.
+    #[default]
+    Ignore,
+    /// Send the receive error over the local MPSC channel.
+    Send(tokio::sync::mpsc::Sender<mpsc::RecvError>),
+    /// Fail the server, returning the receive error.
+    Fail,
+}
+
+impl OnReqReceiveError {
+    #[doc(hidden)]
+    pub async fn handle(&self, err: mpsc::RecvError) -> Result<(), ServeError> {
+        match self {
+            Self::Ignore => {
+                tracing::warn!(%err, "receiving RTC request failed");
+                Ok(())
+            }
+            Self::Send(tx) => {
+                let _ = tx.send(err).await;
+                Ok(())
+            }
+            Self::Fail => Err(ServeError::ReqReceive(err)),
+        }
+    }
+}
+
+/// RTC serving failed.
+#[derive(Debug)]
+pub enum ServeError {
+    /// Receiving a request from the client failed.
+    ReqReceive(mpsc::RecvError),
+    /// Sending a reply to the client failed,
+    ReplySend(SendingErrorKind),
+}
+
+impl From<mpsc::RecvError> for ServeError {
+    fn from(err: mpsc::RecvError) -> Self {
+        Self::ReqReceive(err)
+    }
+}
+
+impl<T> From<SendingError<T>> for ServeError {
+    fn from(err: SendingError<T>) -> Self {
+        Self::ReplySend(err.kind())
+    }
+}
+
+impl From<SendingErrorKind> for ServeError {
+    fn from(err: SendingErrorKind) -> Self {
+        Self::ReplySend(err)
+    }
+}
+
+impl fmt::Display for ServeError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::ReqReceive(err) => write!(f, "failed to receive RTC request: {err}"),
+            Self::ReplySend(err) => write!(f, "failed to send reply to RTC request: {err}"),
+        }
+    }
+}
+
+impl Error for ServeError {}
+
 // Re-exports for proc macro usage.
 #[doc(hidden)]
 pub use crate::exec::task::spawn;
@@ -560,11 +641,13 @@ pub use tokio::sync::broadcast as local_broadcast;
 pub use tokio::sync::mpsc as local_mpsc;
 #[doc(hidden)]
 pub use tokio::sync::RwLock as LocalRwLock;
-
-/// Log message that receiving a request failed for proc macro.
 #[doc(hidden)]
-pub fn receiving_request_failed(err: mpsc::RecvError) {
-    tracing::warn!(err = ?err, "receiving RTC request failed")
+pub type ReplyErrorSender = tokio::sync::mpsc::Sender<SendingErrorKind>;
+
+/// Create channel for queueing reply sending errors.
+#[doc(hidden)]
+pub fn reply_error_channel() -> (ReplyErrorSender, tokio::sync::mpsc::Receiver<SendingErrorKind>) {
+    tokio::sync::mpsc::channel(16)
 }
 
 /// Broadcast sender with no subscribers.
@@ -577,6 +660,29 @@ pub fn empty_client_drop_tx() -> local_broadcast::Sender<()> {
 #[doc(hidden)]
 pub const fn missing_max_reply_size() -> usize {
     usize::MAX
+}
+
+/// Send reply to request.
+#[doc(hidden)]
+pub async fn send_reply<T, Codec>(reply_tx: oneshot::Sender<T, Codec>, err_tx: &ReplyErrorSender, result: T)
+where
+    T: RemoteSend,
+    Codec: codec::Codec,
+{
+    let Ok(sending) = reply_tx.send(result) else { return };
+
+    let err_tx = err_tx.clone();
+    exec::spawn(async move {
+        if let Err(err) = sending.await {
+            let kind = err.kind();
+            match &kind {
+                SendingErrorKind::Send(base::SendErrorKind::Send(_)) => return,
+                SendingErrorKind::Dropped => return,
+                _ => (),
+            }
+            let _ = err_tx.send(kind).await;
+        }
+    });
 }
 
 /// Serialization for `max_reply_size` field.
