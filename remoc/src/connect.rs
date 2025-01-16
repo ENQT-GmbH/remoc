@@ -125,7 +125,7 @@ impl<TransportSinkError, TransportStreamError> From<base::ConnectError>
 ///     // For demonstration we run both client and server in
 ///     // the same process. In real life connect_client() and
 ///     // connect_server() would run on different machines.
-///     futures::join!(connect_client(), connect_server());
+///     tokio::join!(connect_client(), connect_server());
 /// }
 ///
 /// // This would be run on the client.

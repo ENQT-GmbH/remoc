@@ -15,7 +15,7 @@ use super::{
     },
     receiver::RecvError,
 };
-use crate::{chmux, codec, RemoteSend};
+use crate::{chmux, codec, exec, RemoteSend};
 
 /// An error occurred during sending over an mpsc channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -309,7 +309,7 @@ where
         };
 
         // Drop strong reference to sender when channel is closed.
-        tokio::spawn(async move {
+        exec::spawn(async move {
             loop {
                 tokio::select! {
                     res = closed_rx.changed() => {
@@ -401,8 +401,7 @@ where
     /// This function panics if called within an asynchronous execution context.
     #[inline]
     pub fn blocking_send(&self, value: T) -> Result<(), SendError<T>> {
-        let rt = tokio::runtime::Builder::new_current_thread().build().unwrap();
-        rt.block_on(self.send(value))
+        exec::task::block_on(self.send(value))
     }
 
     /// Wait for channel capacity, returning an owned permit.

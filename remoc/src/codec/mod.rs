@@ -58,6 +58,25 @@ impl fmt::Display for ErrorMsg {
 
 impl Error for ErrorMsg {}
 
+/// Streaming serialization and deserialization is unavailable.
+///
+/// This is because the platform does not support threads or they
+/// are not working.
+///
+/// When streaming is unavailable, only messages up to the size specified
+/// in [`Cfg::max_data_size`](crate::chmux::Cfg::max_data_size) can be
+/// sent and received. You can increase this limit to work around the issue.
+#[derive(Debug, Clone)]
+pub struct StreamingUnavailable;
+
+impl fmt::Display for StreamingUnavailable {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "streaming serialization and deserialization is unavailable")
+    }
+}
+
+impl Error for StreamingUnavailable {}
+
 /// Serialization error.
 #[derive(Debug, Clone)]
 pub struct SerializationError(pub ArcError);

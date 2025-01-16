@@ -36,7 +36,7 @@ use std::{
 use tokio::sync::{oneshot, watch, RwLock, RwLockReadGuard};
 
 use super::{default_on_err, send_event, ChangeNotifier, ChangeSender, RecvError, SendError};
-use crate::prelude::*;
+use crate::{exec, prelude::*};
 
 /// A vector change event.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -726,7 +726,7 @@ where
         let (tx, rx) = rch::mpsc::channel(128);
         let len = hs.len();
 
-        tokio::spawn(async move {
+        exec::spawn(async move {
             for v in hs.into_iter() {
                 match tx.send(v).await {
                     Ok(()) => (),
@@ -893,7 +893,7 @@ where
 
         // Process change events.
         let tx_send = tx.clone();
-        tokio::spawn(async move {
+        exec::spawn(async move {
             loop {
                 let event = tokio::select! {
                     event = self.recv() => event,

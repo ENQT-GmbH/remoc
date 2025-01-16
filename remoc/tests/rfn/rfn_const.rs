@@ -1,8 +1,11 @@
-use remoc::rfn::{CallError, RFn};
+#[cfg(feature = "js")]
+use wasm_bindgen_test::wasm_bindgen_test;
 
 use crate::loop_channel;
+use remoc::rfn::{CallError, RFn};
 
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn simple() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<RFn<_, _>>().await;

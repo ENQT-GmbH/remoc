@@ -1,15 +1,19 @@
-use futures::{try_join, StreamExt};
+use futures::StreamExt;
+
+#[cfg(feature = "js")]
+use wasm_bindgen_test::wasm_bindgen_test;
+
+use crate::loop_channel_with_cfg;
 use remoc::{
-    codec,
+    codec, exec,
     rch::{
         broadcast::{self, ReceiverStream},
         mpsc,
     },
 };
 
-use crate::loop_channel_with_cfg;
-
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn simple() {
     crate::init();
     let cfg = remoc::chmux::Cfg { chunk_size: 4, receive_buffer: 4, ..Default::default() };
@@ -20,7 +24,7 @@ async fn simple() {
     let rx2 = tx.subscribe::<16>(16);
     let rx3 = tx.subscribe::<16>(16);
 
-    let send_task = tokio::spawn(async move {
+    let send_task = exec::spawn(async move {
         println!("Sending remote broadcast channel receivers");
         a_tx.send(rx1).await.unwrap();
         a_tx.send(rx2).await.unwrap();
@@ -34,7 +38,7 @@ async fn simple() {
 
     send_task.await.unwrap();
 
-    let rx1_task = tokio::spawn(async move {
+    let rx1_task = exec::spawn(async move {
         let mut i = 0;
         loop {
             match rx1.recv().await {
@@ -50,7 +54,7 @@ async fn simple() {
         }
     });
 
-    let rx2_task = tokio::spawn(async move {
+    let rx2_task = exec::spawn(async move {
         let mut i = 0;
         loop {
             match rx2.recv().await {
@@ -67,7 +71,7 @@ async fn simple() {
     });
 
     let (rx3_go_tx, rx3_go_rx) = tokio::sync::oneshot::channel();
-    let rx3_task = tokio::spawn(async move {
+    let rx3_task = exec::spawn(async move {
         rx3_go_rx.await.unwrap();
 
         let mut lagged = false;
@@ -106,10 +110,11 @@ async fn simple() {
     drop(tx);
 
     println!("Waiting for tasks to finish");
-    try_join!(rx1_task, rx2_task, rx3_task).unwrap();
+    tokio::try_join!(rx1_task, rx2_task, rx3_task).unwrap();
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn simple_stream() {
     crate::init();
     let cfg = remoc::chmux::Cfg { chunk_size: 4, receive_buffer: 4, ..Default::default() };
@@ -120,7 +125,7 @@ async fn simple_stream() {
     let rx2 = tx.subscribe::<16>(16);
     let rx3 = tx.subscribe::<16>(16);
 
-    let send_task = tokio::spawn(async move {
+    let send_task = exec::spawn(async move {
         println!("Sending remote broadcast channel receivers");
         a_tx.send(rx1).await.unwrap();
         a_tx.send(rx2).await.unwrap();
@@ -134,7 +139,7 @@ async fn simple_stream() {
 
     send_task.await.unwrap();
 
-    let rx1_task = tokio::spawn(async move {
+    let rx1_task = exec::spawn(async move {
         let mut i = 0;
         loop {
             match rx1.next().await {
@@ -150,7 +155,7 @@ async fn simple_stream() {
         }
     });
 
-    let rx2_task = tokio::spawn(async move {
+    let rx2_task = exec::spawn(async move {
         let mut i = 0;
         loop {
             match rx2.next().await {
@@ -167,7 +172,7 @@ async fn simple_stream() {
     });
 
     let (rx3_go_tx, rx3_go_rx) = tokio::sync::oneshot::channel();
-    let rx3_task = tokio::spawn(async move {
+    let rx3_task = exec::spawn(async move {
         rx3_go_rx.await.unwrap();
 
         let mut lagged = false;
@@ -206,5 +211,5 @@ async fn simple_stream() {
     drop(tx);
 
     println!("Waiting for tasks to finish");
-    try_join!(rx1_task, rx2_task, rx3_task).unwrap();
+    tokio::try_join!(rx1_task, rx2_task, rx3_task).unwrap();
 }

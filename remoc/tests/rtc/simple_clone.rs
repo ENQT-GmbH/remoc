@@ -1,4 +1,5 @@
-use futures::join;
+#[cfg(feature = "js")]
+use wasm_bindgen_test::wasm_bindgen_test;
 
 use crate::loop_channel;
 
@@ -61,7 +62,8 @@ impl Counter for CounterObj {
     }
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn simple_clone() {
     use remoc::rtc::ServerRefMut;
 
@@ -81,7 +83,7 @@ async fn simple_clone() {
 
         println!("Spawning watch...");
         let mut watch_rx = client.watch().await.unwrap();
-        tokio::spawn(async move {
+        remoc::exec::spawn(async move {
             while watch_rx.changed().await.is_ok() {
                 println!("Watch value: {}", *watch_rx.borrow_and_update().unwrap());
             }
@@ -105,7 +107,7 @@ async fn simple_clone() {
         assert_eq!(client.value().await.unwrap(), 65);
     };
 
-    join!(client_task, server.serve());
+    tokio::join!(client_task, server.serve());
 
     println!("Counter obj value: {}", counter_obj.value);
     assert_eq!(counter_obj.value, 65);

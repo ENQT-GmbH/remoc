@@ -14,7 +14,6 @@ use std::{
     rc::{Rc, Weak},
     sync::{Arc, Mutex},
 };
-use tokio::task;
 
 use super::{
     super::{SendErrorExt, DEFAULT_MAX_ITEM_SIZE},
@@ -23,7 +22,9 @@ use super::{
 };
 use crate::{
     chmux::{self, AnyStorage, PortReq},
-    codec::{self, SerializationError},
+    codec::{self, SerializationError, StreamingUnavailable},
+    exec,
+    exec::task,
 };
 
 pub use crate::chmux::Closed;
@@ -149,7 +150,7 @@ pub struct PortSerializer {
 
 impl PortSerializer {
     thread_local! {
-        static INSTANCE: RefCell<Weak<RefCell<PortSerializer>>> = RefCell::new(Weak::new());
+        static INSTANCE: RefCell<Weak<RefCell<PortSerializer>>> = const { RefCell::new(Weak::new()) };
     }
 
     /// Create a new port serializer and register it as active.
@@ -280,6 +281,10 @@ where
         allocator: chmux::PortAllocator, storage: AnyStorage, item: T, tx: tokio::sync::mpsc::Sender<BytesMut>,
         chunk_size: usize,
     ) -> Result<(T, PortSerializer, usize), (SerializationError, T)> {
+        if !exec::are_threads_available() {
+            return Err((SerializationError::new(StreamingUnavailable), item));
+        }
+
         let cbw = ChannelBytesWriter::new(tx);
         let mut cbw = BufWriter::with_capacity(chunk_size, cbw);
 
@@ -450,12 +455,12 @@ where
         //
         // We have to spawn a task for this to ensure cancellation safety.
         for (callback, connect) in callbacks.into_iter().zip(connects.into_iter()) {
-            tokio::spawn(callback(connect));
+            exec::spawn(callback(connect));
         }
 
         // Spawn registered tasks.
         for task in tasks {
-            tokio::spawn(task);
+            exec::spawn(task);
         }
 
         Ok(())

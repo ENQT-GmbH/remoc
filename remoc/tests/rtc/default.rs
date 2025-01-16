@@ -1,4 +1,5 @@
-use futures::join;
+#[cfg(feature = "js")]
+use wasm_bindgen_test::wasm_bindgen_test;
 
 use crate::loop_channel;
 
@@ -32,7 +33,8 @@ impl DefaultTrait for CounterObj {
     }
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn simple() {
     use remoc::rtc::ServerRefMut;
 
@@ -57,5 +59,5 @@ async fn simple() {
         assert_eq!(client.default_method().await.unwrap(), 3);
     };
 
-    join!(client_task, server.serve());
+    tokio::join!(client_task, server.serve());
 }

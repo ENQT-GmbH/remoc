@@ -1,4 +1,7 @@
 {
+    "files.exclude": {
+        "target": true,
+    },
     "cSpell.languageSettings": [
         {
             "languageId": "rust",
@@ -40,13 +43,16 @@
         "unbuffered",
         "untrusted"
     ],
+    "rust-analyzer.cargo.extraEnv": {
+        "RUSTUP_TOOLCHAIN": "nightly"
+    },
     "rust-analyzer.cargo.features": [
         "full",
         "default-codec-json",
-        "codec-bincode",
-        "codec-ciborium",
-        "codec-json",
-        "codec-message-pack",
-        "codec-postcard"
-    ]
+        "full-codecs",
+        // "js",
+    ],
+    //"rust-analyzer.cargo.target": "wasm32-unknown-unknown",
+    //"rust-analyzer.cargo.target": "wasm32-wasip1",
+    //"rust-analyzer.cargo.target": "wasm32-wasip1-threads",
 }

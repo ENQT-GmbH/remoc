@@ -33,7 +33,7 @@ use std::{
 use tokio::sync::{mpsc, oneshot, watch, Mutex, OwnedMutexGuard, RwLock, RwLockReadGuard};
 
 use super::{default_on_err, ChangeNotifier, ChangeSender, RecvError, SendError};
-use crate::prelude::*;
+use crate::{exec, prelude::*};
 
 /// A list change event.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -176,7 +176,7 @@ where
         let (sub_tx, sub_rx) = mpsc::unbounded_channel();
         let len = Arc::new(AtomicUsize::new(initial.len()));
         let subscriber_count = Arc::new(AtomicUsize::new(0));
-        tokio::spawn(Self::task(initial, rx, sub_rx, subscriber_count.clone()));
+        exec::spawn(Self::task(initial, rx, sub_rx, subscriber_count.clone()));
         Self {
             tx,
             change: ChangeSender::new(),
@@ -619,7 +619,7 @@ where
         let inner_task = Arc::downgrade(&inner);
 
         // Process change events.
-        tokio::spawn(async move {
+        exec::spawn(async move {
             loop {
                 let event = tokio::select! {
                     event = self.recv() => event,

@@ -1,9 +1,18 @@
-use remoc::robs::{
-    vec::{ObservableVec, VecEvent},
-    RecvError,
+use std::time::Duration;
+
+#[cfg(feature = "js")]
+use wasm_bindgen_test::wasm_bindgen_test;
+
+use remoc::{
+    exec::time::sleep,
+    robs::{
+        vec::{ObservableVec, VecEvent},
+        RecvError,
+    },
 };
 
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn standalone() {
     let mut obs: ObservableVec<_, remoc::codec::Default> = ObservableVec::new();
 
@@ -19,7 +28,8 @@ async fn standalone() {
     obs.clear();
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn events() {
     let mut obs: ObservableVec<_, remoc::codec::Default> = ObservableVec::new();
 
@@ -54,7 +64,8 @@ async fn events() {
     assert!(sub.is_done());
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn events_incremental() {
     let hs = vec![0u32, 1, 2];
     let mut obs: ObservableVec<_, remoc::codec::Default> = ObservableVec::from(hs.clone());
@@ -83,7 +94,8 @@ async fn events_incremental() {
     assert!(sub.is_done());
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn mirrored() {
     let mut pre = Vec::new();
     for i in 1000..1500i32 {
@@ -111,6 +123,9 @@ async fn mirrored() {
         if *mb == *obs {
             break;
         }
+
+        drop(mb);
+        sleep(Duration::from_millis(100)).await;
     }
 
     println!("remove");
@@ -150,7 +165,8 @@ async fn mirrored() {
     }
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn mirrored_disconnect() {
     let mut obs: ObservableVec<_, remoc::codec::Default> = ObservableVec::new();
 
@@ -167,7 +183,8 @@ async fn mirrored_disconnect() {
     assert!(matches!(mirror.borrow().await, Err(RecvError::Closed)));
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn mirrored_disconnect_after_done() {
     let mut obs: ObservableVec<_, remoc::codec::Default> = ObservableVec::new();
 
@@ -191,13 +208,17 @@ async fn mirrored_disconnect_after_done() {
         if *mb == hs {
             break;
         }
+
+        drop(mb);
+        sleep(Duration::from_millis(100)).await;
     }
 
     let mb = mirror.borrow_and_update().await.unwrap();
     assert!(mb.is_done());
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn incremental() {
     let mut pre = Vec::new();
     for i in 0..5000 {
@@ -225,5 +246,8 @@ async fn incremental() {
         if *mb == *obs {
             break;
         }
+
+        drop(mb);
+        sleep(Duration::from_millis(100)).await;
     }
 }

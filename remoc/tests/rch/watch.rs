@@ -1,12 +1,21 @@
 use futures::StreamExt;
-use remoc::rch::base::SendErrorKind;
 use std::time::Duration;
-use tokio::time::sleep;
+
+#[cfg(feature = "js")]
+use wasm_bindgen_test::wasm_bindgen_test;
 
 use crate::{droppable_loop_channel, loop_channel};
-use remoc::rch::watch::{self, ChangedError, ReceiverStream, SendError};
+use remoc::{
+    exec,
+    exec::time::sleep,
+    rch::{
+        base::SendErrorKind,
+        watch::{self, ChangedError, ReceiverStream, SendError},
+    },
+};
 
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn simple() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<watch::Receiver<i16>>().await;
@@ -25,7 +34,7 @@ async fn simple() {
         println!("Initial value: {value:?}");
     }
 
-    let recv_task = tokio::spawn(async move {
+    let recv_task = exec::spawn(async move {
         let mut value = *rx.borrow().unwrap();
         assert_eq!(value, start_value);
 
@@ -55,7 +64,8 @@ async fn simple() {
     recv_task.await.unwrap();
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn simple_stream() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<watch::Receiver<i16>>().await;
@@ -70,7 +80,7 @@ async fn simple_stream() {
     let rx = b_rx.recv().await.unwrap().unwrap();
     let mut rx = ReceiverStream::from(rx);
 
-    let recv_task = tokio::spawn(async move {
+    let recv_task = exec::spawn(async move {
         let mut value = 0;
         while let Some(rxed_value) = rx.next().await {
             value = rxed_value.unwrap();
@@ -104,7 +114,8 @@ async fn simple_stream() {
     recv_task.await.unwrap();
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn modify_stream() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<watch::Receiver<i16>>().await;
@@ -119,7 +130,7 @@ async fn modify_stream() {
     let rx = b_rx.recv().await.unwrap().unwrap();
     let mut rx = ReceiverStream::from(rx);
 
-    let recv_task = tokio::spawn(async move {
+    let recv_task = exec::spawn(async move {
         let mut value = 0;
         while let Some(rxed_value) = rx.next().await {
             value = rxed_value.unwrap();
@@ -145,7 +156,8 @@ async fn modify_stream() {
     recv_task.await.unwrap();
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn close() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<watch::Sender<i16>>().await;
@@ -181,7 +193,8 @@ async fn close() {
     }
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn conn_failure() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx), conn) = droppable_loop_channel::<watch::Sender<i16>>().await;
@@ -213,9 +226,15 @@ async fn conn_failure() {
     }
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn max_item_size_exceeded() {
     crate::init();
+    if !remoc::exec::are_threads_available() {
+        println!("test requires threads");
+        return;
+    }
+
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<watch::Receiver<Vec<u8>>>().await;
 
     println!("Sending remote mpsc channel receiver");
@@ -233,7 +252,7 @@ async fn max_item_size_exceeded() {
         println!("Initial value: {value:?}");
     }
 
-    let recv_task = tokio::spawn(async move {
+    let recv_task = exec::spawn(async move {
         loop {
             let res = rx.changed().await;
             println!("RX changed result: {res:?}");
@@ -279,9 +298,15 @@ async fn max_item_size_exceeded() {
     tx.check().unwrap();
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn max_item_size_exceeded_check() {
     crate::init();
+    if !remoc::exec::are_threads_available() {
+        println!("test requires threads");
+        return;
+    }
+
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<watch::Receiver<Vec<u8>>>().await;
 
     println!("Sending remote mpsc channel receiver");
@@ -299,7 +324,7 @@ async fn max_item_size_exceeded_check() {
         println!("Initial value: {value:?}");
     }
 
-    let recv_task = tokio::spawn(async move {
+    let recv_task = exec::spawn(async move {
         loop {
             let res = rx.changed().await;
             println!("RX changed result: {res:?}");

@@ -13,12 +13,13 @@ use std::{
     panic,
     rc::{Rc, Weak},
 };
-use tokio::task::{self, JoinHandle};
 
 use super::{super::DEFAULT_MAX_ITEM_SIZE, io::ChannelBytesReader, BIG_DATA_CHUNK_QUEUE};
 use crate::{
     chmux::{self, AnyStorage, Received, RecvChunkError},
-    codec::{self, DeserializationError},
+    codec::{self, DeserializationError, StreamingUnavailable},
+    exec,
+    exec::task::{self, JoinHandle},
 };
 
 /// An error that occurred during receiving from a remote endpoint.
@@ -91,7 +92,7 @@ pub struct PortDeserializer {
 
 impl PortDeserializer {
     thread_local! {
-        static INSTANCE: RefCell<Weak<RefCell<PortDeserializer>>> = RefCell::new(Weak::new());
+        static INSTANCE: RefCell<Weak<RefCell<PortDeserializer>>> = const { RefCell::new(Weak::new()) };
     }
 
     /// Create a new port deserializer and register it as active.
@@ -239,6 +240,12 @@ where
                     self.data = match self.recved.take().unwrap() {
                         Some(Received::Data(data)) => DataSource::Buffered(Some(data)),
                         Some(Received::Chunks) => {
+                            if !exec::are_threads_available() {
+                                return Err(RecvError::Deserialize(DeserializationError::new(
+                                    StreamingUnavailable,
+                                )));
+                            }
+
                             // Start deserialization thread.
                             let allocator = self.receiver.port_allocator();
                             let handle_storage = self.receiver.storage();
@@ -384,7 +391,7 @@ where
                 // forward compatibility.
                 for request in requests {
                     if let Some((local_port, callback)) = pds.expected.remove(&request.id()) {
-                        tokio::spawn(callback(local_port, request));
+                        exec::spawn(callback(local_port, request));
                     }
                 }
 
@@ -396,7 +403,7 @@ where
 
             // Spawn registered tasks.
             for task in pds.tasks.drain(..) {
-                tokio::spawn(task);
+                exec::spawn(task);
             }
 
             return Ok(Some(self.item.take().unwrap()));

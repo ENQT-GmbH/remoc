@@ -1,19 +1,27 @@
 use rand::{Rng, RngCore};
 use std::time::Duration;
-use tokio::time::timeout;
 
-use crate::{loop_channel, tcp_loop_channel};
-use remoc::rch::{
-    base::{RecvError, SendError, SendErrorKind},
-    DEFAULT_MAX_ITEM_SIZE,
+#[cfg(feature = "js")]
+use wasm_bindgen_test::wasm_bindgen_test;
+
+use crate::loop_channel;
+use remoc::{
+    codec::StreamingUnavailable,
+    exec,
+    exec::time::timeout,
+    rch::{
+        base::{RecvError, SendError, SendErrorKind},
+        DEFAULT_MAX_ITEM_SIZE,
+    },
 };
 
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn negation() {
     crate::init();
     let ((mut a_tx, mut a_rx), (mut b_tx, mut b_rx)) = loop_channel::<i32>().await;
 
-    let reply_task = tokio::spawn(async move {
+    let reply_task = exec::spawn(async move {
         while let Some(i) = b_rx.recv().await.unwrap() {
             match b_tx.send(-i).await {
                 Ok(()) => (),
@@ -35,12 +43,13 @@ async fn negation() {
     reply_task.await.expect("reply task failed");
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn big_msg() {
     crate::init();
     let ((mut a_tx, mut a_rx), (mut b_tx, mut b_rx)) = loop_channel::<Vec<u8>>().await;
 
-    let reply_task = tokio::spawn(async move {
+    let reply_task = exec::spawn(async move {
         while let Some(mut msg) = b_rx.recv().await.unwrap() {
             msg.reverse();
             match b_tx.send(msg).await {
@@ -59,7 +68,21 @@ async fn big_msg() {
 
         let data_send = data.clone();
         println!("Sending message of length {}", data.len());
-        a_tx.send(data_send).await.unwrap();
+        let res = a_tx.send(data_send).await;
+        if let Err(err) = &res {
+            println!("Send error: {err}");
+            match &err.kind {
+                SendErrorKind::Serialize(ser) if ser.0.is::<StreamingUnavailable>() => {
+                    if !remoc::exec::are_threads_available() {
+                        println!("Okay, because no threads available");
+                        return;
+                    }
+                }
+                _ => (),
+            }
+        }
+        res.unwrap();
+
         let mut data_recv = a_rx.recv().await.unwrap().unwrap();
         println!("Received reply of length {}", data_recv.len());
         data_recv.reverse();
@@ -71,11 +94,12 @@ async fn big_msg() {
 }
 
 #[tokio::test]
+#[cfg(not(target_family = "wasm"))]
 async fn tcp_big_msg() {
     crate::init();
-    let ((mut a_tx, mut a_rx), (mut b_tx, mut b_rx)) = tcp_loop_channel::<Vec<u8>>(9877).await;
+    let ((mut a_tx, mut a_rx), (mut b_tx, mut b_rx)) = crate::tcp_loop_channel::<Vec<u8>>(9877).await;
 
-    let reply_task = tokio::spawn(async move {
+    let reply_task = exec::spawn(async move {
         while let Some(mut msg) = b_rx.recv().await.unwrap() {
             msg.reverse();
             match b_tx.send(msg).await {
@@ -105,7 +129,8 @@ async fn tcp_big_msg() {
     reply_task.await.expect("reply task failed");
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn close_notify() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<u8>().await;
@@ -130,30 +155,40 @@ async fn close_notify() {
     }
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn oversized_msg_send_error() {
     crate::init();
     let ((mut a_tx, _a_rx), (_b_tx, mut b_rx)) = loop_channel::<Vec<u8>>().await;
 
-    tokio::spawn(async move {
+    exec::spawn(async move {
         let _ = b_rx.recv().await;
     });
 
     let data: Vec<u8> = vec![1u8; 2 * DEFAULT_MAX_ITEM_SIZE];
     println!("Sending message of length {}", data.len());
     let res = a_tx.send(data).await;
-    assert!(
-        matches!(res, Err(SendError { kind: SendErrorKind::MaxItemSizeExceeded, .. })),
-        "sending oversized item must fail"
-    )
+
+    if remoc::exec::are_threads_available() {
+        assert!(
+            matches!(res, Err(SendError { kind: SendErrorKind::MaxItemSizeExceeded, .. })),
+            "sending oversized item must fail"
+        )
+    } else {
+        assert!(
+            matches!(res, Err(SendError { kind: SendErrorKind::Serialize(ser), .. }) if ser.0.is::<StreamingUnavailable>()),
+            "sending oversized item must fail"
+        )
+    }
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn oversized_msg_recv_error() {
     crate::init();
     let ((mut a_tx, _a_rx), (_b_tx, mut b_rx)) = loop_channel::<Vec<u8>>().await;
 
-    tokio::spawn(async move {
+    exec::spawn(async move {
         let data: Vec<u8> = vec![1u8; 100];
         println!("Sending message of length {}", data.len());
         a_tx.send(data).await.unwrap();

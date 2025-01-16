@@ -4,7 +4,7 @@ use std::fmt;
 
 use super::{msg::RFnRequest, CallError};
 use crate::{
-    codec,
+    codec, exec,
     rch::{mpsc, oneshot},
     RemoteSend,
 };
@@ -120,7 +120,7 @@ where
         let mut request_rx = request_rx.set_buffer::<1>();
         let (keep_tx, keep_rx) = tokio::sync::oneshot::channel();
 
-        tokio::spawn(async move {
+        exec::spawn(async move {
             let term = async move {
                 if let Ok(()) = keep_rx.await {
                     future::pending().await

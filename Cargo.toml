@@ -2,7 +2,7 @@
 version = "0.14.0"
 
 edition = "2021"
-rust-version = "1.72"
+rust-version = "1.80"
 license = "Apache-2.0"
 
 repository = "https://github.com/ENQT-GmbH/remoc/"
@@ -16,3 +16,12 @@ authors = [
 resolver = "2"
 members = ["remoc", "remoc_macro"]
 exclude = ["examples"]
+
+
+# for WASI on the web (wasm32-wasip1-threads target with `js` feature):
+# [patch.crates-io]
+# js-sys = { git = "https://github.com/rust-wasi-web/wasm-bindgen.git" }
+# web-sys = { git = "https://github.com/rust-wasi-web/wasm-bindgen.git" }
+# wasm-bindgen = { git = "https://github.com/rust-wasi-web/wasm-bindgen.git" }
+# wasm-bindgen-futures = { git = "https://github.com/rust-wasi-web/wasm-bindgen.git" }
+# wasm-bindgen-test = { git = "https://github.com/rust-wasi-web/wasm-bindgen.git" }

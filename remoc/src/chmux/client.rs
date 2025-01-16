@@ -2,18 +2,15 @@ use futures::{ready, Future, FutureExt};
 use std::{
     clone::Clone,
     error::Error,
-    fmt, mem,
+    fmt,
     pin::Pin,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
+        Arc,
     },
     task::{Context, Poll},
 };
-use tokio::{
-    sync::{mpsc, oneshot},
-    task::JoinHandle,
-};
+use tokio::sync::{mpsc, oneshot, OwnedSemaphorePermit, Semaphore};
 
 use super::{
     port_allocator::{PortAllocator, PortNumber},
@@ -21,6 +18,7 @@ use super::{
     sender::Sender,
     PortReq,
 };
+use crate::{exec, exec::task::JoinHandle};
 
 /// An error occurred during connecting to a remote service.
 #[derive(Debug, Clone)]
@@ -66,73 +64,36 @@ impl From<ConnectError> for std::io::Error {
 }
 
 /// Accounts connection request credits.
-#[derive(Clone)]
-struct ConntectRequestCrediter(Arc<Mutex<ConntectRequestCrediterInner>>);
+#[derive(Debug, Clone)]
+struct ConnectRequestCrediter(Arc<Semaphore>);
 
-struct ConntectRequestCrediterInner {
-    limit: u16,
-    used: u16,
-    notify_tx: Vec<oneshot::Sender<()>>,
-}
-
-impl ConntectRequestCrediter {
+impl ConnectRequestCrediter {
     /// Creates a new connection request crediter.
     pub fn new(limit: u16) -> Self {
-        let inner = ConntectRequestCrediterInner { limit, used: 0, notify_tx: Vec::new() };
-        Self(Arc::new(Mutex::new(inner)))
+        Self(Arc::new(Semaphore::new(limit.into())))
     }
 
     /// Obtains a connection request credit.
     ///
     /// Waits for the credit to become available.
     pub async fn request(&self) -> ConnectRequestCredit {
-        loop {
-            let rx = {
-                let mut inner = self.0.lock().unwrap();
-
-                if inner.used < inner.limit {
-                    inner.used += 1;
-                    return ConnectRequestCredit(self.0.clone());
-                } else {
-                    let (tx, rx) = oneshot::channel();
-                    inner.notify_tx.push(tx);
-                    rx
-                }
-            };
-
-            let _ = rx.await;
-        }
+        ConnectRequestCredit(self.0.clone().acquire_owned().await.unwrap())
     }
 
     /// Tries to obtain a connection request credit.
     ///
     /// Does not wait for the credit to become available.
     pub fn try_request(&self) -> Option<ConnectRequestCredit> {
-        let mut inner = self.0.lock().unwrap();
-
-        if inner.used < inner.limit {
-            inner.used += 1;
-            Some(ConnectRequestCredit(self.0.clone()))
-        } else {
-            None
-        }
+        self.0.clone().try_acquire_owned().ok().map(ConnectRequestCredit)
     }
 }
 
 /// A credit for requesting a connection.
-pub(crate) struct ConnectRequestCredit(Arc<Mutex<ConntectRequestCrediterInner>>);
+pub(crate) struct ConnectRequestCredit(OwnedSemaphorePermit);
 
 impl Drop for ConnectRequestCredit {
     fn drop(&mut self) {
-        let notify_tx = {
-            let mut inner = self.0.lock().unwrap();
-            inner.used -= 1;
-            mem::take(&mut inner.notify_tx)
-        };
-
-        for tx in notify_tx {
-            let _ = tx.send(());
-        }
+        let _ = self.0;
     }
 }
 
@@ -201,7 +162,7 @@ impl Future for Connect {
 #[derive(Clone)]
 pub struct Client {
     tx: mpsc::UnboundedSender<ConnectRequest>,
-    crediter: ConntectRequestCrediter,
+    crediter: ConnectRequestCrediter,
     port_allocator: PortAllocator,
     listener_dropped: Arc<AtomicBool>,
     terminate_tx: mpsc::UnboundedSender<()>,
@@ -220,7 +181,7 @@ impl Client {
     ) -> Client {
         Client {
             tx,
-            crediter: ConntectRequestCrediter::new(limit),
+            crediter: ConnectRequestCrediter::new(limit),
             port_allocator,
             listener_dropped,
             terminate_tx,
@@ -281,7 +242,7 @@ impl Client {
         let _ = self.tx.send(req);
 
         let listener_dropped = self.listener_dropped.clone();
-        let response = tokio::spawn(async move {
+        let response = exec::spawn(async move {
             // Credit must be kept until response is received.
             let _credit = credit;
 
@@ -296,7 +257,7 @@ impl Client {
                     }
                 }
                 Err(_) => {
-                    if listener_dropped.load(Ordering::SeqCst) {
+                    if listener_dropped.load(Ordering::Relaxed) {
                         Err(ConnectError::Rejected)
                     } else {
                         Err(ConnectError::ChMux)

@@ -82,7 +82,7 @@ use uuid::Uuid;
 
 use crate::{
     chmux::{AnyBox, AnyEntry},
-    codec,
+    codec, exec,
     rch::{
         base::{PortDeserializer, PortSerializer},
         mpsc,
@@ -373,19 +373,20 @@ where
                 let dropped_tx = dropped_tx.set_buffer::<1>();
                 let mut dropped_rx = dropped_rx.set_buffer::<1>();
 
-                tokio::spawn(async move {
+                exec::spawn(async move {
                     loop {
                         if *keep_rx.borrow_and_update() {
                             let _ = dropped_rx.recv().await;
+                            break;
                         } else {
                             tokio::select! {
                                 biased;
                                 res = keep_rx.changed() => {
-                                    if res.is_err() {
+                                    if !*keep_rx.borrow_and_update() && res.is_err() {
                                         break;
                                     }
                                 },
-                                _ = dropped_rx.recv() => (),
+                                _ = dropped_rx.recv() => break,
                             }
                         }
                     }

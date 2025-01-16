@@ -1,3 +1,6 @@
+#[cfg(feature = "js")]
+use wasm_bindgen_test::wasm_bindgen_test;
+
 use crate::loop_channel;
 
 // Avoid imports here to test if proc macro works without imports.
@@ -91,7 +94,8 @@ impl Counter for CounterObj {
     }
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn simple_req() {
     use remoc::rtc::ReqReceiver;
 
@@ -105,13 +109,13 @@ async fn simple_req() {
     println!("Sending counter request receiver");
     a_tx.send(client).await.unwrap();
 
-    let client_task = tokio::spawn(async move {
+    let client_task = remoc::exec::spawn(async move {
         println!("Receiving counter client");
         let mut client = b_rx.recv().await.unwrap().unwrap();
 
         println!("Spawning watch...");
         let mut watch_rx = client.watch().await.unwrap();
-        tokio::spawn(async move {
+        remoc::exec::spawn(async move {
             while watch_rx.changed().await.is_ok() {
                 println!("Watch value: {}", *watch_rx.borrow_and_update().unwrap());
             }

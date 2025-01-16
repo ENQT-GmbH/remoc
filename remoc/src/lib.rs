@@ -1,4 +1,5 @@
-#![forbid(unsafe_code)]
+#![cfg_attr(not(feature = "js"), forbid(unsafe_code))]
+#![cfg_attr(feature = "js", deny(unsafe_code))]
 #![warn(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![doc(
@@ -89,6 +90,14 @@
 //! For ease of use all features are enabled by default.
 //! See the [codec module](codec) documentation on how to select a default codec.
 //!
+//! ### JavaScript and web support
+//!
+//! Remoc supports compiling to the WebAssembly targets `wasm32-unknown-unknown`,
+//! `wasm32-wasip1` and `wasm32-wasip1-threads`. If you are targeting a JavaScript
+//! execution environment (like a web browser) you must enable the `js` crate feature.
+//! This will enable JavaScript promises support and spawn tasks onto the browser's
+//! native event queue.
+//!
 //! # Tracing
 //!
 //! Remoc uses the [Tracing crate](tracing) for logging of events.
@@ -122,7 +131,7 @@ async fn main() {
     // For demonstration we run both client and server in
     // the same process. In real life connect_client() and
     // connect_server() would run on different machines.
-    futures::join!(connect_client(), connect_server());
+    tokio::join!(connect_client(), connect_server());
 }
 
 // This would be run on the client.
@@ -214,6 +223,9 @@ async fn server(mut rx: rch::base::Receiver<CountReq>) {
 )]
 
 pub mod prelude;
+
+#[doc(hidden)]
+pub mod exec;
 
 pub mod chmux;
 pub use chmux::Cfg;

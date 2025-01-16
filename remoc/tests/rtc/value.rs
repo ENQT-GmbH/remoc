@@ -1,4 +1,5 @@
-use futures::join;
+#[cfg(feature = "js")]
+use wasm_bindgen_test::wasm_bindgen_test;
 
 use crate::loop_channel;
 
@@ -64,7 +65,8 @@ impl Counter for CounterObj {
     }
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn simple() {
     use remoc::rtc::Server;
 
@@ -93,11 +95,12 @@ async fn simple() {
         assert_eq!(value, 65);
     };
 
-    let (_, counter_obj) = join!(client_task, server.serve());
+    let (_, counter_obj) = tokio::join!(client_task, server.serve());
     assert!(counter_obj.is_none());
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn simple_plus() {
     use remoc::rtc::Server;
 
@@ -126,11 +129,12 @@ async fn simple_plus() {
         assert_eq!(value, 75);
     };
 
-    let (_, counter_obj) = join!(client_task, server.serve());
+    let (_, counter_obj) = tokio::join!(client_task, server.serve());
     assert!(counter_obj.is_none());
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn simple_spawn() {
     use remoc::rtc::Server;
 
@@ -140,7 +144,7 @@ async fn simple_spawn() {
     println!("Spawning counter server");
     let counter_obj = CounterObj::new();
     let (server, client) = CounterServer::new(counter_obj, 1);
-    let server_task = tokio::spawn(async move {
+    let server_task = remoc::exec::spawn(async move {
         let counter_obj = server.serve().await.unwrap();
         println!("Server done");
 

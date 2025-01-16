@@ -1,11 +1,14 @@
 use bytes::{Buf, Bytes};
-use futures::join;
 use rand::{Rng, RngCore};
-use remoc::{chmux::Received, rch::bin};
+
+#[cfg(feature = "js")]
+use wasm_bindgen_test::wasm_bindgen_test;
 
 use crate::loop_channel;
+use remoc::{chmux::Received, exec, rch::bin};
 
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn loopback() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<(bin::Sender, bin::Receiver)>().await;
@@ -17,7 +20,7 @@ async fn loopback() {
     println!("Receiving remote bin channel sender and receiver");
     let (tx1, rx2) = b_rx.recv().await.unwrap().unwrap();
 
-    let reply_task = tokio::spawn(async move {
+    let reply_task = exec::spawn(async move {
         let mut rx1 = rx1.into_inner().await.unwrap();
         let mut tx2 = tx2.into_inner().await.unwrap();
 
@@ -57,7 +60,7 @@ async fn loopback() {
         let data = Bytes::from(data);
 
         println!("Sending message of length {}", data.len());
-        let (send, recv) = join!(tx1.send(data.clone()), rx2.recv());
+        let (send, recv) = tokio::join!(tx1.send(data.clone()), rx2.recv());
         send.unwrap();
         let data_recv = recv.unwrap().unwrap();
         println!("Received reply of length {}", data_recv.remaining());
@@ -73,7 +76,8 @@ async fn loopback() {
     reply_task.await.unwrap();
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn forward() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<(bin::Sender, bin::Receiver)>().await;
@@ -93,7 +97,7 @@ async fn forward() {
     println!("Receiving forwarded remote bin channel sender and receiver");
     let (tx1, rx2) = d_rx.recv().await.unwrap().unwrap();
 
-    let reply_task = tokio::spawn(async move {
+    let reply_task = exec::spawn(async move {
         let mut rx1 = rx1.into_inner().await.unwrap();
         let mut tx2 = tx2.into_inner().await.unwrap();
 
@@ -133,7 +137,7 @@ async fn forward() {
         let data = Bytes::from(data);
 
         println!("Sending message of length {}", data.len());
-        let (send, recv) = join!(tx1.send(data.clone()), rx2.recv());
+        let (send, recv) = tokio::join!(tx1.send(data.clone()), rx2.recv());
         send.unwrap();
         let data_recv = recv.unwrap().unwrap();
         println!("Received reply of length {}", data_recv.remaining());
@@ -149,7 +153,8 @@ async fn forward() {
     reply_task.await.unwrap();
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn double_forward() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<(bin::Sender, bin::Receiver)>().await;
@@ -176,7 +181,7 @@ async fn double_forward() {
     println!("Receiving forwarded remote bin channel sender and receiver again");
     let (tx1, rx2) = f_rx.recv().await.unwrap().unwrap();
 
-    let reply_task = tokio::spawn(async move {
+    let reply_task = exec::spawn(async move {
         let mut rx1 = rx1.into_inner().await.unwrap();
         let mut tx2 = tx2.into_inner().await.unwrap();
 
@@ -216,7 +221,7 @@ async fn double_forward() {
         let data = Bytes::from(data);
 
         println!("Sending message of length {}", data.len());
-        let (send, recv) = join!(tx1.send(data.clone()), rx2.recv());
+        let (send, recv) = tokio::join!(tx1.send(data.clone()), rx2.recv());
         send.unwrap();
         let data_recv = recv.unwrap().unwrap();
         println!("Received reply of length {}", data_recv.remaining());

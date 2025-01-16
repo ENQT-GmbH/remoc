@@ -11,6 +11,8 @@ where
 {
     use futures::StreamExt;
 
+    use crate::exec;
+
     let (transport_a_tx, transport_b_rx) = futures::channel::mpsc::channel::<bytes::Bytes>(0);
     let (transport_b_tx, transport_a_rx) = futures::channel::mpsc::channel::<bytes::Bytes>(0);
 
@@ -20,18 +22,18 @@ where
     let a = async move {
         let (conn, tx, rx) =
             crate::Connect::framed(Default::default(), transport_a_tx, transport_a_rx).await.unwrap();
-        tokio::spawn(conn);
+        exec::spawn(conn);
         (tx, rx)
     };
 
     let b = async move {
         let (conn, tx, rx) =
             crate::Connect::framed(Default::default(), transport_b_tx, transport_b_rx).await.unwrap();
-        tokio::spawn(conn);
+        exec::spawn(conn);
         (tx, rx)
     };
 
-    futures::join!(a, b)
+    tokio::join!(a, b)
 }
 
 #[cfg(feature = "rch")]
@@ -44,7 +46,7 @@ pub async fn client_server<T, ClientFut, ServerFut>(
     ServerFut: Future<Output = ()> + Send + 'static,
 {
     let ((a_tx, _a_rx), (_b_tx, b_rx)) = loop_channel::<_, ()>().await;
-    futures::join!(client(a_tx), server(b_rx));
+    tokio::join!(client(a_tx), server(b_rx));
 }
 
 #[cfg(feature = "rch")]
@@ -59,5 +61,5 @@ pub async fn client_server_bidir<T1, T2, ClientFut, ServerFut>(
     ServerFut: Future<Output = ()> + Send + 'static,
 {
     let ((a_tx, a_rx), (b_tx, b_rx)) = loop_channel().await;
-    futures::join!(client(a_tx, a_rx), server(b_tx, b_rx));
+    tokio::join!(client(a_tx, a_rx), server(b_tx, b_rx));
 }

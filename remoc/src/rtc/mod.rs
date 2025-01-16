@@ -549,15 +549,17 @@ where
 
 // Re-exports for proc macro usage.
 #[doc(hidden)]
+pub use crate::exec::task::spawn;
+#[doc(hidden)]
 pub use serde::{Deserialize, Serialize};
+#[doc(hidden)]
+pub use tokio::select;
 #[doc(hidden)]
 pub use tokio::sync::broadcast as local_broadcast;
 #[doc(hidden)]
 pub use tokio::sync::mpsc as local_mpsc;
 #[doc(hidden)]
 pub use tokio::sync::RwLock as LocalRwLock;
-#[doc(hidden)]
-pub use tokio::{select, spawn};
 
 /// Log message that receiving a request failed for proc macro.
 #[doc(hidden)]

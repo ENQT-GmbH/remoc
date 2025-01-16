@@ -1,8 +1,14 @@
-use remoc::robj::rw_lock::{Owner, RwLock};
+#[cfg(feature = "js")]
+use wasm_bindgen_test::wasm_bindgen_test;
 
 use crate::loop_channel;
+use remoc::{
+    exec,
+    robj::rw_lock::{Owner, RwLock},
+};
 
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn simple() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<RwLock<String>>().await;
@@ -40,7 +46,7 @@ async fn simple() {
         drop(read3);
 
         println!("Making write request");
-        let write_req = tokio::spawn(async move { rw_lock3.write().await.unwrap() });
+        let write_req = exec::spawn(async move { rw_lock3.write().await.unwrap() });
 
         println!("Waiting for invalidation");
         read1.invalidated().await;

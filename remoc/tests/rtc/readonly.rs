@@ -1,4 +1,5 @@
-use futures::join;
+#[cfg(feature = "js")]
+use wasm_bindgen_test::wasm_bindgen_test;
 
 use crate::loop_channel;
 
@@ -38,7 +39,8 @@ impl ReadValue for ReadValueObj {
     }
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn simple() {
     use remoc::rtc::ServerRef;
 
@@ -60,10 +62,11 @@ async fn simple() {
         assert_eq!(client.value().await.unwrap(), 123);
     };
 
-    join!(client_task, server.serve());
+    tokio::join!(client_task, server.serve());
 }
 
-#[tokio::test]
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn closed() {
     use remoc::rtc::{Client, ServerRef};
 
@@ -89,8 +92,8 @@ async fn closed() {
         assert!(!client.is_closed());
         println!("Client capacity: {}", client.capacity());
 
-        tokio::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        remoc::exec::spawn(async move {
+            remoc::exec::time::sleep(std::time::Duration::from_millis(500)).await;
             drop_tx.send(()).unwrap();
         });
 
@@ -109,5 +112,5 @@ async fn closed() {
         println!("Dropping server");
     };
 
-    join!(client_task, server_task);
+    tokio::join!(client_task, server_task);
 }

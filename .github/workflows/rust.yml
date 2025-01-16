@@ -2,9 +2,7 @@ name: Rust
 
 on:
   push:
-    branches: [master]
   pull_request:
-    branches: [master]
 
 env:
   CARGO_TERM_COLOR: always
@@ -28,7 +26,7 @@ jobs:
     name: Check with MSRV
     runs-on: ubuntu-latest
     env:
-      minrust: 1.72
+      minrust: 1.81
 
     steps:
       - name: Checkout sources

@@ -14,6 +14,7 @@ use super::{
     mux::PortEvt,
     AnyStorage, ForwardError, PortAllocator, Request, Sender,
 };
+use crate::exec;
 
 /// An error occurred during receiving a data message.
 #[derive(Debug, Clone)]
@@ -324,7 +325,7 @@ impl Receiver {
     ) -> Self {
         let (_drop_tx, drop_rx) = oneshot::channel();
         let tx_drop = tx.clone();
-        tokio::spawn(async move {
+        exec::spawn(async move {
             let _ = drop_rx.await;
             let _ = tx_drop.send(PortEvt::ReceiverDropped { local_port }).await;
         });

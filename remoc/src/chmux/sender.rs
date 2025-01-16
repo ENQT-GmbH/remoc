@@ -24,6 +24,7 @@ use super::{
     mux::PortEvt,
     AnyStorage, Connect, ConnectError, PortAllocator, PortReq,
 };
+use crate::exec;
 
 /// An error occurred during sending of a message.
 #[derive(Debug, Clone)]
@@ -224,7 +225,7 @@ impl Sender {
     ) -> Self {
         let (_drop_tx, drop_rx) = oneshot::channel();
         let tx_drop = tx.clone();
-        tokio::spawn(async move {
+        exec::spawn(async move {
             let _ = drop_rx.await;
             let _ = tx_drop.send(PortEvt::SenderDropped { local_port }).await;
         });
@@ -379,7 +380,7 @@ impl Sender {
             let (response_tx, response_rx) = oneshot::channel();
             ports_response.push((port, response_tx));
 
-            let response = tokio::spawn(async move {
+            let response = exec::spawn(async move {
                 match response_rx.await {
                     Ok(ConnectResponse::Accepted(sender, receiver)) => Ok((sender, receiver)),
                     Ok(ConnectResponse::Rejected { no_ports }) => {
@@ -434,7 +435,7 @@ impl Sender {
     /// True, once the remote endpoint has closed its receiver.
     #[inline]
     pub fn is_closed(&self) -> bool {
-        self.hangup_recved.upgrade().map(|hr| hr.load(Ordering::SeqCst)).unwrap_or_default()
+        self.hangup_recved.upgrade().map(|hr| hr.load(Ordering::Relaxed)).unwrap_or_default()
     }
 
     /// Returns a future that will resolve when the remote endpoint closes its receiver.
