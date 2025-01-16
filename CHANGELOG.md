@@ -4,6 +4,17 @@ All notable changes to Remoc will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.15.0 - 2025-01-16
+### Added
+- support for WebAssembly targets wasm32-unknown-unknown, wasm32-wasip1 and
+  wasm32-wasip1-threads
+- JavaScript runtime environment support for all WebAssembly targets enabled
+  by the `js` feature
+- rch: status querying of value enqueued for sending using the `Sending` handle
+- rtc: server fails when sending a reply to a request fails
+- rtc: allow configuration of behavior when receiving a request fails using the
+  `ServerBase::set_on_req_receive_error` method
+
 ## 0.14.0 - 2024-08-02
 ### Added
 - remote trait calling (RTC): generate ReqReceiver type for handling requests from
