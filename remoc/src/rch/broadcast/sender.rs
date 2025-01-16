@@ -276,6 +276,9 @@ impl<T, Codec> Drop for Sender<T, Codec> {
 /// that can occur during sending; for example serialization errors or exceedence
 /// of maximum item size.
 ///
+/// You *should not* delay sending other items by awaiting this handle.
+/// This would massively impact the throughput of the channel.
+///
 /// Dropping the handle *does not* abort sending the value.
 pub struct Sending<T>(BaseSending<BroadcastMsg<T>>);
 
@@ -317,6 +320,9 @@ impl<T> Future for Sending<T> {
 }
 
 /// Handle to obtain the result of a queued broadcast operation.
+///
+/// You *should not* delay sending other items by awaiting this handle.
+/// This would massively impact the throughput of the channel.
 ///
 /// Dropping the handle *does not* abort the broadcast.
 pub struct Broadcasting<T>(Vec<Sending<T>>);

@@ -409,6 +409,9 @@ impl<T> SendingError<T> {
 /// that can occur during sending; for example serialization errors or exceedence
 /// of maximum item size.
 ///
+/// You *should not* delay sending other items by awaiting this handle.
+/// This would massively impact the throughput of the channel.
+///
 /// Dropping the handle *does not* abort sending the value.
 pub struct Sending<T>(tokio::sync::oneshot::Receiver<Result<(), base::SendError<T>>>);
 
