@@ -53,7 +53,7 @@ full-codecs = [
 remoc_macro = { version = "=0.14.0", path = "../remoc_macro", optional = true }
 
 futures = { version = "0.3.31", default-features = false, features = ["std"] }
-tokio = { version = "1.42", features = ["macros", "rt", "sync", "time"] }
+tokio = { version = "1.43", features = ["macros", "rt", "sync", "time"] }
 tokio-util = { version = "0.7", features = ["codec"] }
 rand = "0.8"
 tracing = "0.1.29"
@@ -81,11 +81,11 @@ tracing-subscriber = { version = "0.3.7", features = ["env-filter"] }
 
 [dev-dependencies]
 tracing-subscriber = { version = "0.3.7", features = ["env-filter"] }
-tokio = { version = "1.42", features = ["io-util", "rt"] }
+tokio = { version = "1.43", features = ["io-util", "rt"] }
 wasm-bindgen-test = "0.3.45"
 
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
-tokio = { version = "1.42", features = ["net", "rt-multi-thread"] }
+tokio = { version = "1.43", features = ["net", "rt-multi-thread"] }
 tokio-test = "0.4"
 
 

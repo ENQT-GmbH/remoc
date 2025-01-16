@@ -19,8 +19,6 @@ exclude = ["examples"]
 
 
 [patch.crates-io]
-tokio = { git = "https://github.com/surban/tokio.git", branch = "fix/wasm-park" }
-
 # js-sys = { git = "https://github.com/rust-wasi-web/wasm-bindgen.git" }
 # web-sys = { git = "https://github.com/rust-wasi-web/wasm-bindgen.git" }
 # wasm-bindgen = { git = "https://github.com/rust-wasi-web/wasm-bindgen.git" }
