@@ -3,7 +3,7 @@ runner = "wasm-bindgen-test-runner"
 
 
 [target.wasm32-wasip1]
-# for pure WASI environemnt:
+# for pure WASI environment:
 runner = "wasmtime -S inherit-env"
 
 # for WASI on the web (`js` feature enabled):
@@ -12,7 +12,7 @@ runner = "wasmtime -S inherit-env"
 
 
 [target.wasm32-wasip1-threads]
-# for pure WASI environemnt:
+# for pure WASI environment:
 runner = "wasmtime -S threads -S inherit-env"
 
 # for WASI on the web (`js` feature enabled):
