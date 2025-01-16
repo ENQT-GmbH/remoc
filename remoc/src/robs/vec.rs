@@ -497,7 +497,7 @@ where
     on_err: &'a dyn Fn(SendError),
 }
 
-impl<'a, T, Codec> Deref for RefMut<'a, T, Codec>
+impl<T, Codec> Deref for RefMut<'_, T, Codec>
 where
     T: Clone + RemoteSend,
     Codec: crate::codec::Codec,
@@ -509,7 +509,7 @@ where
     }
 }
 
-impl<'a, T, Codec> DerefMut for RefMut<'a, T, Codec>
+impl<T, Codec> DerefMut for RefMut<'_, T, Codec>
 where
     T: Clone + RemoteSend,
     Codec: crate::codec::Codec,
@@ -520,7 +520,7 @@ where
     }
 }
 
-impl<'a, T, Codec> Drop for RefMut<'a, T, Codec>
+impl<T, Codec> Drop for RefMut<'_, T, Codec>
 where
     T: Clone + RemoteSend,
     Codec: crate::codec::Codec,
@@ -569,7 +569,7 @@ where
     }
 }
 
-impl<'a, T, Codec> ExactSizeIterator for IterMut<'a, T, Codec>
+impl<T, Codec> ExactSizeIterator for IterMut<'_, T, Codec>
 where
     T: Clone + RemoteSend,
     Codec: crate::codec::Codec,
@@ -579,7 +579,7 @@ where
     }
 }
 
-impl<'a, T, Codec> DoubleEndedIterator for IterMut<'a, T, Codec>
+impl<T, Codec> DoubleEndedIterator for IterMut<'_, T, Codec>
 where
     T: Clone + RemoteSend,
     Codec: crate::codec::Codec,
@@ -599,7 +599,7 @@ where
     }
 }
 
-impl<'a, T, Codec> FusedIterator for IterMut<'a, T, Codec>
+impl<T, Codec> FusedIterator for IterMut<'_, T, Codec>
 where
     T: Clone + RemoteSend,
     Codec: crate::codec::Codec,
@@ -1048,7 +1048,7 @@ impl<T, Codec> Drop for MirroredVec<T, Codec> {
 /// A snapshot view of an observable vector.
 pub struct MirroredVecRef<'a, T>(RwLockReadGuard<'a, MirroredVecInner<T>>);
 
-impl<'a, T> MirroredVecRef<'a, T> {
+impl<T> MirroredVecRef<'_, T> {
     /// Returns `true` if the initial state of an incremental subscription has
     /// been reached.
     pub fn is_complete(&self) -> bool {
@@ -1062,7 +1062,7 @@ impl<'a, T> MirroredVecRef<'a, T> {
     }
 }
 
-impl<'a, T> fmt::Debug for MirroredVecRef<'a, T>
+impl<T> fmt::Debug for MirroredVecRef<'_, T>
 where
     T: fmt::Debug,
 {
@@ -1071,7 +1071,7 @@ where
     }
 }
 
-impl<'a, T> Deref for MirroredVecRef<'a, T> {
+impl<T> Deref for MirroredVecRef<'_, T> {
     type Target = Vec<T>;
 
     fn deref(&self) -> &Self::Target {
@@ -1079,7 +1079,7 @@ impl<'a, T> Deref for MirroredVecRef<'a, T> {
     }
 }
 
-impl<'a, T> Drop for MirroredVecRef<'a, T> {
+impl<T> Drop for MirroredVecRef<'_, T> {
     fn drop(&mut self) {
         // required for drop order
     }

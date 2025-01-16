@@ -736,7 +736,7 @@ impl<T, Codec> Drop for MirroredHashSet<T, Codec> {
 /// A snapshot view of an observable hash set.
 pub struct MirroredHashSetRef<'a, T>(RwLockReadGuard<'a, MirroredHashSetInner<T>>);
 
-impl<'a, T> MirroredHashSetRef<'a, T> {
+impl<T> MirroredHashSetRef<'_, T> {
     /// Returns `true` if the initial state of an incremental subscription has
     /// been reached.
     pub fn is_complete(&self) -> bool {
@@ -750,7 +750,7 @@ impl<'a, T> MirroredHashSetRef<'a, T> {
     }
 }
 
-impl<'a, T> fmt::Debug for MirroredHashSetRef<'a, T>
+impl<T> fmt::Debug for MirroredHashSetRef<'_, T>
 where
     T: fmt::Debug,
 {
@@ -759,7 +759,7 @@ where
     }
 }
 
-impl<'a, T> Deref for MirroredHashSetRef<'a, T> {
+impl<T> Deref for MirroredHashSetRef<'_, T> {
     type Target = HashSet<T>;
 
     fn deref(&self) -> &Self::Target {
@@ -767,7 +767,7 @@ impl<'a, T> Deref for MirroredHashSetRef<'a, T> {
     }
 }
 
-impl<'a, T> Drop for MirroredHashSetRef<'a, T> {
+impl<T> Drop for MirroredHashSetRef<'_, T> {
     fn drop(&mut self) {
         // required for drop order
     }

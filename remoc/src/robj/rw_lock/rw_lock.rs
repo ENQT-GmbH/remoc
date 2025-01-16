@@ -201,7 +201,7 @@ where
 /// or call [invalidated](Self::invalidated) to be notified when write access is requested.
 pub struct ReadGuard<'a, T, Codec = codec::Default>(tokio::sync::RwLockReadGuard<'a, Value<T, Codec>>);
 
-impl<'a, T, Codec> ReadGuard<'a, T, Codec>
+impl<T, Codec> ReadGuard<'_, T, Codec>
 where
     Codec: codec::Codec,
 {
@@ -227,7 +227,7 @@ where
     }
 }
 
-impl<'a, T, Codec> Deref for ReadGuard<'a, T, Codec> {
+impl<T, Codec> Deref for ReadGuard<'_, T, Codec> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -235,7 +235,7 @@ impl<'a, T, Codec> Deref for ReadGuard<'a, T, Codec> {
     }
 }
 
-impl<'a, T, Codec> fmt::Debug for ReadGuard<'a, T, Codec>
+impl<T, Codec> fmt::Debug for ReadGuard<'_, T, Codec>
 where
     T: fmt::Debug,
 {
@@ -244,7 +244,7 @@ where
     }
 }
 
-impl<'a, T, Codec> Drop for ReadGuard<'a, T, Codec> {
+impl<T, Codec> Drop for ReadGuard<'_, T, Codec> {
     fn drop(&mut self) {
         // empty
     }

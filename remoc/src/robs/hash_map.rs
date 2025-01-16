@@ -391,7 +391,7 @@ where
     on_err: &'a dyn Fn(SendError),
 }
 
-impl<'a, K, V, Codec> Deref for RefMut<'a, K, V, Codec>
+impl<K, V, Codec> Deref for RefMut<'_, K, V, Codec>
 where
     K: Clone + RemoteSend,
     V: Clone + RemoteSend,
@@ -404,7 +404,7 @@ where
     }
 }
 
-impl<'a, K, V, Codec> DerefMut for RefMut<'a, K, V, Codec>
+impl<K, V, Codec> DerefMut for RefMut<'_, K, V, Codec>
 where
     K: Clone + RemoteSend,
     V: Clone + RemoteSend,
@@ -416,7 +416,7 @@ where
     }
 }
 
-impl<'a, K, V, Codec> Drop for RefMut<'a, K, V, Codec>
+impl<K, V, Codec> Drop for RefMut<'_, K, V, Codec>
 where
     K: Clone + RemoteSend,
     V: Clone + RemoteSend,
@@ -467,7 +467,7 @@ where
     }
 }
 
-impl<'a, K, V, Codec> ExactSizeIterator for IterMut<'a, K, V, Codec>
+impl<K, V, Codec> ExactSizeIterator for IterMut<'_, K, V, Codec>
 where
     K: Clone + RemoteSend,
     V: Clone + RemoteSend,
@@ -478,7 +478,7 @@ where
     }
 }
 
-impl<'a, K, V, Codec> FusedIterator for IterMut<'a, K, V, Codec>
+impl<K, V, Codec> FusedIterator for IterMut<'_, K, V, Codec>
 where
     K: Clone + RemoteSend,
     V: Clone + RemoteSend,
@@ -574,7 +574,7 @@ pub struct OccupiedEntry<'a, K, V, Codec = crate::codec::Default> {
     on_err: &'a dyn Fn(SendError),
 }
 
-impl<'a, K, V, Codec> fmt::Debug for OccupiedEntry<'a, K, V, Codec>
+impl<K, V, Codec> fmt::Debug for OccupiedEntry<'_, K, V, Codec>
 where
     K: fmt::Debug,
     V: fmt::Debug,
@@ -664,7 +664,7 @@ pub struct VacantEntry<'a, K, V, Codec = crate::codec::Default> {
     on_err: &'a dyn Fn(SendError),
 }
 
-impl<'a, K, V, Codec> fmt::Debug for VacantEntry<'a, K, V, Codec>
+impl<K, V, Codec> fmt::Debug for VacantEntry<'_, K, V, Codec>
 where
     K: fmt::Debug,
 {
@@ -1104,7 +1104,7 @@ impl<K, V, Codec> Drop for MirroredHashMap<K, V, Codec> {
 /// A snapshot view of an observable hash map.
 pub struct MirroredHashMapRef<'a, K, V>(RwLockReadGuard<'a, MirroredHashMapInner<K, V>>);
 
-impl<'a, K, V> MirroredHashMapRef<'a, K, V> {
+impl<K, V> MirroredHashMapRef<'_, K, V> {
     /// Returns `true` if the initial state of an incremental subscription has
     /// been reached.
     pub fn is_complete(&self) -> bool {
@@ -1118,7 +1118,7 @@ impl<'a, K, V> MirroredHashMapRef<'a, K, V> {
     }
 }
 
-impl<'a, K, V> fmt::Debug for MirroredHashMapRef<'a, K, V>
+impl<K, V> fmt::Debug for MirroredHashMapRef<'_, K, V>
 where
     K: fmt::Debug,
     V: fmt::Debug,
@@ -1128,7 +1128,7 @@ where
     }
 }
 
-impl<'a, K, V> Deref for MirroredHashMapRef<'a, K, V> {
+impl<K, V> Deref for MirroredHashMapRef<'_, K, V> {
     type Target = HashMap<K, V>;
 
     fn deref(&self) -> &Self::Target {
@@ -1136,7 +1136,7 @@ impl<'a, K, V> Deref for MirroredHashMapRef<'a, K, V> {
     }
 }
 
-impl<'a, K, V> Drop for MirroredHashMapRef<'a, K, V> {
+impl<K, V> Drop for MirroredHashMapRef<'_, K, V> {
     fn drop(&mut self) {
         // required for drop order
     }

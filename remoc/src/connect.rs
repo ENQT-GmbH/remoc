@@ -302,9 +302,7 @@ impl<'transport> Connect<'transport, io::Error, io::Error> {
     }
 }
 
-impl<'transport, TransportSinkError, TransportStreamError> Future
-    for Connect<'transport, TransportSinkError, TransportStreamError>
-{
+impl<TransportSinkError, TransportStreamError> Future for Connect<'_, TransportSinkError, TransportStreamError> {
     /// Result of connection after it has been terminated.
     type Output = Result<(), ChMuxError<TransportSinkError, TransportStreamError>>;
 

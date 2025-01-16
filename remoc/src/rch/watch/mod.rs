@@ -66,7 +66,7 @@ pub use sender::{SendError, Sender};
 /// Returns a reference to the inner value.
 pub struct Ref<'a, T>(tokio::sync::watch::Ref<'a, Result<T, RecvError>>);
 
-impl<'a, T> Deref for Ref<'a, T> {
+impl<T> Deref for Ref<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -74,7 +74,7 @@ impl<'a, T> Deref for Ref<'a, T> {
     }
 }
 
-impl<'a, T> fmt::Debug for Ref<'a, T>
+impl<T> fmt::Debug for Ref<'_, T>
 where
     T: fmt::Debug,
 {

@@ -271,7 +271,7 @@ pub struct Ref<'a, T> {
     _lifetime: PhantomData<&'a ()>,
 }
 
-impl<'a, T> fmt::Debug for Ref<'a, T>
+impl<T> fmt::Debug for Ref<'_, T>
 where
     T: fmt::Debug,
 {
@@ -280,7 +280,7 @@ where
     }
 }
 
-impl<'a, T> Deref for Ref<'a, T> {
+impl<T> Deref for Ref<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -288,7 +288,7 @@ impl<'a, T> Deref for Ref<'a, T> {
     }
 }
 
-impl<'a, T> Drop for Ref<'a, T> {
+impl<T> Drop for Ref<'_, T> {
     fn drop(&mut self) {
         // empty
     }

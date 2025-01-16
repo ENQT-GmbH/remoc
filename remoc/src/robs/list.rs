@@ -463,7 +463,7 @@ pub struct ObservableListRef<'a, T> {
     _phantom: PhantomData<&'a ()>,
 }
 
-impl<'a, T> fmt::Debug for ObservableListRef<'a, T>
+impl<T> fmt::Debug for ObservableListRef<'_, T>
 where
     T: fmt::Debug,
 {
@@ -472,7 +472,7 @@ where
     }
 }
 
-impl<'a, T> Deref for ObservableListRef<'a, T> {
+impl<T> Deref for ObservableListRef<'_, T> {
     type Target = Vec<T>;
 
     fn deref(&self) -> &Self::Target {
@@ -755,7 +755,7 @@ impl<T> Drop for MirroredList<T> {
 /// A snapshot view of an observable append-only list.
 pub struct MirroredListRef<'a, T>(RwLockReadGuard<'a, MirroredListInner<T>>);
 
-impl<'a, T> MirroredListRef<'a, T> {
+impl<T> MirroredListRef<'_, T> {
     /// Returns `true` if the mirror list has reached the length of the observed
     /// list at the time of subscription.
     pub fn is_complete(&self) -> bool {
@@ -769,7 +769,7 @@ impl<'a, T> MirroredListRef<'a, T> {
     }
 }
 
-impl<'a, T> fmt::Debug for MirroredListRef<'a, T>
+impl<T> fmt::Debug for MirroredListRef<'_, T>
 where
     T: fmt::Debug,
 {
@@ -778,7 +778,7 @@ where
     }
 }
 
-impl<'a, T> Deref for MirroredListRef<'a, T> {
+impl<T> Deref for MirroredListRef<'_, T> {
     type Target = Vec<T>;
 
     fn deref(&self) -> &Self::Target {
@@ -786,7 +786,7 @@ impl<'a, T> Deref for MirroredListRef<'a, T> {
     }
 }
 
-impl<'a, T> Drop for MirroredListRef<'a, T> {
+impl<T> Drop for MirroredListRef<'_, T> {
     fn drop(&mut self) {
         // required for drop order
     }
