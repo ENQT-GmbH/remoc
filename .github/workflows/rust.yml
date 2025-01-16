@@ -88,8 +88,11 @@ jobs:
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v1
 
+      - name: Install nightly Rust
+        run: rustup install nightly
+
       - name: Run clippy
-        run: cargo clippy --tests
+        run: cargo +nightly clippy --tests
 
   # Tests
   test:
