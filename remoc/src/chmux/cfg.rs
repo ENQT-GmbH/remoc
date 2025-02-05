@@ -77,7 +77,7 @@ pub struct Cfg {
     pub max_item_size: usize,
     /// Size of receive buffer of each port in bytes.
     ///
-    /// This controls the maximum amout of in-flight data per port, that is data on the transport
+    /// This controls the maximum amount of in-flight data per port, that is data on the transport
     /// plus received but yet unprocessed data.
     ///
     /// Increase this value if the throughput (bytes per second) is significantly
