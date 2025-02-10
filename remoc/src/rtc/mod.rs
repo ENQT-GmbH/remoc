@@ -34,7 +34,7 @@
 //!
 //!   * `TraitServer` is always generated,
 //!   * `TraitServerRefMut` and `TraitServerSharedMut` are generated when the receiver is
-//!      *never* taken by value,
+//!     *never* taken by value,
 //!   * `TraitServerRef` and `TraitServerShared` are generated when the receiver is
 //!     *never* taken by value and mutable reference.
 //!
