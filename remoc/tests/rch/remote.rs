@@ -60,9 +60,9 @@ async fn big_msg() {
         }
     });
 
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     for _ in 1..10 {
-        let size = rng.gen_range(0..1_000_000);
+        let size = rng.random_range(0..1_000_000);
         let mut data = vec![0u8; size];
         rng.fill_bytes(&mut data);
 
@@ -110,9 +110,9 @@ async fn tcp_big_msg() {
         }
     });
 
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     for _ in 1..10 {
-        let size = rng.gen_range(0..1_000_000);
+        let size = rng.random_range(0..1_000_000);
         let mut data = vec![0u8; size];
         rng.fill_bytes(&mut data);
 

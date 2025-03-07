@@ -1,6 +1,6 @@
 [target.wasm32-unknown-unknown]
 runner = "wasm-bindgen-test-runner"
-
+rustflags = ["--cfg", "getrandom_backend=\"wasm_js\""]
 
 [target.wasm32-wasip1]
 # for pure WASI environment:
@@ -8,7 +8,7 @@ runner = "wasmtime -S inherit-env"
 
 # for WASI on the web (`js` feature enabled):
 #runner = "wasm-bindgen-test-runner"
-#rustflags = ["-Z", "wasi-exec-model=reactor"]
+#rustflags = ["-Z", "wasi-exec-model=reactor", "--cfg", "getrandom_backend=\"wasm_js\""]
 
 
 [target.wasm32-wasip1-threads]
@@ -17,4 +17,4 @@ runner = "wasmtime -S threads -S inherit-env"
 
 # for WASI on the web (`js` feature enabled):
 #runner = "wasm-bindgen-test-runner"
-#rustflags = ["-Z", "wasi-exec-model=reactor"]
+#rustflags = ["-Z", "wasi-exec-model=reactor", "--cfg", "getrandom_backend=\"wasm_js\""]

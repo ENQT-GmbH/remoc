@@ -52,9 +52,9 @@ async fn loopback() {
 
     rx2.set_max_data_size(1_000_000);
 
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     for i in 1..100 {
-        let size = if i % 2 == 0 { rng.gen_range(0..1_000_000) } else { 1024 };
+        let size = if i % 2 == 0 { rng.random_range(0..1_000_000) } else { 1024 };
         let mut data = vec![0u8; size];
         rng.fill_bytes(&mut data);
         let data = Bytes::from(data);
@@ -129,9 +129,9 @@ async fn forward() {
 
     rx2.set_max_data_size(1_000_000);
 
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     for i in 1..100 {
-        let size = if i % 2 == 0 { rng.gen_range(0..1_000_000) } else { 1024 };
+        let size = if i % 2 == 0 { rng.random_range(0..1_000_000) } else { 1024 };
         let mut data = vec![0u8; size];
         rng.fill_bytes(&mut data);
         let data = Bytes::from(data);
@@ -213,9 +213,9 @@ async fn double_forward() {
 
     rx2.set_max_data_size(1_000_000);
 
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     for i in 1..100 {
-        let size = if i % 2 == 0 { rng.gen_range(0..1_000_000) } else { 1024 };
+        let size = if i % 2 == 0 { rng.random_range(0..1_000_000) } else { 1024 };
         let mut data = vec![0u8; size];
         rng.fill_bytes(&mut data);
         let data = Bytes::from(data);
