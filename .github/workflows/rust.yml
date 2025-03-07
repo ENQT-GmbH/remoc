@@ -122,6 +122,7 @@ jobs:
       matrix:
         codec:
           - bincode
+          - bincode2
           - ciborium
           - message-pack
           - postcard
