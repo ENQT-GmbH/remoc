@@ -23,7 +23,8 @@
 //!
 //! The following features select the default codec.
 //!
-//!   * `default-codec-bincode` -- enables and selects Bincode as the default codec
+//!   * `default-codec-bincode` -- enables and selects Bincode 1 as the default codec
+//!   * `default-codec-bincode2` -- enables and selects Bincode 2 as the default codec
 //!   * `default-codec-ciborium` -- enables and selects CBOR as the default codec
 //!   * `default-codec-json` -- enables and selects JSON as the default codec
 //!   * `default-codec-message-pack` -- enables and selects MessagePack as the default codec
@@ -184,11 +185,14 @@ pub mod map;
 
 #[cfg(feature = "codec-bincode")]
 mod bincode;
-#[cfg(feature = "codec-bincode")]
-pub use self::bincode::Bincode;
 #[cfg(feature = "default-codec-bincode")]
 #[doc(no_inline)]
 pub use self::bincode::Bincode as Default;
+#[cfg(feature = "default-codec-bincode2")]
+#[doc(no_inline)]
+pub use self::bincode::Bincode2 as Default;
+#[cfg(feature = "codec-bincode")]
+pub use self::bincode::{Bincode, Bincode2};
 
 #[cfg(feature = "codec-ciborium")]
 mod ciborium;

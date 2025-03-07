@@ -91,7 +91,8 @@ The meta-feature `full` enables all features from above but no codecs.
 
 The following features enable data formats for transmission:
 
-  * `codec-bincode` provides the Bincode format.
+  * `codec-bincode` provides the Bincode 1 and 2 formats (use `default-codec-bincode` 
+    or `default-codec-bincode2` for selecting a default codec).
   * `codec-ciborium` provides the CBOR format.
   * `codec-json` provides the JSON format.
   * `codec-message-pack` provides the MessagePack format.
@@ -117,7 +118,7 @@ native event queue.
 ## Supported Rust versions
 
 Remoc is built against the latest stable release.
-The minimum supported Rust version (MSRV) is 1.72.
+The minimum supported Rust version (MSRV) is 1.80.
 
 ## Example
 
