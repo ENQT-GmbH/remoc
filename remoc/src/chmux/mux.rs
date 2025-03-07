@@ -547,6 +547,7 @@ where
         }
 
         let mut next_ping = get_next_ping(ping_interval).fuse().boxed();
+        let mut need_flush = false;
 
         loop {
             SinkReady::new(&mut sink).await.map_err(ChMuxError::SinkError)?;
@@ -558,22 +559,30 @@ where
                     match cmd_opt {
                         Some(SendCmd::Send (msg)) => {
                             let is_goodbye = matches!(&msg, TransportMsg {msg: MultiplexMsg::Goodbye, ..});
+                            need_flush |= matches!(&msg, TransportMsg {msg: MultiplexMsg::PortCredits {..}, ..});
+
                             Self::feed_msg(msg, sink).await?;
+
                             if is_goodbye {
                                 break;
                             }
 
                             next_ping = get_next_ping(ping_interval).fuse().boxed();
                         }
-                        Some(SendCmd::Flush) => Self::flush(sink).await?,
+                        Some(SendCmd::Flush) => need_flush = true,
                         None => break,
                     }
                 }
 
                 () = &mut next_ping => {
                     Self::feed_msg(TransportMsg::new(MultiplexMsg::Ping), sink).await?;
-                    Self::flush(sink).await?;
                     next_ping = get_next_ping(ping_interval).fuse().boxed();
+                    need_flush = true;
+                }
+
+                () = future::ready(()), if need_flush => {
+                    Self::flush(sink).await?;
+                    need_flush = false;
                 }
             }
         }

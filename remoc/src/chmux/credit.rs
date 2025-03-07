@@ -143,6 +143,7 @@ impl CreditUser {
                     let channel_taken = channel.credits.min(req);
                     channel.credits -= channel_taken;
 
+                    tracing::trace!("obtained {channel_taken} of {req} requested credits");
                     return Ok(AssignedCredits::new(channel_taken, self.channel.clone()));
                 } else {
                     let (tx_channel, rx_channel) = oneshot::channel();
@@ -151,6 +152,7 @@ impl CreditUser {
                 }
             };
 
+            tracing::trace!("waiting for at least {min_req} credits, but want {req} credits");
             let _ = rx_channel.await;
         }
     }
@@ -234,9 +236,9 @@ pub(crate) struct ChannelCreditReturner {
 impl ChannelCreditReturner {
     /// Starts returning channel-specific credit.
     ///
-    /// poll_return_flush must have completed (Poll::Ready) before this function is called.
+    /// return_flush must have been called before this function is called.
     pub fn start_return(&mut self, credit: UsedCredit, remote_port: u32, tx: &mpsc::Sender<PortEvt>) {
-        assert!(self.return_fut.is_none(), "start_return_one called without poll_return_flush");
+        assert!(self.return_fut.is_none(), "start_return called without return_flush");
 
         if let Some(monitor) = self.monitor.upgrade() {
             let mut monitor = monitor.lock().unwrap();
