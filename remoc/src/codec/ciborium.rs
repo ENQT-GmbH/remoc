@@ -5,13 +5,12 @@ use super::{Codec, DeserializationError, SerializationError};
 /// CBOR codec using [ciborium].
 ///
 /// ## Compatibility
-/// This codec is able to decode values encoded with [Cbor]
+/// This codec is able to decode values encoded with Cbor
 /// but the opposite is not true.
-/// Make sure you are not mixing this codec with the legacy [Cbor]
+/// Make sure you are not mixing this codec with the legacy Cbor
 /// codec across your remote endpoints to avoid deserialization errors.
 /// More information is provided in the [`ciborium` README].
 ///
-/// [Cbor]: super::cbor::Cbor
 /// [`ciborium` README]: https://github.com/enarx/ciborium#compatibility-with-other-implementations
 #[cfg_attr(docsrs, doc(cfg(feature = "codec-ciborium")))]
 #[derive(Clone, Serialize, Deserialize)]
