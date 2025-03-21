@@ -19,25 +19,39 @@ pub use task::spawn;
 
 /// Whether threads are available and working on this platform.
 #[inline]
-pub fn are_threads_available() -> bool {
-    use std::sync::LazyLock;
+pub async fn are_threads_available() -> bool {
+    use tokio::sync::{oneshot, OnceCell};
 
-    static AVAILABLE: LazyLock<bool> = LazyLock::new(|| {
-        let res = std::thread::Builder::new().name("remoc thread test".into()).spawn(|| ());
-        match res {
-            Ok(hnd) => match hnd.join() {
-                Ok(()) => true,
-                Err(payload) => {
-                    tracing::warn!(?payload, "test thread panicked, streaming (de)serialization disabled");
+    static AVAILABLE: OnceCell<bool> = OnceCell::const_new();
+    *AVAILABLE
+        .get_or_init(|| async move {
+            tracing::trace!("spawning test thread");
+
+            let (tx, rx) = oneshot::channel();
+            let res = std::thread::Builder::new().name("remoc thread test".into()).spawn(move || {
+                tracing::trace!("test thread started");
+                let _ = tx.send(());
+            });
+
+            match res {
+                Ok(_) => {
+                    tracing::trace!("waiting for test thread");
+                    match rx.await {
+                        Ok(()) => {
+                            tracing::trace!("threads are available");
+                            true
+                        }
+                        Err(_) => {
+                            tracing::warn!("test thread failed, streaming (de)serialization disabled");
+                            false
+                        }
+                    }
+                }
+                Err(os_error) => {
+                    tracing::warn!(%os_error, "threads not available, streaming (de)serialization disabled");
                     false
                 }
-            },
-            Err(os_error) => {
-                tracing::warn!(%os_error, "threads not available, streaming (de)serialization disabled");
-                false
             }
-        }
-    });
-
-    *AVAILABLE
+        })
+        .await
 }

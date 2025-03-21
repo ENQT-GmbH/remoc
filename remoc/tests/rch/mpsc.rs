@@ -411,7 +411,7 @@ async fn forward() {
 #[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn max_item_size_exceeded() {
     crate::init();
-    if !remoc::exec::are_threads_available() {
+    if !remoc::exec::are_threads_available().await {
         println!("test requires threads");
         return;
     }

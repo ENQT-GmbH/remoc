@@ -281,7 +281,7 @@ where
         allocator: chmux::PortAllocator, storage: AnyStorage, item: T, tx: tokio::sync::mpsc::Sender<BytesMut>,
         chunk_size: usize,
     ) -> Result<(T, PortSerializer, usize), (SerializationError, T)> {
-        if !exec::are_threads_available() {
+        if !exec::are_threads_available().await {
             return Err((SerializationError::new(StreamingUnavailable), item));
         }
 

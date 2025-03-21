@@ -240,7 +240,7 @@ where
                     self.data = match self.recved.take().unwrap() {
                         Some(Received::Data(data)) => DataSource::Buffered(Some(data)),
                         Some(Received::Chunks) => {
-                            if !exec::are_threads_available() {
+                            if !exec::are_threads_available().await {
                                 return Err(RecvError::Deserialize(DeserializationError::new(
                                     StreamingUnavailable,
                                 )));
