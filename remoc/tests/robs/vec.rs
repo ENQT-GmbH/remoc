@@ -179,7 +179,13 @@ async fn mirrored_disconnect() {
 
     println!("drop");
     drop(obs);
-    mirror.changed().await;
+
+    loop {
+        mirror.changed().await;
+        if let Err(RecvError::Closed) = mirror.borrow().await {
+            break;
+        }
+    }
     assert!(matches!(mirror.borrow().await, Err(RecvError::Closed)));
 }
 
