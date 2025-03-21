@@ -237,15 +237,15 @@ where
                         self.recved = Some(self.receiver.recv_any().await?);
                     }
 
+                    if let Some(Some(Received::Chunks)) = &self.recved {
+                        if !exec::are_threads_available().await {
+                            return Err(RecvError::Deserialize(DeserializationError::new(StreamingUnavailable)));
+                        }
+                    }
+
                     self.data = match self.recved.take().unwrap() {
                         Some(Received::Data(data)) => DataSource::Buffered(Some(data)),
                         Some(Received::Chunks) => {
-                            if !exec::are_threads_available().await {
-                                return Err(RecvError::Deserialize(DeserializationError::new(
-                                    StreamingUnavailable,
-                                )));
-                            }
-
                             // Start deserialization thread.
                             let allocator = self.receiver.port_allocator();
                             let handle_storage = self.receiver.storage();
