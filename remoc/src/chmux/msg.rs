@@ -7,7 +7,7 @@ use std::{
 use super::{Cfg, ChMuxError};
 
 fn invalid_data(msg: &str) -> io::Error {
-    io::Error::new(io::ErrorKind::InvalidData, format!("invalid value for {} received", msg))
+    io::Error::new(io::ErrorKind::InvalidData, format!("invalid value for {msg} received"))
 }
 
 /// Magic identifier.

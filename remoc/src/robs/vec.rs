@@ -230,7 +230,7 @@ where
     ///
     /// # Panics
     /// Panics when [done](Self::done) has been called before.
-    pub fn get_mut(&mut self, index: usize) -> Option<RefMut<T, Codec>> {
+    pub fn get_mut(&mut self, index: usize) -> Option<RefMut<'_, T, Codec>> {
         self.assert_not_done();
 
         match self.v.get_mut(index) {
@@ -252,7 +252,7 @@ where
     ///
     /// # Panics
     /// Panics when [done](Self::done) has been called before.    
-    pub fn iter_mut(&mut self) -> IterMut<T, Codec> {
+    pub fn iter_mut(&mut self) -> IterMut<'_, T, Codec> {
         self.assert_not_done();
 
         IterMut {
