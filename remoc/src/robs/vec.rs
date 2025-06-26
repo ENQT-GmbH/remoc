@@ -41,10 +41,6 @@ use crate::{exec, prelude::*};
 /// A vector change event.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum VecEvent<T> {
-    /// The incremental subscription has reached the value of the observed
-    /// vector at the time it was subscribed.
-    #[serde(skip)]
-    InitialComplete,
     /// An item was added at the end.
     Push(T),
     /// The last item was removed.
@@ -74,6 +70,14 @@ pub enum VecEvent<T> {
     /// The vector has reached its final state and
     /// no further events will occur.
     Done,
+
+    // NOTE: All variants with #[serde(skip)] must be at the end of the enum
+    //       to workaround serde issue serde-rs/serde#2224.
+    //
+    /// The incremental subscription has reached the value of the observed
+    /// vector at the time it was subscribed.
+    #[serde(skip)]
+    InitialComplete,
 }
 
 /// A vector that emits an event for each change.

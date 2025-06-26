@@ -28,10 +28,6 @@ use crate::{exec, prelude::*};
 /// A hash set change event.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HashSetEvent<T> {
-    /// The incremental subscription has reached the value of the observed
-    /// hash set at the time it was subscribed.
-    #[serde(skip)]
-    InitialComplete,
     /// An item was inserted or modified.
     Set(T),
     /// An item was removed.
@@ -43,6 +39,14 @@ pub enum HashSetEvent<T> {
     /// The hash set has reached its final state and
     /// no further events will occur.
     Done,
+
+    // NOTE: All variants with #[serde(skip)] must be at the end of the enum
+    //       to workaround serde issue serde-rs/serde#2224.
+    //
+    /// The incremental subscription has reached the value of the observed
+    /// hash set at the time it was subscribed.
+    #[serde(skip)]
+    InitialComplete,
 }
 
 /// A hash set that emits an event for each change.

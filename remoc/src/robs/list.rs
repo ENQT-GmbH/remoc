@@ -38,15 +38,19 @@ use crate::{exec, prelude::*};
 /// A list change event.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ListEvent<T> {
-    /// The subscription has reached the value of the observed
-    /// list at the time it was subscribed.
-    #[serde(skip)]
-    InitialComplete,
     /// An item was pushed at the end of the list.
     Push(T),
     /// The list has reached its final state and
     /// no further events will occur.
     Done,
+
+    // NOTE: All variants with #[serde(skip)] must be at the end of the enum
+    //       to workaround serde issue serde-rs/serde#2224.
+    //
+    /// The subscription has reached the value of the observed
+    /// list at the time it was subscribed.
+    #[serde(skip)]
+    InitialComplete,
 }
 
 /// Observable list task request.

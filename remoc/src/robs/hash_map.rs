@@ -36,10 +36,6 @@ use crate::{exec, prelude::*};
 /// A hash map change event.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HashMapEvent<K, V> {
-    /// The incremental subscription has reached the value of the observed
-    /// hash map at the time it was subscribed.
-    #[serde(skip)]
-    InitialComplete,
     /// An item was inserted or modified.
     Set(K, V),
     /// An item was removed.
@@ -51,6 +47,14 @@ pub enum HashMapEvent<K, V> {
     /// The hash map has reached its final state and
     /// no further events will occur.
     Done,
+
+    // NOTE: All variants with #[serde(skip)] must be at the end of the enum
+    //       to workaround serde issue serde-rs/serde#2224.
+    //
+    /// The incremental subscription has reached the value of the observed
+    /// hash map at the time it was subscribed.
+    #[serde(skip)]
+    InitialComplete,
 }
 
 /// A hash map that emits an event for each change.
