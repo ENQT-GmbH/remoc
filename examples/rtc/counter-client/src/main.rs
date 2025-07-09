@@ -1,4 +1,5 @@
 //! This crate implements the client of the remote counting service.
+#![warn(missing_docs)]
 
 use remoc::prelude::*;
 use std::{net::Ipv4Addr, time::Duration};

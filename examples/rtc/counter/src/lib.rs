@@ -1,6 +1,7 @@
 //! This library crate defines the remote counting service.
 //!
 //! The client and server depend on it.
+#![warn(missing_docs)]
 
 use remoc::prelude::*;
 use std::time::Duration;

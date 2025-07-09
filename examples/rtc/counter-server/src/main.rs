@@ -1,4 +1,5 @@
 //! This crate implements the server of the remote counting service.
+#![warn(missing_docs)]
 
 use remoc::{codec, prelude::*};
 use std::{net::Ipv4Addr, sync::Arc, time::Duration};
