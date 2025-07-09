@@ -1,5 +1,3 @@
-#![warn(missing_docs)]
-
 #[cfg(feature = "js")]
 use wasm_bindgen_test::wasm_bindgen_test;
 

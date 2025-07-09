@@ -201,7 +201,7 @@ impl TraitMethod {
             let attrs = attribute_tokens(attrs);
             entries.append_all(quote! {
                 #attrs
-                #[allow(missing_docs)]
+                #[doc = concat!(stringify!(#ident), " parameter")]
                 #ident : #ty ,
             });
         }
