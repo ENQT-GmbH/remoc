@@ -199,7 +199,11 @@ impl TraitMethod {
 
         for NamedArg { attrs, ident, ty } in &self.args {
             let attrs = attribute_tokens(attrs);
-            entries.append_all(quote! { #attrs #ident : #ty , });
+            entries.append_all(quote! {
+                #attrs
+                #[allow(missing_docs)]
+                #ident : #ty ,
+            });
         }
 
         let docs_attrs = attribute_tokens(
