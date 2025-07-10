@@ -38,7 +38,7 @@ pub trait Counter {
     async fn watch(&mut self) -> Result<rch::watch::Receiver<u32>, rtc::CallError>;
 
     /// Increase the counter's value by the provided number.
-    async fn increase(&mut self, by: u32) -> Result<(), IncreaseError>;
+    async fn increase(&mut self, #[doc = "increment value"] by: u32) -> Result<(), IncreaseError>;
 
     /// Counts to the current value of the counter with the specified
     /// delay between each step.
