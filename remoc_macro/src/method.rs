@@ -198,8 +198,17 @@ impl TraitMethod {
         };
 
         for NamedArg { attrs, ident, ty } in &self.args {
+            if !attrs.iter().any(|attr| attr.path().is_ident("doc")) {
+                entries.append_all(quote! {
+                    #[doc = concat!(stringify!(#ident), " parameter")]
+                });
+            }
+
             let attrs = attribute_tokens(attrs);
-            entries.append_all(quote! { #attrs #ident : #ty , });
+            entries.append_all(quote! {
+                #attrs
+                #ident : #ty ,
+            });
         }
 
         let docs_attrs = attribute_tokens(
