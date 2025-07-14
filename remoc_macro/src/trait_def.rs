@@ -929,14 +929,24 @@ impl TraitDef {
             methods.append_all(m.client_method(&req_value, &req_ref, &req_ref_mut));
         }
 
+        let doc = format!("Remote client for [{}].\n\nCan be sent to a remote endpoint.", &ident);
+
         // Allowing cloning if object is accessed by reference only.
         let clone = if (!self.is_taking_ref_mut() || self.clone) && !self.is_taking_value() {
-            quote! {#[derive(Clone)]}
+            quote! {
+                impl #impl_generics_impl Clone for #client_ident #impl_generics_ty #ty_generics_where {
+                    fn clone(&self) -> Self {
+                        Self {
+                            req_tx: self.req_tx.clone(),
+                            max_reply_size: self.max_reply_size,
+                            drop_tx: self.drop_tx.clone(),
+                        }
+                    }
+                }
+            }
         } else {
             quote! {}
         };
-
-        let doc = format!("Remote client for [{}].\n\nCan be sent to a remote endpoint.", &ident);
 
         quote! {
             #[doc=#doc]
@@ -944,7 +954,6 @@ impl TraitDef {
             #[serde(crate = "::remoc::_serde")]
             #[serde(bound(serialize = #impl_generics_where_str))]
             #[serde(bound(deserialize = #impl_generics_where_str))]
-            #clone
             #attrs
             #vis struct #client_ident #ty_generics #ty_generics_where_ty {
                 req_tx: ::remoc::rch::mpsc::Sender<
@@ -957,6 +966,8 @@ impl TraitDef {
                 #[serde(default = "::remoc::rtc::empty_client_drop_tx")]
                 drop_tx: ::remoc::rtc::local_broadcast::Sender<()>,
             }
+
+            #clone
 
             impl #impl_generics_impl #client_ident #impl_generics_ty #impl_generics_where {
                 fn new(req_tx: ::remoc::rch::mpsc::Sender<

@@ -1,6 +1,7 @@
 mod default;
 mod errors;
 mod generics;
+mod generics_non_clone;
 mod readonly;
 mod simple;
 mod simple_clone;
