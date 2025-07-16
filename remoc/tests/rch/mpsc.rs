@@ -7,7 +7,7 @@ use wasm_bindgen_test::wasm_bindgen_test;
 
 use crate::{droppable_loop_channel, loop_channel};
 use remoc::{
-    exec,
+    codec, exec,
     exec::time::sleep,
     rch::{base, base::SendErrorKind, mpsc, mpsc::SendError, ClosedReason, SendResultExt, SendingError},
 };
@@ -90,6 +90,59 @@ async fn simple_stream() {
             if err.is_closed() && err.is_disconnected() && err.closed_reason() == Some(ClosedReason::Closed) => {}
         Err(_) => panic!("wrong error after close"),
     }
+}
+
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
+async fn recv_many() {
+    const CAP: usize = 50;
+
+    crate::init();
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<mpsc::Receiver<i16, codec::Default, CAP>>().await;
+
+    println!("Sending remote mpsc channel receiver");
+    let (tx, rx) = mpsc::channel(16);
+    let rx = rx.set_buffer();
+    a_tx.send(rx).await.unwrap();
+    println!("Receiving remote mpsc channel receiver");
+    let mut rx = b_rx.recv().await.unwrap().unwrap();
+
+    let rng = 1..1024;
+    let rng2 = rng.clone();
+    tokio::spawn(async move {
+        for i in rng2 {
+            println!("Sending {i}");
+            let tx = tx.clone();
+            tx.send(i).await.unwrap();
+        }
+    });
+
+    let mut i = rng.start;
+    let mut max_batch_size = 0;
+    loop {
+        let mut buf = Vec::with_capacity(CAP);
+        let n = rx.recv_many(&mut buf, CAP).await.unwrap();
+
+        println!("Received batch of size {n} / {CAP}");
+        if n == 0 {
+            break;
+        }
+        assert_eq!(n, buf.len());
+        assert!(n <= CAP);
+
+        for r in buf {
+            println!("Received {r}");
+            assert_eq!(i, r);
+            i += 1;
+        }
+
+        if n < 25 {
+            sleep(Duration::from_millis(100)).await;
+        }
+        max_batch_size = max_batch_size.max(n);
+    }
+    assert_eq!(i, rng.end);
+    assert!(max_batch_size >= 10);
 }
 
 #[cfg_attr(not(feature = "js"), tokio::test)]

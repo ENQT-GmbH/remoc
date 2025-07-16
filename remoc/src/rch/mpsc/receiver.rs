@@ -291,6 +291,64 @@ impl<T, Codec, const BUFFER: usize, const MAX_ITEM_SIZE: usize> Receiver<T, Code
         exec::task::block_on(self.recv())
     }
 
+    /// Receives the next values for this receiver and extends `buffer`.
+    ///
+    /// This method extends `buffer` by no more than a fixed number of values as specified by `limit`.
+    /// If `limit` is zero, the function immediately returns 0.
+    ///
+    /// The return value is the number of values added to buffer.
+    /// The method returns `Ok(0)` when the channel has been closed.
+    ///
+    /// The number of values added to the buffer can never exceed the generic parameter `BUFFER`
+    /// of this receiver.
+    ///
+    /// For `limit > 0`, if there are no messages in the channel’s queue, but the channel has not
+    /// yet been closed, this method will sleep until a message is sent or the channel is closed.
+    ///
+    /// If a non-final receive error occurs (for example due to a message being not
+    /// deserializable), the error is reported but alreadyed buffered messages from the
+    /// same batch are lost.
+    ///
+    /// ### Cancel safety
+    /// This method is cancel safe.
+    /// If it is cancelled, it is guaranteed that no messages were received on this channel.
+    pub async fn recv_many(&mut self, buffer: &mut Vec<T>, limit: usize) -> Result<usize, RecvError> {
+        if limit == 0 {
+            return Ok(0);
+        }
+
+        let mut send_req_buf = Vec::with_capacity(limit);
+        let n = self.inner.as_mut().unwrap().rx.recv_many(&mut send_req_buf, limit).await;
+
+        if n == 0 {
+            match self.take_error() {
+                Some(err) => return Err(err),
+                None => return Ok(0),
+            }
+        }
+
+        let mut p = 0;
+        for send_req in send_req_buf {
+            match send_req.ack() {
+                Ok(value_opt) => {
+                    buffer.push(value_opt);
+                    p += 1;
+                }
+                Err(err) => {
+                    if err.is_final() {
+                        if self.final_err.is_none() {
+                            self.final_err = Some(err);
+                        }
+                    } else {
+                        return Err(err);
+                    }
+                }
+            }
+        }
+
+        Ok(p)
+    }
+
     /// Closes the receiving half of a channel without dropping it.
     ///
     /// This allows to process outstanding values while stopping the sender from
