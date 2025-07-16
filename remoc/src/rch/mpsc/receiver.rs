@@ -189,6 +189,10 @@ impl<T, Codec, const BUFFER: usize, const MAX_ITEM_SIZE: usize> Receiver<T, Code
     /// When a receive error occurs due to a connection failure and other senders are still
     /// present, it is held back and returned after all other senders have been dropped or failed.
     /// Use [error](Self::error) to check if such an error is present.
+    ///
+    /// ### Cancel safety
+    /// This method is cancel safe.
+    /// If it is cancelled, it is guaranteed that no messages were received on this channel.
     #[inline]
     pub async fn recv(&mut self) -> Result<Option<T>, RecvError> {
         loop {
