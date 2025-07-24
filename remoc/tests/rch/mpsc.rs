@@ -147,6 +147,49 @@ async fn recv_many() {
 
 #[cfg_attr(not(feature = "js"), tokio::test)]
 #[cfg_attr(feature = "js", wasm_bindgen_test)]
+async fn recv_len() {
+    const CAP: usize = 50;
+
+    crate::init();
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<mpsc::Receiver<i16, codec::Default, CAP>>().await;
+
+    println!("Sending remote mpsc channel receiver");
+    let (tx, rx) = mpsc::channel(16);
+    let rx = rx.set_buffer();
+    a_tx.send(rx).await.unwrap();
+    println!("Receiving remote mpsc channel receiver");
+    let mut rx = b_rx.recv().await.unwrap().unwrap();
+
+    assert_eq!(rx.len(), 0);
+    assert!(rx.is_empty());
+
+    let rng = 1..1024;
+    let rng2 = rng.clone();
+    tokio::spawn(async move {
+        for i in rng2 {
+            println!("Sending {i}");
+            let tx = tx.clone();
+            tx.send(i).await.unwrap();
+        }
+    });
+
+    while rx.len() < CAP {
+        sleep(Duration::from_millis(100)).await;
+    }
+
+    assert!(!rx.is_empty());
+
+    for i in 0..CAP {
+        assert_eq!(rx.len(), CAP - i);
+        rx.recv().await.unwrap();
+    }
+
+    assert_eq!(rx.len(), 0);
+    assert!(rx.is_empty());
+}
+
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn simple_close() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<mpsc::Receiver<i16>>().await;
