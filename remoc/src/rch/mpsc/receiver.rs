@@ -353,6 +353,19 @@ impl<T, Codec, const BUFFER: usize, const MAX_ITEM_SIZE: usize> Receiver<T, Code
         Ok(p)
     }
 
+    /// Returns the number of values available for receiving.
+    ///
+    /// This might be over-estimated in case a receive error occured.
+    /// However, in this case the receive functions will return an error.
+    pub fn len(&self) -> usize {
+        self.inner.as_ref().unwrap().rx.len()
+    }
+
+    /// Returns whether no values are available for receiving.
+    pub fn is_empty(&self) -> bool {
+        self.inner.as_ref().unwrap().rx.is_empty()
+    }
+
     /// Closes the receiving half of a channel without dropping it.
     ///
     /// This allows to process outstanding values while stopping the sender from
