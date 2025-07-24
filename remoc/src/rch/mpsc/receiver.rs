@@ -193,7 +193,6 @@ impl<T, Codec, const BUFFER: usize, const MAX_ITEM_SIZE: usize> Receiver<T, Code
     /// ### Cancel safety
     /// This method is cancel safe.
     /// If it is cancelled, it is guaranteed that no messages were received on this channel.
-    #[inline]
     pub async fn recv(&mut self) -> Result<Option<T>, RecvError> {
         loop {
             match self.inner.as_mut().unwrap().rx.recv().await {
@@ -225,7 +224,6 @@ impl<T, Codec, const BUFFER: usize, const MAX_ITEM_SIZE: usize> Receiver<T, Code
     /// When a receive error occurs due to a connection failure and other senders are still
     /// present, it is held back and returned after all other senders have been dropped or failed.
     /// Use [error](Self::error) to check if such an error is present.
-    #[inline]
     pub fn poll_recv(&mut self, cx: &mut Context) -> Poll<Result<Option<T>, RecvError>> {
         loop {
             match ready!(self.inner.as_mut().unwrap().rx.poll_recv(cx)) {
@@ -258,7 +256,6 @@ impl<T, Codec, const BUFFER: usize, const MAX_ITEM_SIZE: usize> Receiver<T, Code
     /// When a receive error occurs due to a connection failure and other senders are still
     /// present, it is held back and returned after all other senders have been dropped or failed.
     /// Use [error](Self::error) to check if such an error is present.
-    #[inline]
     pub fn try_recv(&mut self) -> Result<T, TryRecvError> {
         loop {
             match self.inner.as_mut().unwrap().rx.try_recv() {
@@ -290,7 +287,6 @@ impl<T, Codec, const BUFFER: usize, const MAX_ITEM_SIZE: usize> Receiver<T, Code
     ///
     /// # Panics
     /// This function panics if called within an asynchronous execution context.
-    #[inline]
     pub fn blocking_recv(&mut self) -> Result<Option<T>, RecvError> {
         exec::task::block_on(self.recv())
     }
@@ -370,7 +366,6 @@ impl<T, Codec, const BUFFER: usize, const MAX_ITEM_SIZE: usize> Receiver<T, Code
     ///
     /// This allows to process outstanding values while stopping the sender from
     /// sending new values.
-    #[inline]
     pub fn close(&mut self) {
         let inner = self.inner.as_mut().unwrap();
         let _ = inner.closed_tx.send(Some(ClosedReason::Closed));
@@ -481,7 +476,6 @@ where
     Codec: codec::Codec,
 {
     /// Serializes this receiver for sending over a chmux channel.
-    #[inline]
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -532,7 +526,6 @@ where
     Codec: codec::Codec,
 {
     /// Deserializes the receiver after it has been received over a chmux channel.
-    #[inline]
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,

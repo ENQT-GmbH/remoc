@@ -183,7 +183,6 @@ impl PortSerializer {
     /// Open a chmux port to the remote endpoint.
     ///
     /// Returns the local port number and calls the specified function with the connect object.
-    #[inline]
     pub fn connect<E>(
         callback: impl FnOnce(chmux::Connect) -> BoxFuture<'static, ()> + Send + 'static,
     ) -> Result<u32, E>
@@ -202,7 +201,6 @@ impl PortSerializer {
     }
 
     /// Returns the data storage of the channel multiplexer.
-    #[inline]
     pub fn storage<E>() -> Result<AnyStorage, E>
     where
         E: serde::ser::Error,
@@ -214,7 +212,6 @@ impl PortSerializer {
     }
 
     /// Spawn a task.
-    #[inline]
     pub fn spawn<E>(task: impl Future<Output = ()> + Send + 'static) -> Result<(), E>
     where
         E: serde::ser::Error,
@@ -327,7 +324,6 @@ where
     /// Sends an item over the channel.
     ///
     /// The item may contain ports that will be serialized and connected as well.
-    #[inline]
     pub async fn send(&mut self, item: T) -> Result<(), SendError<T>> {
         // Determine if it is worthy to try buffered serialization.
         let data_ps = if self.big_data <= 0 {
@@ -467,13 +463,11 @@ where
     }
 
     /// True, once the remote endpoint has closed its receiver.
-    #[inline]
     pub fn is_closed(&self) -> bool {
         self.sender.is_closed()
     }
 
     /// Returns a future that will resolve when the remote endpoint closes its receiver.
-    #[inline]
     pub fn closed(&self) -> Closed {
         self.sender.closed()
     }

@@ -253,7 +253,6 @@ where
     /// The handle and all its clones become invalid.
     ///
     /// This blocks until all existing read and write reference have been released.
-    #[inline]
     pub async fn into_inner(mut self) -> Result<T, HandleError> {
         let entry = match mem::take(&mut self.state) {
             State::LocalCreated { entry, .. } => entry,
@@ -274,7 +273,6 @@ where
     /// Returns a reference to the value of the handle, if it is stored locally.
     ///
     /// This blocks until all existing write reference have been released.
-    #[inline]
     pub async fn as_ref(&self) -> Result<Ref<T>, HandleError> {
         let entry = match &self.state {
             State::LocalCreated { entry, .. } | State::LocalReceived { entry, .. } => entry.clone(),
@@ -299,7 +297,6 @@ where
     /// Returns a mutable reference to the value of the handle, if it is stored locally.
     ///
     /// This blocks until all existing read and write reference have been released.
-    #[inline]
     pub async fn as_mut(&mut self) -> Result<RefMut<T>, HandleError> {
         let entry = match &self.state {
             State::LocalCreated { entry, .. } | State::LocalReceived { entry, .. } => entry.clone(),

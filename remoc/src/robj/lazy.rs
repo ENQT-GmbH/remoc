@@ -241,7 +241,6 @@ where
     /// The value is stored locally once received and subsequent
     /// invocations of this function will return a reference to
     /// the local copy.
-    #[inline]
     pub async fn get(&self) -> Result<Ref<'_, T>, FetchError> {
         self.fetch().await;
 
@@ -253,7 +252,6 @@ where
     }
 
     /// Consumes this object and returns the value.
-    #[inline]
     pub async fn into_inner(self) -> Result<T, FetchError> {
         self.fetch().await;
 

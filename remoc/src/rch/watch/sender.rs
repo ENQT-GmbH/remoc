@@ -166,7 +166,6 @@ where
     /// Sending and error reporting are done asynchronously.
     /// Thus, the reporting of an error may be delayed and this function may
     /// return errors caused by previous invocations.
-    #[inline]
     pub fn send(&self, value: T) -> Result<(), SendError> {
         match self.inner.as_ref().unwrap().tx.send(Ok(value)) {
             Ok(()) => Ok(()),
@@ -184,7 +183,6 @@ where
     ///
     /// # Panics
     /// This method panics if calling `func` results in a panic.
-    #[inline]
     pub fn send_modify<F>(&self, func: F)
     where
         F: FnOnce(&mut T),
@@ -197,25 +195,21 @@ where
     ///
     /// This method never fails, even if all receivers have been dropped or become
     /// disconnected.
-    #[inline]
     pub fn send_replace(&self, value: T) -> T {
         self.inner.as_ref().unwrap().tx.send_replace(Ok(value)).unwrap()
     }
 
     /// Returns a reference to the most recently sent value.
-    #[inline]
     pub fn borrow(&self) -> Ref<'_, T> {
         Ref(self.inner.as_ref().unwrap().tx.borrow())
     }
 
     /// Completes when all receivers have been dropped or the connection failed.
-    #[inline]
     pub async fn closed(&self) {
         self.inner.as_ref().unwrap().tx.closed().await
     }
 
     /// Returns whether all receivers have been dropped or the connection failed.
-    #[inline]
     pub fn is_closed(&self) -> bool {
         self.inner.as_ref().unwrap().tx.is_closed()
     }
@@ -308,7 +302,6 @@ where
     Codec: codec::Codec,
 {
     /// Serializes this sender for sending over a chmux channel.
-    #[inline]
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -362,7 +355,6 @@ where
     Codec: codec::Codec,
 {
     /// Deserializes this sender after it has been received over a chmux channel.
-    #[inline]
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,

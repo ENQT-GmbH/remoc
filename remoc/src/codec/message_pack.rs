@@ -11,7 +11,6 @@ use super::{Codec, DeserializationError, SerializationError};
 pub struct MessagePack;
 
 impl Codec for MessagePack {
-    #[inline]
     fn serialize<Writer, Item>(mut writer: Writer, item: &Item) -> Result<(), super::SerializationError>
     where
         Writer: std::io::Write,
@@ -20,7 +19,6 @@ impl Codec for MessagePack {
         rmp_serde::encode::write_named(&mut writer, item).map_err(SerializationError::new)
     }
 
-    #[inline]
     fn deserialize<Reader, Item>(reader: Reader) -> Result<Item, super::DeserializationError>
     where
         Reader: std::io::Read,

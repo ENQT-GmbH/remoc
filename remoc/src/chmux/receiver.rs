@@ -390,7 +390,6 @@ impl Receiver {
     /// Waits for data to become available.
     /// Received port open requests are silently rejected.
     /// The size of the received data is limited by [max_data_size](Self::max_data_size).
-    #[inline]
     pub async fn recv(&mut self) -> Result<Option<DataBuf>, RecvError> {
         loop {
             match self.recv_any().await? {
@@ -409,7 +408,6 @@ impl Receiver {
     /// [None] is returned after the last chunk of a message.
     ///
     /// This is unlimited in size.
-    #[inline]
     pub async fn recv_chunk(&mut self) -> Result<Option<Bytes>, RecvChunkError> {
         if self.finished {
             return Ok(None);
@@ -481,7 +479,6 @@ impl Receiver {
     }
 
     /// Receives data or ports over the channel.
-    #[inline]
     pub async fn recv_any(&mut self) -> Result<Option<Received>, RecvError> {
         if self.finished {
             return Ok(None);
@@ -559,7 +556,6 @@ impl Receiver {
 
     /// Closes the sender at the remote endpoint, preventing it from sending new data.
     /// Already sent message will still be received.
-    #[inline]
     pub async fn close(&mut self) {
         if !self.closed {
             let _ = self.tx.send(PortEvt::ReceiverClosed { local_port: self.local_port }).await;

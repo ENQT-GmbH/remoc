@@ -152,7 +152,6 @@ where
     /// Attempts to send a value to all active receivers.
     ///
     /// No back-pressure is provided.
-    #[inline]
     pub fn send(&self, value: T) -> Result<Broadcasting<T>, SendError<T>> {
         let mut inner = self.inner.lock().unwrap();
 

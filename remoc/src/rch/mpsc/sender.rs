@@ -348,7 +348,6 @@ where
     /// Sending and error reporting are done asynchronously.
     /// Thus, the reporting of an error may be delayed and this function may
     /// return errors caused by previous invocations.
-    #[inline]
     pub async fn send(&self, value: T) -> Result<Sending<T>, SendError<T>> {
         if let Some(err) = self.remote_send_err_rx.borrow().as_ref() {
             return Err(SendError::from_remote_send_error(err.clone(), value));
@@ -372,7 +371,6 @@ where
     /// Sending and error reporting are done asynchronously.
     /// Thus, the reporting of an error may be delayed and this function may
     /// return errors caused by previous invocations.
-    #[inline]
     pub fn try_send(&self, value: T) -> Result<Sending<T>, TrySendError<T>> {
         if let Some(err) = self.remote_send_err_rx.borrow().as_ref() {
             return Err(TrySendError::from_remote_send_error(err.clone(), value));
@@ -404,7 +402,6 @@ where
     ///
     /// # Panics
     /// This function panics if called within an asynchronous execution context.
-    #[inline]
     pub fn blocking_send(&self, value: T) -> Result<Sending<T>, SendError<T>> {
         exec::task::block_on(self.send(value))
     }
@@ -416,7 +413,6 @@ where
     /// Sending and error reporting are done asynchronously.
     /// Thus, the reporting of an error may be delayed and this function may
     /// return errors caused by previous invocations.
-    #[inline]
     pub async fn reserve(&self) -> Result<Permit<T>, SendError<()>> {
         if let Some(err) = self.remote_send_err_rx.borrow().as_ref() {
             return Err(SendError::from_remote_send_error(err.clone(), ()));
@@ -436,7 +432,6 @@ where
     /// Returns the current capacity of the channel.
     ///
     /// Zero is returned when the channel has been closed or an error has occurred.
-    #[inline]
     pub fn capacity(&self) -> usize {
         match self.tx.upgrade() {
             Some(tx) => tx.capacity(),
@@ -447,7 +442,6 @@ where
     /// Completes when the receiver has been closed, dropped or the connection failed.
     ///
     /// Use [closed_reason](Self::closed_reason) to obtain the cause for closure.
-    #[inline]
     pub async fn closed(&self) {
         let mut closed = self.closed_rx.clone();
         while closed.borrow().is_none() {
@@ -460,7 +454,6 @@ where
     /// Returns the reason for why the channel has been closed.
     ///
     /// Returns [None] if the channel is not closed.
-    #[inline]
     pub fn closed_reason(&self) -> Option<ClosedReason> {
         match (self.closed_rx.borrow().clone(), self.remote_send_err_rx.borrow().as_ref()) {
             (Some(reason), _) => Some(reason),
@@ -472,7 +465,6 @@ where
     /// Returns whether the receiver has been closed, dropped or the connection failed.
     ///
     /// Use [closed_reason](Self::closed_reason) to obtain the cause for closure.
-    #[inline]
     pub fn is_closed(&self) -> bool {
         self.closed_reason().is_some()
     }
@@ -521,7 +513,6 @@ where
     T: Send,
 {
     /// Sends a value using the reserved capacity.
-    #[inline]
     pub fn send(self, value: T) -> Sending<T> {
         let (req, sent) = send_req(Ok(value));
         self.0.send(req);
@@ -541,7 +532,6 @@ where
     Codec: codec::Codec,
 {
     /// Serializes this sender for sending over a chmux channel.
-    #[inline]
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -601,7 +591,6 @@ where
     Codec: codec::Codec,
 {
     /// Deserializes this sender after it has been received over a chmux channel.
-    #[inline]
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,

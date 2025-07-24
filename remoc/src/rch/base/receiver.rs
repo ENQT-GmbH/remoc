@@ -126,7 +126,6 @@ impl PortDeserializer {
     /// Accept the chmux port with the specified remote port number sent from the remote endpoint.
     ///
     /// Returns the local port number and calls the specified function with the received connect request.
-    #[inline]
     pub fn accept<E>(
         remote_port: u32,
         callback: impl FnOnce(chmux::PortNumber, chmux::Request) -> BoxFuture<'static, ()> + Send + 'static,
@@ -146,7 +145,6 @@ impl PortDeserializer {
     }
 
     /// Returns the data storage of the channel multiplexer.
-    #[inline]
     pub fn storage<E>() -> Result<AnyStorage, E>
     where
         E: serde::de::Error,
@@ -159,7 +157,6 @@ impl PortDeserializer {
     }
 
     /// Spawn a task.
-    #[inline]
     pub fn spawn<E>(task: impl Future<Output = ()> + Send + 'static) -> Result<(), E>
     where
         E: serde::de::Error,
@@ -223,7 +220,6 @@ where
     }
 
     /// Receive an item from the remote endpoint.
-    #[inline]
     pub async fn recv(&mut self) -> Result<Option<T>, RecvError> {
         if self.default_max_ports.is_none() {
             self.default_max_ports = Some(self.receiver.max_ports());
@@ -414,7 +410,6 @@ where
     ///
     /// This stops the remote endpoint from sending more data, but allows already sent data
     /// to be received.
-    #[inline]
     pub async fn close(&mut self) {
         self.receiver.close().await
     }

@@ -18,7 +18,6 @@ pub use js::*;
 pub use task::spawn;
 
 /// Whether threads are available and working on this platform.
-#[inline]
 pub async fn are_threads_available() -> bool {
     use tokio::sync::{oneshot, OnceCell};
 

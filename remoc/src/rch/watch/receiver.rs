@@ -122,7 +122,6 @@ impl<T, Codec, const MAX_ITEM_SIZE: usize> Receiver<T, Codec, MAX_ITEM_SIZE> {
     }
 
     /// Returns a reference to the most recently received value.
-    #[inline]
     pub fn borrow(&self) -> Result<Ref<'_, T>, RecvError> {
         let ref_res = self.rx.borrow();
         match &*ref_res {
@@ -132,7 +131,6 @@ impl<T, Codec, const MAX_ITEM_SIZE: usize> Receiver<T, Codec, MAX_ITEM_SIZE> {
     }
 
     /// Returns a reference to the most recently received value and mark that value as seen.
-    #[inline]
     pub fn borrow_and_update(&mut self) -> Result<Ref<'_, T>, RecvError> {
         let ref_res = self.rx.borrow_and_update();
         match &*ref_res {
@@ -142,7 +140,6 @@ impl<T, Codec, const MAX_ITEM_SIZE: usize> Receiver<T, Codec, MAX_ITEM_SIZE> {
     }
 
     /// Wait for a change notification, then mark the newest value as seen.
-    #[inline]
     pub async fn changed(&mut self) -> Result<(), ChangedError> {
         self.rx.changed().await.map_err(|_| ChangedError::Closed)
     }
@@ -187,7 +184,6 @@ where
     Codec: codec::Codec,
 {
     /// Serializes this receiver for sending over a chmux channel.
-    #[inline]
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -230,7 +226,6 @@ where
     Codec: codec::Codec,
 {
     /// Deserializes the receiver after it has been received over a chmux channel.
-    #[inline]
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,

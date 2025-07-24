@@ -17,7 +17,6 @@ const LEGACY: bincode::config::Configuration<
 > = bincode::config::legacy();
 
 impl Codec for Bincode {
-    #[inline]
     fn serialize<Writer, Item>(mut writer: Writer, item: &Item) -> Result<(), super::SerializationError>
     where
         Writer: std::io::Write,
@@ -28,7 +27,6 @@ impl Codec for Bincode {
             .map_err(SerializationError::new)
     }
 
-    #[inline]
     fn deserialize<Reader, Item>(mut reader: Reader) -> Result<Item, super::DeserializationError>
     where
         Reader: std::io::Read,
@@ -49,7 +47,6 @@ pub struct Bincode2;
 const STANDARD: bincode::config::Configuration = bincode::config::standard();
 
 impl Codec for Bincode2 {
-    #[inline]
     fn serialize<Writer, Item>(mut writer: Writer, item: &Item) -> Result<(), super::SerializationError>
     where
         Writer: std::io::Write,
@@ -60,7 +57,6 @@ impl Codec for Bincode2 {
             .map_err(SerializationError::new)
     }
 
-    #[inline]
     fn deserialize<Reader, Item>(mut reader: Reader) -> Result<Item, super::DeserializationError>
     where
         Reader: std::io::Read,

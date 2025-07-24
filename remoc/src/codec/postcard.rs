@@ -11,7 +11,6 @@ use super::{Codec, DeserializationError, SerializationError};
 pub struct Postcard;
 
 impl Codec for Postcard {
-    #[inline]
     fn serialize<Writer, Item>(writer: Writer, item: &Item) -> Result<(), super::SerializationError>
     where
         Writer: std::io::Write,
@@ -21,7 +20,6 @@ impl Codec for Postcard {
         Ok(())
     }
 
-    #[inline]
     fn deserialize<Reader, Item>(mut reader: Reader) -> Result<Item, super::DeserializationError>
     where
         Reader: std::io::Read,
