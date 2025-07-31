@@ -40,7 +40,7 @@ impl Handle {
             let _ = result_tx.send(res);
         });
 
-        JoinHandle { result_rx: Box::pin(result_rx), abort_tx: Some(abort_tx) }
+        JoinHandle { result_rx: Box::pin(result_rx), abort_tx: std::sync::Mutex::new(Some(abort_tx)) }
     }
 
     /// Runs the provided function on an thread pool dedicated to blocking operations.
@@ -59,9 +59,9 @@ impl Handle {
         }) {
             let (result_tx, result_rx) = oneshot::channel();
             result_tx.send(Err(JoinError(JoinErrorRepr::Spawn(err)))).unwrap_or_else(|_| unreachable!());
-            return JoinHandle { result_rx: Box::pin(result_rx), abort_tx: None };
+            return JoinHandle { result_rx: Box::pin(result_rx), abort_tx: std::sync::Mutex::new(None) };
         }
 
-        JoinHandle { result_rx: Box::pin(result_rx), abort_tx: None }
+        JoinHandle { result_rx: Box::pin(result_rx), abort_tx: std::sync::Mutex::new(None) }
     }
 }

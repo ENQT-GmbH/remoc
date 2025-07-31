@@ -115,7 +115,7 @@ impl JoinError {
 /// An owned permission to join on a task.
 pub struct JoinHandle<T> {
     pub(super) result_rx: Pin<Box<oneshot::Receiver<Result<T, JoinError>>>>,
-    pub(super) abort_tx: Option<oneshot::Sender<()>>,
+    pub(super) abort_tx: std::sync::Mutex<Option<oneshot::Sender<()>>>,
 }
 
 impl<T> fmt::Debug for JoinHandle<T> {
@@ -136,8 +136,9 @@ impl<T> Future for JoinHandle<T> {
 
 impl<T> JoinHandle<T> {
     /// Abort the task associated with the handle.
-    pub fn abort(&mut self) {
-        if let Some(abort_tx) = self.abort_tx.take() {
+    pub fn abort(&self) {
+        let mut abort_tx = self.abort_tx.lock().unwrap();
+        if let Some(abort_tx) = abort_tx.take() {
             let _ = abort_tx.send(());
         }
     }
