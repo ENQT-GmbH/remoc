@@ -107,9 +107,9 @@ where
 
 /// Makes a local watch receiver forwardable to remote endpoints.
 ///
-/// The returned [`Forward`] future resolves once forwarding has completed or an error occurs.
+/// The returned [`Forwarding`] future resolves once forwarding has completed or an error occurs.
 /// The returned receiver may be sent to remote endpoints via channels.
-pub fn forward<T, Codec>(mut local_rx: tokio::sync::watch::Receiver<T>) -> (Forward, Receiver<T, Codec>)
+pub fn forward<T, Codec>(mut local_rx: tokio::sync::watch::Receiver<T>) -> (Forwarding, Receiver<T, Codec>)
 where
     T: RemoteSend + Sync + Clone,
     Codec: codec::Codec,
@@ -142,7 +142,7 @@ where
         tx.check()
     });
 
-    (Forward(hnd), rx)
+    (Forwarding(hnd), rx)
 }
 
 /// Handle to obtain the result of forwarding a local receiver remotely by [`forward`].
@@ -151,16 +151,16 @@ where
 /// The operation is assumed to have finished successfully if either the local or remote
 /// channel is closed or dropped.
 ///
-/// Dropping this does not stop forwarding.
-pub struct Forward(exec::task::JoinHandle<Result<(), SendError>>);
+/// Dropping this *does not* stop forwarding.
+pub struct Forwarding(exec::task::JoinHandle<Result<(), SendError>>);
 
-impl fmt::Debug for Forward {
+impl fmt::Debug for Forwarding {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Forward").finish()
+        f.debug_struct("Forwarding").finish()
     }
 }
 
-impl Future for Forward {
+impl Future for Forwarding {
     type Output = Result<(), SendError>;
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         match ready!(self.0.poll_unpin(cx)) {
@@ -170,7 +170,7 @@ impl Future for Forward {
     }
 }
 
-impl Forward {
+impl Forwarding {
     /// Stops forwarding.
     ///
     /// The remote sending half and local receiving half of the watch channels are dropped.
