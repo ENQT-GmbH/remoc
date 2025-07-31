@@ -116,6 +116,60 @@ async fn simple_stream() {
 
 #[cfg_attr(not(feature = "js"), tokio::test)]
 #[cfg_attr(feature = "js", wasm_bindgen_test)]
+async fn forward() {
+    crate::init();
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<watch::Receiver<i16>>().await;
+
+    let start_value = 2;
+    let end_value = 124;
+
+    let (tx, local_rx) = tokio::sync::watch::channel(start_value);
+
+    println!("Forwarding remote mpsc channel receiver");
+    let (forward, rx) = watch::forward(local_rx);
+    a_tx.send(rx).await.unwrap();
+    println!("Receiving remote mpsc channel receiver");
+    let mut rx = b_rx.recv().await.unwrap().unwrap();
+
+    {
+        let value = rx.borrow().unwrap();
+        println!("Initial value: {value:?}");
+    }
+
+    let recv_task = exec::spawn(async move {
+        let mut value = *rx.borrow().unwrap();
+        assert_eq!(value, start_value);
+
+        while rx.changed().await.is_ok() {
+            value = *rx.borrow_and_update().unwrap();
+            println!("Received value change: {value}");
+        }
+
+        value = *rx.borrow_and_update().unwrap();
+        assert_eq!(value, end_value);
+    });
+
+    for value in start_value..=end_value {
+        println!("Sending {value}");
+        tx.send(value).unwrap();
+        assert_eq!(*tx.borrow(), value);
+
+        if value % 10 == 0 {
+            sleep(Duration::from_millis(20)).await;
+        }
+    }
+
+    drop(tx);
+
+    println!("Waiting for receive task");
+    recv_task.await.unwrap();
+
+    println!("Waiting for forward task");
+    forward.await.unwrap();
+}
+
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
 async fn modify_stream() {
     crate::init();
     let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<watch::Receiver<i16>>().await;
