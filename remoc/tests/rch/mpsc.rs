@@ -146,7 +146,7 @@ async fn recv_many() {
 
     let rng = 1..1024;
     let rng2 = rng.clone();
-    tokio::spawn(async move {
+    exec::spawn(async move {
         for i in rng2 {
             println!("Sending {i}");
             let tx = tx.clone();
@@ -202,7 +202,7 @@ async fn recv_len() {
 
     let rng = 1..1024;
     let rng2 = rng.clone();
-    tokio::spawn(async move {
+    exec::spawn(async move {
         for i in rng2 {
             println!("Sending {i}");
             let tx = tx.clone();

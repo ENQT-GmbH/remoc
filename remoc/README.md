@@ -239,12 +239,12 @@ async fn server(mut rx: rch::base::Receiver<CountReq>) {
 Development on native platforms is straightforward. Use `cargo test` to run tests as usual.
 
 To run tests in a JavaScript runtime environment (for example `wasm32-unknown-unknown` with `js` feature) 
-install [`wasm-bindgen-test-runner`](https://github.com/rustwasm/wasm-bindgen) and 
+install [`wasm-bindgen-test-runner`](https://github.com/wasm-bindgen/wasm-bindgen) and 
 [Google ChromeDriver](https://developer.chrome.com/docs/chromedriver/downloads).
 Then use the following command to execute the test suite:
 
 ```
-CHROMEDRIVER=<path to chromedriver> WASM_BINDGEN_USE_BROWSER=1 cargo +nightly test --target wasm32-unknown-unknown --features js --release
+CHROMEDRIVER=<path to chromedriver> WASM_BINDGEN_USE_BROWSER=1 cargo +nightly test --target wasm32-unknown-unknown --features js --release --tests
 ```
 
 A proper web-compatible runtime environment is required. Thus Node.js will not work. Deno should
