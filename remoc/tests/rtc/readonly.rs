@@ -5,18 +5,6 @@ use crate::loop_channel;
 
 // Avoid imports here to test if proc macro works without imports.
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub enum IncreaseError {
-    Overflow,
-    Call(remoc::rtc::CallError),
-}
-
-impl From<remoc::rtc::CallError> for IncreaseError {
-    fn from(err: remoc::rtc::CallError) -> Self {
-        Self::Call(err)
-    }
-}
-
 #[remoc::rtc::remote]
 pub trait ReadValue {
     async fn value(&self) -> Result<u32, remoc::rtc::CallError>;
