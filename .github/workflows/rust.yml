@@ -112,6 +112,37 @@ jobs:
       - name: Run cargo test
         run: cargo test
 
+  test-wasm:
+    name: Test wasm32-unknown-unknown target
+    needs: [msrv]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install nightly Rust
+        run: |
+          rustup install nightly
+          rustup target add --toolchain nightly wasm32-unknown-unknown
+
+      - name: Install wasm-bindgen-test-runner
+        uses: baptiste0928/cargo-install@v3
+        with:
+          crate: wasm-bindgen-cli
+
+      - name: Install ChromeDriver
+        uses: nanasess/setup-chromedriver@v2
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run WebAssembly tests
+        env:
+          CHROMEDRIVER: /usr/local/bin/chromedriver
+          WASM_BINDGEN_USE_BROWSER: 1
+        run: cargo +nightly test --target wasm32-unknown-unknown --features js --release --tests
+
   test-codecs:
     name: Test with codec ${{ matrix.codec }}
     needs: [test]
