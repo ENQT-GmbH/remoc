@@ -124,6 +124,7 @@ async fn simple_sink() {
 
     println!("Closing sending sink");
     tx.close().await.unwrap();
+    assert!(matches!(tx.send(1).await, Err(SendError::Closed(()))));
 
     println!("Trying receive after close");
     assert!(rx.recv().await.unwrap().is_none());

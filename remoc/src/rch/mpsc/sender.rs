@@ -722,7 +722,7 @@ where
             return Poll::Ready(Ok(()));
         }
 
-        let reserve = self.reserve.as_mut().expect("SenderSink was closed");
+        let Some(reserve) = self.reserve.as_mut() else { return Poll::Ready(Err(SendError::Closed(()))) };
         let (permit, tx) = ready!(reserve.poll(cx));
         reserve.set(Self::make_reserve(tx));
 
@@ -732,7 +732,7 @@ where
     }
 
     fn start_send(mut self: Pin<&mut Self>, item: T) -> Result<(), Self::Error> {
-        let permit = self.permit.take().expect("SenderSink was not ready for sending");
+        let permit = self.permit.take().expect("SenderSink is not ready for sending");
         self.sending = Some(permit.send(item));
         Ok(())
     }
