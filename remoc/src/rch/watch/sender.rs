@@ -28,9 +28,9 @@ pub enum SendError {
 }
 
 impl SendError {
-    /// True, if the remote endpoint was dropped or the connection failed.
+    /// True, if the remote endpoint closed the channel.
     pub fn is_closed(&self) -> bool {
-        !matches!(self, Self::RemoteSend(base::SendErrorKind::Serialize(_)))
+        matches!(self, Self::Closed)
     }
 
     /// True, if the remote endpoint was dropped or the connection failed.
