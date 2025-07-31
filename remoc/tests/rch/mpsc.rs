@@ -1,4 +1,4 @@
-use futures::{future, StreamExt};
+use futures::{future, SinkExt, StreamExt};
 use rand::Rng;
 use std::time::Duration;
 
@@ -7,9 +7,13 @@ use wasm_bindgen_test::wasm_bindgen_test;
 
 use crate::{droppable_loop_channel, loop_channel};
 use remoc::{
-    codec, exec,
-    exec::time::sleep,
-    rch::{base, base::SendErrorKind, mpsc, mpsc::SendError, ClosedReason, SendResultExt, SendingError},
+    codec,
+    exec::{self, time::sleep},
+    rch::{
+        base::{self, SendErrorKind},
+        mpsc::{self, SendError},
+        ClosedReason, SendResultExt, SendingError,
+    },
 };
 
 #[cfg_attr(not(feature = "js"), tokio::test)]
@@ -90,6 +94,39 @@ async fn simple_stream() {
             if err.is_closed() && err.is_disconnected() && err.closed_reason() == Some(ClosedReason::Closed) => {}
         Err(_) => panic!("wrong error after close"),
     }
+}
+
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
+async fn simple_sink() {
+    crate::init();
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<mpsc::Receiver<i16>>().await;
+
+    let (tx, rx) = mpsc::channel(16);
+    let mut tx = mpsc::SenderSink::from(tx);
+
+    println!("Sending remote mpsc channel receiver");
+    a_tx.send(rx).await.unwrap();
+    println!("Receiving remote mpsc channel receiver");
+    let mut rx = b_rx.recv().await.unwrap().unwrap();
+
+    for i in 1..1024 {
+        println!("Sending {i}");
+        tx.send(i).await.unwrap();
+        let r = rx.recv().await.unwrap().unwrap();
+        println!("Received {r}");
+        assert_eq!(i, r, "send/receive mismatch");
+    }
+
+    println!("Verifying that channel is open");
+    assert!(!tx.get_ref().unwrap().is_closed());
+    assert_eq!(tx.get_ref().unwrap().closed_reason(), None);
+
+    println!("Closing sending sink");
+    tx.close().await.unwrap();
+
+    println!("Trying receive after close");
+    assert!(rx.recv().await.unwrap().is_none());
 }
 
 #[cfg_attr(not(feature = "js"), tokio::test)]

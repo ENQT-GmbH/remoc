@@ -1,12 +1,15 @@
-use futures::FutureExt;
+use futures::{FutureExt, Sink};
 use serde::{Deserialize, Serialize};
 use std::{
     convert::TryFrom,
     error::Error,
     fmt,
     marker::PhantomData,
+    pin::Pin,
     sync::{Arc, Weak},
+    task::{ready, Context, Poll},
 };
+use tokio_util::sync::ReusableBoxFuture;
 
 use super::{
     super::{
@@ -16,7 +19,7 @@ use super::{
     receiver::RecvError,
     send_req, SendReq,
 };
-use crate::{chmux, codec, exec, RemoteSend};
+use crate::{chmux, codec, exec, rch::SendingError, RemoteSend};
 
 /// An error occurred during sending over an mpsc channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -241,6 +244,8 @@ impl<T> Error for TrySendError<T> where T: fmt::Debug {}
 /// Send values to the associated [Receiver](super::Receiver), which may be located on a remote endpoint.
 ///
 /// Instances are created by the [channel](super::channel) function.
+///
+/// This can be converted into a [Sink] accepting values by wrapping it into a [SenderSink].
 pub struct Sender<T, Codec = codec::Default, const BUFFER: usize = DEFAULT_BUFFER> {
     tx: Weak<tokio::sync::mpsc::Sender<SendReq<T>>>,
     closed_rx: tokio::sync::watch::Receiver<Option<ClosedReason>>,
@@ -641,5 +646,123 @@ where
             // Received closed channel.
             None => Ok(Self::new_closed()),
         }
+    }
+}
+
+type ReserveRet<T, Codec, const BUFFER: usize> = (Result<Permit<T>, SendError<()>>, Sender<T, Codec, BUFFER>);
+
+/// A wrapper around an mpsc [Sender] that implements [Sink].
+pub struct SenderSink<T, Codec = codec::Default, const BUFFER: usize = DEFAULT_BUFFER> {
+    tx: Option<Sender<T, Codec, BUFFER>>,
+    permit: Option<Permit<T>>,
+    reserve: Option<ReusableBoxFuture<'static, ReserveRet<T, Codec, BUFFER>>>,
+    sending: Option<Sending<T>>,
+}
+
+impl<T, Codec, const BUFFER: usize> fmt::Debug for SenderSink<T, Codec, BUFFER> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("SenderSink").field("ready", &self.permit.is_some()).finish()
+    }
+}
+
+impl<T, Codec, const BUFFER: usize> SenderSink<T, Codec, BUFFER>
+where
+    T: Send + 'static,
+    Codec: codec::Codec,
+{
+    /// Wraps a [Sender] to provide a [Sink].
+    pub fn new(tx: Sender<T, Codec, BUFFER>) -> Self {
+        Self {
+            tx: Some(tx.clone()),
+            permit: None,
+            reserve: Some(ReusableBoxFuture::new(Self::make_reserve(tx))),
+            sending: None,
+        }
+    }
+
+    fn new_closed() -> Self {
+        Self { tx: None, permit: None, reserve: None, sending: None }
+    }
+
+    /// Gets a reference to the [Sender] of the underlying channel.
+    ///
+    /// `None` is returned if the sink has been closed.
+    pub fn get_ref(&self) -> Option<&Sender<T, Codec, BUFFER>> {
+        self.tx.as_ref()
+    }
+
+    async fn make_reserve(tx: Sender<T, Codec, BUFFER>) -> ReserveRet<T, Codec, BUFFER> {
+        let result = tx.reserve().await;
+        (result, tx)
+    }
+}
+
+impl<T, Codec, const BUFFER: usize> Clone for SenderSink<T, Codec, BUFFER>
+where
+    T: Send + 'static,
+    Codec: codec::Codec,
+{
+    fn clone(&self) -> Self {
+        match self.tx.clone() {
+            Some(tx) => Self::new(tx),
+            None => Self::new_closed(),
+        }
+    }
+}
+
+impl<T, Codec, const BUFFER: usize> Sink<T> for SenderSink<T, Codec, BUFFER>
+where
+    T: Send + 'static,
+    Codec: codec::Codec,
+{
+    type Error = SendError<()>;
+
+    fn poll_ready(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
+        if self.permit.is_some() {
+            return Poll::Ready(Ok(()));
+        }
+
+        let reserve = self.reserve.as_mut().expect("SenderSink was closed");
+        let (permit, tx) = ready!(reserve.poll(cx));
+        reserve.set(Self::make_reserve(tx));
+
+        self.permit = Some(permit?);
+
+        Poll::Ready(Ok(()))
+    }
+
+    fn start_send(mut self: Pin<&mut Self>, item: T) -> Result<(), Self::Error> {
+        let permit = self.permit.take().expect("SenderSink was not ready for sending");
+        self.sending = Some(permit.send(item));
+        Ok(())
+    }
+
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Result<(), Self::Error>> {
+        let Some(sending) = self.sending.as_mut() else { return Poll::Ready(Ok(())) };
+
+        let res = ready!(sending.poll_unpin(cx));
+        self.sending = None;
+
+        Poll::Ready(res.map_err(|err| match err {
+            SendingError::Send(base) => SendError::RemoteSend(base.kind),
+            SendingError::Dropped => SendError::Closed(()),
+        }))
+    }
+
+    fn poll_close(mut self: Pin<&mut Self>, _cx: &mut Context) -> Poll<Result<(), Self::Error>> {
+        self.tx = None;
+        self.permit = None;
+        self.reserve = None;
+        Poll::Ready(Ok(()))
+    }
+}
+
+impl<T, Codec, const BUFFER: usize> From<Sender<T, Codec, BUFFER>> for SenderSink<T, Codec, BUFFER>
+where
+    T: Send + 'static,
+    Codec: codec::Codec,
+{
+    fn from(tx: Sender<T, Codec, BUFFER>) -> Self {
+        Self::new(tx)
     }
 }
