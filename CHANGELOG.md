@@ -4,6 +4,14 @@ All notable changes to Remoc will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.15.8 - 2025-07-31
+### Added
+- rch: mpsc::SenderSink that implements Sink for a Sender
+- rch: watch::forward for forwarding a local Tokio watch Receiver to a
+  remote endpoint
+### Fixed
+- rch: watch::SendError::is_closed query function
+
 ## 0.15.7 - 2025-07-24
 ### Added
 - rch: mpsc::Receiver::recv_many method
