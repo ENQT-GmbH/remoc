@@ -65,6 +65,7 @@ use futures::{
 use serde::{Deserialize, Serialize};
 use std::{convert::TryFrom, fmt, pin::Pin, sync::Arc};
 use tokio::sync::Mutex;
+use tracing::Instrument;
 
 use crate::{
     chmux,
@@ -199,30 +200,36 @@ where
         let mut req_rx = req_rx.set_buffer::<1>();
         let len = data.len() as _;
 
-        exec::spawn(async move {
-            let do_send = async move {
-                loop {
-                    let fw_tx: fw_bin::Sender = match req_rx.recv().await {
-                        Ok(Some(fw_tx)) => fw_tx,
-                        Ok(None) => break,
-                        Err(err) if err.is_final() => break,
-                        Err(_) => continue,
-                    };
+        exec::spawn(
+            async move {
+                let do_send = async move {
+                    loop {
+                        let fw_tx: fw_bin::Sender = match req_rx.recv().await {
+                            Ok(Some(fw_tx)) => fw_tx,
+                            Ok(None) => break,
+                            Err(err) if err.is_final() => break,
+                            Err(_) => continue,
+                        };
 
-                    let data = data.clone();
-                    exec::spawn(async move {
-                        let bin_tx = if let Some(tx) = fw_tx.into_inner() { tx } else { return };
-                        let mut tx = if let Ok(tx) = bin_tx.into_inner().await { tx } else { return };
-                        let _ = tx.send(data).await;
-                    });
+                        let data = data.clone();
+                        exec::spawn(
+                            async move {
+                                let bin_tx = if let Some(tx) = fw_tx.into_inner() { tx } else { return };
+                                let mut tx = if let Ok(tx) = bin_tx.into_inner().await { tx } else { return };
+                                let _ = tx.send(data).await;
+                            }
+                            .in_current_span(),
+                        );
+                    }
+                };
+
+                tokio::select! {
+                    () = do_send => (),
+                    Err(_) = keep_rx => (),
                 }
-            };
-
-            tokio::select! {
-                () = do_send => (),
-                Err(_) = keep_rx => (),
             }
-        });
+            .in_current_span(),
+        );
 
         let lazy_blob = LazyBlob { req_tx, len, fetch_task: Default::default() };
         let provider = Provider { keep_tx: Some(keep_tx) };

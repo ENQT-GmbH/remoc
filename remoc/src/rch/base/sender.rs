@@ -14,6 +14,7 @@ use std::{
     rc::{Rc, Weak},
     sync::{Arc, Mutex},
 };
+use tracing::Instrument;
 
 use super::{
     super::{SendErrorExt, DEFAULT_MAX_ITEM_SIZE},
@@ -451,12 +452,12 @@ where
         //
         // We have to spawn a task for this to ensure cancellation safety.
         for (callback, connect) in callbacks.into_iter().zip(connects.into_iter()) {
-            exec::spawn(callback(connect));
+            exec::spawn(callback(connect).in_current_span());
         }
 
         // Spawn registered tasks.
         for task in tasks {
-            exec::spawn(task);
+            exec::spawn(task.in_current_span());
         }
 
         Ok(())

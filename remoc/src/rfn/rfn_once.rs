@@ -1,6 +1,7 @@
 use futures::Future;
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use tracing::Instrument;
 
 use super::{msg::RFnRequest, CallError};
 use crate::{codec, exec, rch::oneshot, RemoteSend};
@@ -109,18 +110,21 @@ where
         let (request_tx, request_rx) = oneshot::channel();
         let (keep_tx, keep_rx) = tokio::sync::oneshot::channel();
 
-        exec::spawn(async move {
-            tokio::select! {
-                biased;
+        exec::spawn(
+            async move {
+                tokio::select! {
+                    biased;
 
-                Err(_) = keep_rx => (),
+                    Err(_) = keep_rx => (),
 
-                Ok(RFnRequest {argument, result_tx}) = request_rx => {
-                    let result = fun(argument).await;
-                    let _ = result_tx.send(result);
+                    Ok(RFnRequest {argument, result_tx}) = request_rx => {
+                        let result = fun(argument).await;
+                        let _ = result_tx.send(result);
+                    }
                 }
             }
-        });
+            .in_current_span(),
+        );
 
         (Self { request_tx }, RFnOnceProvider { keep_tx: Some(keep_tx) })
     }

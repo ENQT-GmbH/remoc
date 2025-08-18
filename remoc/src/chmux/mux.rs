@@ -634,7 +634,7 @@ where
     ///
     /// The dispatcher terminates when the client, server and all channels have been dropped or
     /// the transport is closed.
-    #[tracing::instrument(level = "trace", skip_all)]
+    #[tracing::instrument(name = "remoc::chmux", level = "info", skip_all, ret)]
     pub async fn run(mut self) -> Result<(), ChMuxError<TransportSinkError, TransportStreamError>> {
         let mut transport_sink = self.transport_sink.take().unwrap();
         let mut transport_stream = self.transport_stream.take().unwrap();

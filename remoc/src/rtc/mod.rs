@@ -643,6 +643,8 @@ pub use tokio::sync::mpsc as local_mpsc;
 pub use tokio::sync::RwLock as LocalRwLock;
 #[doc(hidden)]
 pub type ReplyErrorSender = tokio::sync::mpsc::Sender<SendingErrorKind>;
+#[doc(hidden)]
+pub use tracing::Instrument;
 
 /// Create channel for queueing reply sending errors.
 #[doc(hidden)]
@@ -672,17 +674,20 @@ where
     let Ok(sending) = reply_tx.send(result) else { return };
 
     let err_tx = err_tx.clone();
-    exec::spawn(async move {
-        if let Err(err) = sending.await {
-            let kind = err.kind();
-            match &kind {
-                SendingErrorKind::Send(base::SendErrorKind::Send(_)) => return,
-                SendingErrorKind::Dropped => return,
-                _ => (),
+    exec::spawn(
+        async move {
+            if let Err(err) = sending.await {
+                let kind = err.kind();
+                match &kind {
+                    SendingErrorKind::Send(base::SendErrorKind::Send(_)) => return,
+                    SendingErrorKind::Dropped => return,
+                    _ => (),
+                }
+                let _ = err_tx.send(kind).await;
             }
-            let _ = err_tx.send(kind).await;
         }
-    });
+        .in_current_span(),
+    );
 }
 
 /// Serialization for `max_reply_size` field.

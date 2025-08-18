@@ -1,6 +1,7 @@
 use futures::{future, pin_mut, Future};
 use serde::{Deserialize, Serialize};
 use std::{fmt, sync::Arc};
+use tracing::Instrument;
 
 use super::{msg::RFnRequest, CallError};
 use crate::{
@@ -125,37 +126,40 @@ where
         let (keep_tx, keep_rx) = tokio::sync::oneshot::channel();
         let fun = Arc::new(fun);
 
-        exec::spawn(async move {
-            let term = async move {
-                if let Ok(()) = keep_rx.await {
-                    future::pending().await
-                }
-            };
-            pin_mut!(term);
+        exec::spawn(
+            async move {
+                let term = async move {
+                    if let Ok(()) = keep_rx.await {
+                        future::pending().await
+                    }
+                };
+                pin_mut!(term);
 
-            loop {
-                tokio::select! {
-                    biased;
+                loop {
+                    tokio::select! {
+                        biased;
 
-                    () = &mut term => break,
+                        () = &mut term => break,
 
-                    req_res = request_rx.recv() => {
-                        match req_res {
-                            Ok(Some(RFnRequest {argument, result_tx})) => {
-                                let fun_task = fun.clone();
-                                exec::spawn(async move {
-                                    let result = fun_task(argument).await;
-                                    let _ = result_tx.send(result);
-                                });
+                        req_res = request_rx.recv() => {
+                            match req_res {
+                                Ok(Some(RFnRequest {argument, result_tx})) => {
+                                    let fun_task = fun.clone();
+                                    exec::spawn(async move {
+                                        let result = fun_task(argument).await;
+                                        let _ = result_tx.send(result);
+                                    }.in_current_span());
+                                }
+                                Ok(None) => break,
+                                Err(err) if err.is_final() => break,
+                                Err(_) => (),
                             }
-                            Ok(None) => break,
-                            Err(err) if err.is_final() => break,
-                            Err(_) => (),
                         }
                     }
                 }
             }
-        });
+            .in_current_span(),
+        );
 
         (Self { request_tx }, RFnProvider { keep_tx: Some(keep_tx) })
     }

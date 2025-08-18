@@ -702,11 +702,12 @@ impl TraitDef {
                                 match req {
                                     Ok(Some(::remoc::rtc::Req::Ref(req))) => {
                                         if spawn {
+                                            use ::remoc::rtc::Instrument;
                                             let target = target.clone();
                                             let err_tx = err_tx.clone();
                                             ::remoc::rtc::spawn(async move {
                                                 req.dispatch(&*target, err_tx).await;
-                                            });
+                                            }.in_current_span());
                                         } else {
                                             req.dispatch(&*target, err_tx.clone()).await;
                                         }
@@ -792,11 +793,12 @@ impl TraitDef {
                                 match req {
                                     Ok(Some(::remoc::rtc::Req::Ref(req))) => {
                                         if spawn {
+                                            use ::remoc::rtc::Instrument;
                                             let target = target.clone().read_owned().await;
                                             let err_tx = err_tx.clone();
                                             ::remoc::rtc::spawn(async move {
                                                 req.dispatch(&*target, err_tx).await;
-                                            });
+                                            }.in_current_span());
                                         } else {
                                             let target = target.read().await;
                                             req.dispatch(&*target, err_tx.clone()).await;

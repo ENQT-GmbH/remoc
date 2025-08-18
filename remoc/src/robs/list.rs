@@ -31,6 +31,7 @@ use std::{
     },
 };
 use tokio::sync::{mpsc, oneshot, watch, Mutex, OwnedMutexGuard, RwLock, RwLockReadGuard};
+use tracing::Instrument;
 
 use super::{default_on_err, ChangeNotifier, ChangeSender, RecvError, SendError};
 use crate::{exec, prelude::*};
@@ -180,7 +181,7 @@ where
         let (sub_tx, sub_rx) = mpsc::unbounded_channel();
         let len = Arc::new(AtomicUsize::new(initial.len()));
         let subscriber_count = Arc::new(AtomicUsize::new(0));
-        exec::spawn(Self::task(initial, rx, sub_rx, subscriber_count.clone()));
+        exec::spawn(Self::task(initial, rx, sub_rx, subscriber_count.clone()).in_current_span());
         Self {
             tx,
             change: ChangeSender::new(),
@@ -623,40 +624,43 @@ where
         let inner_task = Arc::downgrade(&inner);
 
         // Process change events.
-        exec::spawn(async move {
-            loop {
-                let event = tokio::select! {
-                    event = self.recv() => event,
-                    _ = dropped_rx.recv() => return,
-                };
+        exec::spawn(
+            async move {
+                loop {
+                    let event = tokio::select! {
+                        event = self.recv() => event,
+                        _ = dropped_rx.recv() => return,
+                    };
 
-                let inner = match inner_task.upgrade() {
-                    Some(inner) => inner,
-                    None => return,
-                };
-                let mut inner = inner.write().await;
+                    let inner = match inner_task.upgrade() {
+                        Some(inner) => inner,
+                        None => return,
+                    };
+                    let mut inner = inner.write().await;
 
-                changed_tx.send_replace(());
+                    changed_tx.send_replace(());
 
-                match event {
-                    Ok(Some(event)) => {
-                        if let Err(err) = inner.handle_event(event) {
+                    match event {
+                        Ok(Some(event)) => {
+                            if let Err(err) = inner.handle_event(event) {
+                                inner.error = Some(err);
+                                return;
+                            }
+
+                            if inner.done {
+                                break;
+                            }
+                        }
+                        Ok(None) => break,
+                        Err(err) => {
                             inner.error = Some(err);
                             return;
                         }
-
-                        if inner.done {
-                            break;
-                        }
-                    }
-                    Ok(None) => break,
-                    Err(err) => {
-                        inner.error = Some(err);
-                        return;
                     }
                 }
             }
-        });
+            .in_current_span(),
+        );
 
         MirroredList { inner: Some(inner), changed_rx, _dropped_tx: dropped_tx }
     }

@@ -21,6 +21,7 @@
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, fmt, hash::Hash, mem::take, ops::Deref, sync::Arc};
 use tokio::sync::{oneshot, watch, RwLock, RwLockReadGuard};
+use tracing::Instrument;
 
 use super::{default_on_err, send_event, ChangeNotifier, ChangeSender, RecvError, SendError};
 use crate::{exec, prelude::*};
@@ -415,18 +416,21 @@ where
         let (tx, rx) = rch::mpsc::channel(128);
         let len = hs.len();
 
-        exec::spawn(async move {
-            for v in hs.into_iter() {
-                match tx.send(v).await {
-                    Ok(_) => (),
-                    Err(err) if err.is_disconnected() => break,
-                    Err(err) => match err.try_into() {
-                        Ok(err) => (on_err)(err),
-                        Err(_) => unreachable!(),
-                    },
+        exec::spawn(
+            async move {
+                for v in hs.into_iter() {
+                    match tx.send(v).await {
+                        Ok(_) => (),
+                        Err(err) if err.is_disconnected() => break,
+                        Err(err) => match err.try_into() {
+                            Ok(err) => (on_err)(err),
+                            Err(_) => unreachable!(),
+                        },
+                    }
                 }
             }
-        });
+            .in_current_span(),
+        );
 
         Self::Incremental { len, rx }
     }
@@ -582,44 +586,47 @@ where
 
         // Process change events.
         let tx_send = tx.clone();
-        exec::spawn(async move {
-            loop {
-                let event = tokio::select! {
-                    event = self.recv() => event,
-                    _ = &mut dropped_rx => return,
-                };
+        exec::spawn(
+            async move {
+                loop {
+                    let event = tokio::select! {
+                        event = self.recv() => event,
+                        _ = &mut dropped_rx => return,
+                    };
 
-                let mut inner = inner_task.write().await;
-                let inner = match inner.as_mut() {
-                    Some(inner) => inner,
-                    None => return,
-                };
+                    let mut inner = inner_task.write().await;
+                    let inner = match inner.as_mut() {
+                        Some(inner) => inner,
+                        None => return,
+                    };
 
-                changed_tx.send_replace(());
+                    changed_tx.send_replace(());
 
-                match event {
-                    Ok(Some(event)) => {
-                        if tx_send.receiver_count() > 0 {
-                            let _ = tx_send.send(event.clone());
+                    match event {
+                        Ok(Some(event)) => {
+                            if tx_send.receiver_count() > 0 {
+                                let _ = tx_send.send(event.clone());
+                            }
+
+                            if let Err(err) = inner.handle_event(event) {
+                                inner.error = Some(err);
+                                return;
+                            }
+
+                            if inner.done {
+                                break;
+                            }
                         }
-
-                        if let Err(err) = inner.handle_event(event) {
+                        Ok(None) => break,
+                        Err(err) => {
                             inner.error = Some(err);
                             return;
                         }
-
-                        if inner.done {
-                            break;
-                        }
-                    }
-                    Ok(None) => break,
-                    Err(err) => {
-                        inner.error = Some(err);
-                        return;
                     }
                 }
             }
-        });
+            .in_current_span(),
+        );
 
         MirroredHashSet { inner, tx, changed_rx, _dropped_tx: dropped_tx }
     }

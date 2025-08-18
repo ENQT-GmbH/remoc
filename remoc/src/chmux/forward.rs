@@ -2,6 +2,7 @@
 
 use bytes::Buf;
 use std::{fmt, num::Wrapping};
+use tracing::Instrument;
 
 use super::{ConnectError, PortReq, Received, RecvChunkError, RecvError, SendError};
 use crate::exec;
@@ -52,11 +53,14 @@ impl std::error::Error for ForwardError {}
 pub(crate) async fn forward(rx: &mut super::Receiver, tx: &mut super::Sender) -> Result<usize, ForwardError> {
     // Required to avoid borrow checking loop limitation.
     fn spawn_forward(id: u32, mut rx: super::Receiver, mut tx: super::Sender) {
-        exec::spawn(async move {
-            if let Err(err) = forward(&mut rx, &mut tx).await {
-                tracing::debug!("port forwarding for id {id} failed: {err}");
+        exec::spawn(
+            async move {
+                if let Err(err) = forward(&mut rx, &mut tx).await {
+                    tracing::debug!("port forwarding for id {id} failed: {err}");
+                }
             }
-        });
+            .in_current_span(),
+        );
     }
 
     let override_graceful_close = tx.is_graceful_close_overridden();
@@ -118,31 +122,36 @@ pub(crate) async fn forward(rx: &mut super::Receiver, tx: &mut super::Sender) ->
                 // Connect them.
                 let connects = tx.connect(ports, wait).await?;
                 for (req, connect) in reqs.into_iter().zip(connects) {
-                    exec::spawn(async move {
-                        let id = req.id();
-                        match connect.await {
-                            Ok((out_tx, out_rx)) => {
-                                let in_port = out_tx.port_allocator().allocate().await;
-                                match req.accept_from(in_port).await {
-                                    Ok((in_tx, in_rx)) => {
-                                        spawn_forward(id, out_rx, in_tx);
-                                        spawn_forward(id, in_rx, out_tx);
-                                    }
-                                    Err(err) => {
-                                        tracing::debug!("port forwarding for id {id} failed to accept: {err}");
+                    exec::spawn(
+                        async move {
+                            let id = req.id();
+                            match connect.await {
+                                Ok((out_tx, out_rx)) => {
+                                    let in_port = out_tx.port_allocator().allocate().await;
+                                    match req.accept_from(in_port).await {
+                                        Ok((in_tx, in_rx)) => {
+                                            spawn_forward(id, out_rx, in_tx);
+                                            spawn_forward(id, in_rx, out_tx);
+                                        }
+                                        Err(err) => {
+                                            tracing::debug!(
+                                                "port forwarding for id {id} failed to accept: {err}"
+                                            );
+                                        }
                                     }
                                 }
-                            }
-                            Err(err) => {
-                                tracing::debug!("port forwarding for id {id} failed to connect: {err}");
-                                req.reject(matches!(
-                                    err,
-                                    ConnectError::LocalPortsExhausted | ConnectError::RemotePortsExhausted
-                                ))
-                                .await;
+                                Err(err) => {
+                                    tracing::debug!("port forwarding for id {id} failed to connect: {err}");
+                                    req.reject(matches!(
+                                        err,
+                                        ConnectError::LocalPortsExhausted | ConnectError::RemotePortsExhausted
+                                    ))
+                                    .await;
+                                }
                             }
                         }
-                    });
+                        .in_current_span(),
+                    );
                 }
             }
 

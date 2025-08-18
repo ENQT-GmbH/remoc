@@ -1,4 +1,5 @@
 use futures::future;
+use tracing::Instrument;
 
 use super::{
     super::{DEFAULT_BUFFER, DEFAULT_MAX_ITEM_SIZE},
@@ -78,7 +79,7 @@ where
 {
     pub(crate) fn new(rx: Receiver<T, Codec, BUFFER, MAX_ITEM_SIZE>, wait_on_empty: bool) -> Self {
         let (sub_tx, sub_rx) = tokio::sync::mpsc::channel(1);
-        exec::spawn(Self::distribute(rx, sub_rx, wait_on_empty));
+        exec::spawn(Self::distribute(rx, sub_rx, wait_on_empty).in_current_span());
         Self { sub_tx }
     }
 

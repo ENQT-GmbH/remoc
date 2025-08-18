@@ -1,6 +1,7 @@
 use futures::{future, pin_mut, Future};
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use tracing::Instrument;
 
 use super::{msg::RFnRequest, CallError};
 use crate::{
@@ -120,34 +121,37 @@ where
         let mut request_rx = request_rx.set_buffer::<1>();
         let (keep_tx, keep_rx) = tokio::sync::oneshot::channel();
 
-        exec::spawn(async move {
-            let term = async move {
-                if let Ok(()) = keep_rx.await {
-                    future::pending().await
-                }
-            };
-            pin_mut!(term);
+        exec::spawn(
+            async move {
+                let term = async move {
+                    if let Ok(()) = keep_rx.await {
+                        future::pending().await
+                    }
+                };
+                pin_mut!(term);
 
-            loop {
-                tokio::select! {
-                    biased;
+                loop {
+                    tokio::select! {
+                        biased;
 
-                    () = &mut term => break,
+                        () = &mut term => break,
 
-                    req_res = request_rx.recv() => {
-                        match req_res {
-                            Ok(Some(RFnRequest {argument, result_tx})) => {
-                                let result = fun(argument).await;
-                                let _ = result_tx.send(result);
+                        req_res = request_rx.recv() => {
+                            match req_res {
+                                Ok(Some(RFnRequest {argument, result_tx})) => {
+                                    let result = fun(argument).await;
+                                    let _ = result_tx.send(result);
+                                }
+                                Ok(None) => break,
+                                Err(err) if err.is_final() => break,
+                                Err(_) => (),
                             }
-                            Ok(None) => break,
-                            Err(err) if err.is_final() => break,
-                            Err(_) => (),
                         }
                     }
                 }
             }
-        });
+            .in_current_span(),
+        );
 
         (Self { request_tx }, RFnMutProvider { keep_tx: Some(keep_tx) })
     }

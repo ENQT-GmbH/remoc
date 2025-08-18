@@ -182,6 +182,8 @@ where
         > + Send,
 {
     async fn provide(self, value: T) -> Result<(), ProvideError<TransportSinkError, TransportStreamError>> {
+        use tracing::Instrument;
+
         let (mut conn, mut tx, _) = self.await?;
 
         tokio::select! {
@@ -190,16 +192,21 @@ where
             res = tx.send(value) => res?,
         }
 
-        exec::spawn(async move {
-            if let Err(err) = conn.await {
-                tracing::warn!(%err, "connection failed");
+        exec::spawn(
+            async move {
+                if let Err(err) = conn.await {
+                    tracing::warn!(%err, "connection failed");
+                }
             }
-        });
+            .in_current_span(),
+        );
 
         Ok(())
     }
 
     async fn consume(self) -> Result<T, ConsumeError<TransportSinkError, TransportStreamError>> {
+        use tracing::Instrument;
+
         let (mut conn, _, mut rx) = self.await?;
 
         let value = tokio::select! {
@@ -216,11 +223,14 @@ where
             }
         };
 
-        exec::spawn(async move {
-            if let Err(err) = conn.await {
-                tracing::warn!(%err, "connection failed");
+        exec::spawn(
+            async move {
+                if let Err(err) = conn.await {
+                    tracing::warn!(%err, "connection failed");
+                }
             }
-        });
+            .in_current_span(),
+        );
 
         Ok(value)
     }

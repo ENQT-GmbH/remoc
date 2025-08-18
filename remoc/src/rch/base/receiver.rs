@@ -13,6 +13,7 @@ use std::{
     panic,
     rc::{Rc, Weak},
 };
+use tracing::Instrument;
 
 use super::{super::DEFAULT_MAX_ITEM_SIZE, io::ChannelBytesReader, BIG_DATA_CHUNK_QUEUE};
 use crate::{
@@ -387,7 +388,7 @@ where
                 // forward compatibility.
                 for request in requests {
                     if let Some((local_port, callback)) = pds.expected.remove(&request.id()) {
-                        exec::spawn(callback(local_port, request));
+                        exec::spawn(callback(local_port, request).in_current_span());
                     }
                 }
 
@@ -399,7 +400,7 @@ where
 
             // Spawn registered tasks.
             for task in pds.tasks.drain(..) {
-                exec::spawn(task);
+                exec::spawn(task.in_current_span());
             }
 
             return Ok(Some(self.item.take().unwrap()));

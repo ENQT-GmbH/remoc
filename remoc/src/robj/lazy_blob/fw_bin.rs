@@ -2,6 +2,7 @@
 
 use serde::{ser, Deserialize, Serialize};
 use std::sync::Mutex;
+use tracing::Instrument;
 
 use crate::{exec, rch::bin};
 
@@ -43,14 +44,17 @@ impl Serialize for Sender {
             // Forwarded send.
             (Some(bin_tx), None) => {
                 let (bin_fw_tx, bin_fw_rx) = bin::channel();
-                exec::spawn(async move {
-                    let Ok(mut bin_tx) = bin_tx.into_inner().await else { return };
-                    let Ok(mut bin_fw_rx) = bin_fw_rx.into_inner().await else { return };
+                exec::spawn(
+                    async move {
+                        let Ok(mut bin_tx) = bin_tx.into_inner().await else { return };
+                        let Ok(mut bin_fw_rx) = bin_fw_rx.into_inner().await else { return };
 
-                    // No error handling is performed, because complete transmission of
-                    // data is verified by size.
-                    let _ = bin_fw_rx.forward(&mut bin_tx).await;
-                });
+                        // No error handling is performed, because complete transmission of
+                        // data is verified by size.
+                        let _ = bin_fw_rx.forward(&mut bin_tx).await;
+                    }
+                    .in_current_span(),
+                );
                 TransportedSender { bin_tx: bin_fw_tx }.serialize(serializer)
             }
 

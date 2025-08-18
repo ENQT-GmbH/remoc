@@ -5,6 +5,7 @@ use std::{
     ops::{Deref, DerefMut},
     sync::Arc,
 };
+use tracing::Instrument;
 
 use super::msg::{ReadRequest, Value, WriteRequest};
 use crate::{
@@ -152,29 +153,32 @@ where
         // when it becomes invalid.
         let mut invalid_rx = value.invalid_rx.clone();
         let cache_lock = self.cache.clone();
-        exec::spawn(async move {
-            // Wait for cache invalidation.
-            loop {
-                match invalid_rx.borrow_and_update() {
-                    Ok(invalid) if !*invalid => (),
-                    _ => break,
+        exec::spawn(
+            async move {
+                // Wait for cache invalidation.
+                loop {
+                    match invalid_rx.borrow_and_update() {
+                        Ok(invalid) if !*invalid => (),
+                        _ => break,
+                    }
+
+                    if invalid_rx.changed().await.is_err() {
+                        break;
+                    }
                 }
 
-                if invalid_rx.changed().await.is_err() {
-                    break;
+                // Remove cache, if it is invalid.
+                // This will wait until all read locks are released.
+                // The validity check is necessary, because a new (valid) cached value may
+                // have been written while we were waiting to acquire the write lock.
+                let mut cache_opt = cache_lock.write().await;
+                match &*cache_opt {
+                    Some(cache) if !cache.is_valid() => *cache_opt = None,
+                    _ => (),
                 }
             }
-
-            // Remove cache, if it is invalid.
-            // This will wait until all read locks are released.
-            // The validity check is necessary, because a new (valid) cached value may
-            // have been written while we were waiting to acquire the write lock.
-            let mut cache_opt = cache_lock.write().await;
-            match &*cache_opt {
-                Some(cache) if !cache.is_valid() => *cache_opt = None,
-                _ => (),
-            }
-        });
+            .in_current_span(),
+        );
 
         // Store value in cache.
         *cache_opt = Some(value);

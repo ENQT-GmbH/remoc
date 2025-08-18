@@ -1,5 +1,7 @@
 use std::fmt;
 
+use tracing::Instrument;
+
 use super::{
     msg::{ReadRequest, Value, WriteRequest},
     ReadLock, RwLock,
@@ -43,13 +45,16 @@ where
         let write_req_rx = write_req_rx.set_buffer();
         let (term_tx, term_rx) = tokio::sync::oneshot::channel();
 
-        let task = exec::spawn(async move {
-            tokio::select! {
-                _ = Self::owner_task(&mut value, read_req_rx, write_req_rx) => (),
-                _ = term_rx => (),
+        let task = exec::spawn(
+            async move {
+                tokio::select! {
+                    _ = Self::owner_task(&mut value, read_req_rx, write_req_rx) => (),
+                    _ = term_rx => (),
+                }
+                value
             }
-            value
-        });
+            .in_current_span(),
+        );
 
         let read_lock = ReadLock::new(read_req_tx);
         let rw_lock = RwLock::new(read_lock, write_req_tx);
