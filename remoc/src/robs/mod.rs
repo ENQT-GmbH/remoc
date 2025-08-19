@@ -149,7 +149,7 @@ where
 
 /// Default handler for sending errors.
 pub(crate) fn default_on_err(err: SendError) {
-    tracing::warn!("sending failed: {}", err);
+    tracing::warn!(%err, "sending failed");
 }
 
 /// The observed object has been dropped.

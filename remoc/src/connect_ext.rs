@@ -192,14 +192,7 @@ where
             res = tx.send(value) => res?,
         }
 
-        exec::spawn(
-            async move {
-                if let Err(err) = conn.await {
-                    tracing::warn!(%err, "connection failed");
-                }
-            }
-            .in_current_span(),
-        );
+        exec::spawn(conn.in_current_span());
 
         Ok(())
     }
@@ -223,14 +216,7 @@ where
             }
         };
 
-        exec::spawn(
-            async move {
-                if let Err(err) = conn.await {
-                    tracing::warn!(%err, "connection failed");
-                }
-            }
-            .in_current_span(),
-        );
+        exec::spawn(conn.in_current_span());
 
         Ok(value)
     }
