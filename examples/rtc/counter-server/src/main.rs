@@ -4,6 +4,7 @@
 use remoc::{codec, prelude::*};
 use std::{net::Ipv4Addr, sync::Arc, time::Duration};
 use tokio::{net::TcpListener, sync::RwLock, time::sleep};
+use tracing::{info_span, Instrument};
 
 use counter::{Counter, CounterServerSharedMut, IncreaseError, TCP_PORT};
 
@@ -33,6 +34,8 @@ impl Counter for CounterObj {
     }
 
     async fn increase(&mut self, by: u32) -> Result<(), IncreaseError> {
+        tracing::info!(%by, "increase");
+
         // Perform the addition if it does not overflow the counter.
         match self.value.checked_add(by) {
             Some(new_value) => self.value = new_value,
@@ -98,23 +101,28 @@ async fn main() {
         let counter_obj = counter_obj.clone();
 
         // Spawn a task for each incoming connection.
-        tokio::spawn(async move {
-            // Create a server proxy and client for the accepted connection.
-            //
-            // The server proxy executes all incoming method calls on the shared counter_obj
-            // with a request queue length of 1.
-            //
-            // Current limitations of the Rust compiler require that we explicitly
-            // specify the codec.
-            let (server, client) = CounterServerSharedMut::<_, codec::Default>::new(counter_obj, 1);
+        tokio::spawn(
+            async move {
+                tracing::info!("serving");
 
-            // Establish a Remoc connection with default configuration over the TCP connection and
-            // provide (i.e. send) the counter client to the client.
-            remoc::Connect::io(remoc::Cfg::default(), socket_rx, socket_tx).provide(client).await.unwrap();
+                // Create a server proxy and client for the accepted connection.
+                //
+                // The server proxy executes all incoming method calls on the shared counter_obj
+                // with a request queue length of 1.
+                //
+                // Current limitations of the Rust compiler require that we explicitly
+                // specify the codec.
+                let (server, client) = CounterServerSharedMut::<_, codec::Default>::new(counter_obj, 1);
 
-            // Serve incoming requests from the client on this task.
-            // `true` indicates that requests are handled in parallel.
-            server.serve(true).await.unwrap();
-        });
+                // Establish a Remoc connection with default configuration over the TCP connection and
+                // provide (i.e. send) the counter client to the client.
+                remoc::Connect::io(remoc::Cfg::default(), socket_rx, socket_tx).provide(client).await.unwrap();
+
+                // Serve incoming requests from the client on this task.
+                // `true` indicates that requests are handled in parallel.
+                server.serve(true).await.unwrap();
+            }
+            .instrument(info_span!("incoming", %addr)),
+        );
     }
 }

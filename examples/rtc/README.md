@@ -18,10 +18,10 @@ It is split into three crates:
 
 Start the server using the following command:
 
-    cargo run --manifest-path examples/rtc/counter-server/Cargo.toml
+    cargo run --manifest-path examples/rtc/Cargo.toml -p counter-server
 
 Then, in another terminal, start the client using the following command:
 
-    cargo run --manifest-path examples/rtc/counter-client/Cargo.toml
+    cargo run --manifest-path examples/rtc/Cargo.toml -p counter-client
 
 All commands assume that you are in the top-level repository directory.

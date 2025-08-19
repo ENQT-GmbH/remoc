@@ -1,0 +1,3 @@
+[workspace]
+resolver = "2"
+members = ["counter", "counter-client", "counter-server"]
