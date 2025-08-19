@@ -46,12 +46,16 @@
     "rust-analyzer.cargo.extraEnv": {
         "RUSTUP_TOOLCHAIN": "nightly"
     },
-    "rust-analyzer.cargo.features": [
-        "full",
-        "default-codec-json",
-        "full-codecs",
-        // "js",
-    ],
+    "rust-analyzer.linkedProjects": [
+        "Cargo.toml",
+        "examples/rtc/Cargo.toml"
+    ]
+    // "rust-analyzer.cargo.features": [
+    //     "full",
+    //     "default-codec-json",
+    //     "full-codecs",
+    //     // "js",
+    // ],
     //"rust-analyzer.cargo.target": "wasm32-unknown-unknown",
     //"rust-analyzer.cargo.target": "wasm32-wasip1",
     //"rust-analyzer.cargo.target": "wasm32-wasip1-threads",
