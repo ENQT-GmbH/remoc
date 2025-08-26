@@ -61,6 +61,8 @@ pub struct TraitMethod {
     pub args: Vec<NamedArg>,
     /// Return type.
     pub ret_ty: Type,
+    /// Trait bounds when return type is `impl Future + ...`
+    pub bounds: Punctuated<TypeParamBound, Token![+]>,
     /// Whether method should be cancelled, if client sends hangup message.
     pub cancel: bool,
     /// Method body.
@@ -168,20 +170,26 @@ impl Parse for TraitMethod {
             ReturnType::Type(_, ty) => {
                 if is_async {
                     // async fn name() -> Result<_>
-                    Some((*ty, true))
+                    Some((*ty, true, Punctuated::new()))
                 } else {
                     // fn name() -> impl Future<Output = Result<_>> + Send
                     match *ty {
                         Type::ImplTrait(impl_trait) => {
-                            let output = impl_trait.bounds.iter().find_map(|bound| match bound {
-                                TypeParamBound::Trait(tb) => future_output_type(&tb.path).cloned(),
-                                _ => None,
-                            });
-                            let is_send = impl_trait.bounds.iter().any(|bound| match bound {
-                                TypeParamBound::Trait(tb) => is_send(&tb.path),
-                                _ => false,
-                            });
-                            output.map(|output| (output, is_send))
+                            let mut others: Punctuated<TypeParamBound, Token![+]> = Punctuated::new();
+                            let mut output = None;
+                            let mut has_send = false;
+
+                            for bound in impl_trait.bounds {
+                                match bound {
+                                    TypeParamBound::Trait(tb) if is_send(&tb.path) => has_send = true,
+                                    TypeParamBound::Trait(tb) if future_output_type(&tb.path).is_some() => {
+                                        output = future_output_type(&tb.path).cloned()
+                                    }
+                                    _ => others.push(bound),
+                                }
+                            }
+
+                            output.map(|output| (output, has_send, others))
                         }
                         _ => None,
                     }
@@ -189,7 +197,7 @@ impl Parse for TraitMethod {
             }
             ReturnType::Default => None,
         };
-        let Some((ret_ty, true)) = ret_ty else {
+        let Some((ret_ty, true, bounds)) = ret_ty else {
             return Err(
                 input.error("'async fn' methods must return 'Result<_>' and 'fn' methods must return 'impl Future<Output = Result<_>> + Send'")
             );
@@ -205,7 +213,7 @@ impl Parse for TraitMethod {
             None
         };
 
-        Ok(Self { attrs, ident, self_ref, args, ret_ty, cancel, body })
+        Ok(Self { attrs, ident, self_ref, args, ret_ty, bounds, cancel, body })
     }
 }
 
@@ -246,7 +254,13 @@ impl TraitMethod {
         };
 
         let sig = if impl_future {
-            quote! { #attrs fn #ident ( #args ) -> impl ::std::future::Future<Output = #ret_ty> + ::std::marker::Send }
+            let bounds = if self.bounds.is_empty() {
+                quote! {}
+            } else {
+                let bounds = &self.bounds;
+                quote! { + #bounds }
+            };
+            quote! { #attrs fn #ident ( #args ) -> impl ::std::future::Future<Output = #ret_ty> + ::std::marker::Send #bounds }
         } else {
             quote! { #attrs async fn #ident ( #args ) -> #ret_ty }
         };
