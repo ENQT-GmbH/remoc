@@ -1,6 +1,6 @@
 //! Connection extensions.
 
-use std::{error::Error, fmt};
+use std::{error::Error, fmt, future::Future};
 
 use crate::{
     chmux::ChMuxError,
@@ -11,8 +11,6 @@ use crate::{
 
 #[cfg(feature = "default-codec-set")]
 use crate::{connect::Connect, rch::base, RemoteSend};
-#[cfg(feature = "default-codec-set")]
-use futures::Future;
 
 /// Error occurred during establishing a providing connection.
 #[cfg_attr(docsrs, doc(cfg(feature = "rch")))]
