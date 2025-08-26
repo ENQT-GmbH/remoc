@@ -1,3 +1,4 @@
+mod async_trait;
 mod default;
 mod errors;
 mod generics;
@@ -6,6 +7,7 @@ mod readonly;
 mod simple;
 mod simple_clone;
 mod simple_req;
+mod simple_rpit;
 mod value;
 
 // Must result in compile error:

@@ -1,6 +1,7 @@
 {
     "files.exclude": {
         "target": true,
+        "examples/rtc/target": true,
     },
     "cSpell.languageSettings": [
         {

@@ -167,7 +167,6 @@
 //! }
 //!
 //! // Server implementation of trait methods.
-//! #[rtc::async_trait]
 //! impl Counter for CounterObj {
 //!     async fn value(&self) -> Result<u32, CallError> {
 //!         Ok(self.value)
@@ -237,12 +236,6 @@ use crate::{
     RemoteSend,
 };
 
-/// Attribute that must be applied on all implementations of a trait
-/// marked with the [remote] attribute.
-///
-/// This is a re-export from the [mod@async_trait] crate.
-pub use async_trait::async_trait;
-
 /// Denotes a trait as remotely callable and generate a client and servers for it.
 ///
 /// See [module-level documentation](self) for details and examples.
@@ -254,14 +247,16 @@ pub use async_trait::async_trait;
 ///
 /// # Requirements
 ///
-/// Each trait method must be async and have return type `Result<T, E>` where `T` and `E` are
-/// [remote sendable](crate::RemoteSend) and `E` must implemented [`From`]`<`[`CallError`]`>`.
+/// Each trait method must be either be
+///
+///   * an `async fn` and have return type `Result<T, E>`,
+///   * a `fn` and have return type `impl Future<Output = Result<T, E>> + Send`,
+///
+/// where `T` and `E` are [remote sendable](crate::RemoteSend) and `E` must
+/// implemented [`From`]`<`[`CallError`]`>`.
 /// All arguments must also be [remote sendable](crate::RemoteSend).
 /// Of course, you can use all remote types from Remoc in your arguments and return type,
 /// for example [remote channels](crate::rch) and [remote objects](crate::rch).
-///
-/// This uses async_trait, so you must apply the [macro@async_trait] attribute on
-/// all implementation of the trait.
 ///
 /// Since the generated code relies on [Tokio](tokio) macros, you must add a dependency
 /// to Tokio in your `Cargo.toml`.
@@ -282,11 +277,16 @@ pub use async_trait::async_trait;
 ///
 /// # Attributes
 ///
-/// If the `clone` argument is specified (by invoking the attribute as `#[remoc::rtc::remote(clone)]`),
+/// If the `clone` argument is specified (by invoking the attribute macro as `#[remoc::rtc::remote(clone)]`),
 /// the generated `TraitClient` will even be [clonable](std::clone::Clone) when the trait contains
 /// methods taking the receiver by mutable reference (`&mut self`).
 /// In this case the client can invoke more than one mutable method simultaneously; however,
 /// the execution on the server will be serialized through locking.
+///
+/// If the `async_trait` argument is specified (by invoking the attribute macro as `#[remoc::rtc::remote(async_trait)]`),
+/// the remote trait will be processed through the [`#[async_trait] macro`](https://docs.rs/async-trait), enabling
+/// `dyn` dispatch. You must then include `async-trait` as a dependency in your `Cargo.toml` and apply the
+/// `#[async_trait::async_trait]` attribute on all implementations of the trait.
 ///
 /// If the `#[no_cancel]` attribute is applied on a trait method, it will run to completion,
 /// even if the client cancels the request by dropping the future.
@@ -445,7 +445,6 @@ pub trait ServerBase {
 }
 
 /// A server of a remotable trait taking the target object by value.
-#[async_trait]
 pub trait Server<Target, Codec>: ServerBase
 where
     Self: Sized,
@@ -459,11 +458,10 @@ where
     /// Serving ends when the client is dropped or a method taking self by value
     /// is called. In the first case, the target object is returned and, in the
     /// second case, None is returned.
-    async fn serve(self) -> Result<Option<Target>, ServeError>;
+    fn serve(self) -> impl Future<Output = Result<Option<Target>, ServeError>> + Send;
 }
 
 /// A server of a remotable trait taking the target object by reference.
-#[async_trait(?Send)]
 pub trait ServerRef<'target, Target, Codec>: ServerBase
 where
     Self: Sized,
@@ -474,11 +472,10 @@ where
     /// Serves the target object.
     ///
     /// Serving ends when the client is dropped.
-    async fn serve(self) -> Result<(), ServeError>;
+    fn serve(self) -> impl Future<Output = Result<(), ServeError>>;
 }
 
 /// A server of a remotable trait taking the target object by mutable reference.
-#[async_trait(?Send)]
 pub trait ServerRefMut<'target, Target, Codec>: ServerBase
 where
     Self: Sized,
@@ -489,11 +486,10 @@ where
     /// Serves the target object.
     ///
     /// Serving ends when the client is dropped.
-    async fn serve(self) -> Result<(), ServeError>;
+    fn serve(self) -> impl Future<Output = Result<(), ServeError>>;
 }
 
 /// A server of a remotable trait taking the target object by shared reference.
-#[async_trait]
 pub trait ServerShared<Target, Codec>: ServerBase
 where
     Self: Sized,
@@ -508,11 +504,10 @@ where
     /// If `spawn` is true, remote calls are executed in parallel by spawning a task per call.
     ///
     /// Serving ends when the client is dropped.
-    async fn serve(self, spawn: bool) -> Result<(), ServeError>;
+    fn serve(self, spawn: bool) -> impl Future<Output = Result<(), ServeError>> + Send;
 }
 
 /// A server of a remotable trait taking the target object by shared mutable reference.
-#[async_trait]
 pub trait ServerSharedMut<Target, Codec>: ServerBase
 where
     Self: Sized,
@@ -528,11 +523,10 @@ where
     /// Remote calls taking a `&mut self` reference are serialized by obtaining a write lock.
     ///
     /// Serving ends when the client is dropped.
-    async fn serve(self, spawn: bool) -> Result<(), ServeError>;
+    fn serve(self, spawn: bool) -> impl Future<Output = Result<(), ServeError>> + Send;
 }
 
 /// A receiver of requests made by the client of a remotable trait.
-#[async_trait]
 pub trait ReqReceiver<Codec>: ServerBase
 where
     Self: Sized,
@@ -548,7 +542,7 @@ where
     /// Handle the request by matching on the variants of the request enum.
     /// Then reply with the result on the oneshot sender provided in the
     /// `__reply_tx` field of each enum variant.
-    async fn recv(&mut self) -> Result<Option<Self::Req>, mpsc::RecvError>;
+    fn recv(&mut self) -> impl Future<Output = Result<Option<Self::Req>, mpsc::RecvError>> + Send;
 
     /// Closes the receiver half of the request channel without dropping it.
     ///

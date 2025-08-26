@@ -14,6 +14,12 @@ pub trait DefaultTrait: Sync {
         let b = 2;
         Ok(a + b)
     }
+
+    fn default_method2(&self) -> impl Future<Output = Result<u32, remoc::rtc::CallError>> + Send {
+        let a = 2;
+        let b = 4;
+        Ok(a + b)
+    }
 }
 
 pub struct CounterObj {
@@ -26,7 +32,6 @@ impl CounterObj {
     }
 }
 
-#[remoc::rtc::async_trait]
 impl DefaultTrait for CounterObj {
     async fn value(&self) -> Result<u32, remoc::rtc::CallError> {
         Ok(self.value)
@@ -57,6 +62,9 @@ async fn simple() {
 
         println!("default_method: {}", client.default_method().await.unwrap());
         assert_eq!(client.default_method().await.unwrap(), 3);
+
+        println!("default_method2: {}", client.default_method2().await.unwrap());
+        assert_eq!(client.default_method2().await.unwrap(), 6);
     };
 
     let ((), res) = tokio::join!(client_task, server.serve());

@@ -37,7 +37,6 @@ impl CounterObj {
     }
 }
 
-#[remoc::rtc::async_trait]
 impl Counter for CounterObj {
     async fn value(self) -> Result<u32, remoc::rtc::CallError> {
         Ok(self.value)

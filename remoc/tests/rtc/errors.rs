@@ -18,7 +18,6 @@ impl DataGeneratorObj {
     }
 }
 
-#[remoc::rtc::async_trait]
 impl DataGenerator for DataGeneratorObj {
     async fn data(&self, size: usize) -> Result<Vec<u8>, remoc::rtc::CallError> {
         Ok(vec![1; size])

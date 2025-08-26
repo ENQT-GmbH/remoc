@@ -7,9 +7,9 @@ use syn::{
     parse::{Parse, ParseStream},
     punctuated::Punctuated,
     spanned::Spanned,
-    token,
-    token::Comma,
-    Attribute, Block, FnArg, Generics, Ident, Pat, PatType, ReturnType, Stmt, Token, Type,
+    token::{self, Comma},
+    Attribute, Block, FnArg, GenericArgument, Generics, Ident, Pat, PatType, Path, PathArguments, ReturnType,
+    Stmt, Token, Type, TypeParamBound,
 };
 
 use crate::util::{attribute_tokens, to_pascal_case};
@@ -67,12 +67,48 @@ pub struct TraitMethod {
     pub body: Option<Vec<Stmt>>,
 }
 
+/// The output type of a `std::future::Future<Output = ...>` or equivalent.
+fn future_output_type(path: &Path) -> Option<&Type> {
+    let args = match (path.segments.get(0), path.segments.get(1), path.segments.get(2)) {
+        (Some(p0), None, None) if p0.ident == "Future" => &p0.arguments,
+        (Some(p0), Some(p1), Some(p2))
+            if (p0.ident == "std" || p0.ident == "core") && p1.ident == "future" && p2.ident == "Future" =>
+        {
+            &p2.arguments
+        }
+        _ => return None,
+    };
+
+    let PathArguments::AngleBracketed(args) = args else { return None };
+    for arg in &args.args {
+        let GenericArgument::AssocType(ty) = arg else { continue };
+        if ty.ident == "Output" {
+            return Some(&ty.ty);
+        }
+    }
+
+    None
+}
+
+/// Whether the path is `Send` or equivalent.
+fn is_send(path: &Path) -> bool {
+    match (path.segments.get(0), path.segments.get(1), path.segments.get(2)) {
+        (Some(p0), None, None) if p0.ident == "Send" => true,
+        (Some(p0), Some(p1), Some(p2))
+            if (p0.ident == "std" || p0.ident == "core") && p1.ident == "marker" && p2.ident == "Send" =>
+        {
+            true
+        }
+        _ => false,
+    }
+}
+
 impl Parse for TraitMethod {
     /// Parses a method within the service trait.
     fn parse(input: ParseStream) -> syn::Result<Self> {
         // Parse method definition.
         let mut attrs = input.call(Attribute::parse_outer)?;
-        input.parse::<Token![async]>()?;
+        let is_async = input.parse::<Option<Token![async]>>()?.is_some();
         input.parse::<Token![fn]>()?;
         let ident: Ident = input.parse()?;
 
@@ -129,8 +165,34 @@ impl Parse for TraitMethod {
         // Parse return type.
         let ret: ReturnType = input.parse()?;
         let ret_ty = match ret {
-            ReturnType::Type(_, ty) => *ty,
-            ReturnType::Default => return Err(input.error("all methods must return a Result type")),
+            ReturnType::Type(_, ty) => {
+                if is_async {
+                    // async fn name() -> Result<_>
+                    Some((*ty, true))
+                } else {
+                    // fn name() -> impl Future<Output = Result<_>> + Send
+                    match *ty {
+                        Type::ImplTrait(impl_trait) => {
+                            let output = impl_trait.bounds.iter().find_map(|bound| match bound {
+                                TypeParamBound::Trait(tb) => future_output_type(&tb.path).cloned(),
+                                _ => None,
+                            });
+                            let is_send = impl_trait.bounds.iter().any(|bound| match bound {
+                                TypeParamBound::Trait(tb) => is_send(&tb.path),
+                                _ => false,
+                            });
+                            output.map(|output| (output, is_send))
+                        }
+                        _ => None,
+                    }
+                }
+            }
+            ReturnType::Default => None,
+        };
+        let Some((ret_ty, true)) = ret_ty else {
+            return Err(
+                input.error("'async fn' methods must return 'Result<_>' and 'fn' methods must return 'impl Future<Output = Result<_>> + Send'")
+            );
         };
 
         // Parse default body.
@@ -149,7 +211,7 @@ impl Parse for TraitMethod {
 
 impl TraitMethod {
     /// Method definition within trait (without argument attributes).
-    pub fn trait_method(&self) -> TokenStream {
+    pub fn trait_method(&self, impl_future: bool) -> TokenStream {
         let Self { attrs, ident, ret_ty, .. } = self;
         let attrs = attribute_tokens(attrs);
 
@@ -174,13 +236,23 @@ impl TraitMethod {
             Some(stmts) => {
                 let mut body = quote! {};
                 body.append_all(stmts);
-                quote! { { #body } }
+                if impl_future {
+                    quote! { { async move { #body } } }
+                } else {
+                    quote! { { #body } }
+                }
             }
             None => quote! { ; },
         };
 
+        let sig = if impl_future {
+            quote! { #attrs fn #ident ( #args ) -> impl ::std::future::Future<Output = #ret_ty> + ::std::marker::Send }
+        } else {
+            quote! { #attrs async fn #ident ( #args ) -> #ret_ty }
+        };
+
         quote! {
-            #attrs async fn #ident ( #args ) -> #ret_ty
+            #sig
             #body_opt
         }
     }

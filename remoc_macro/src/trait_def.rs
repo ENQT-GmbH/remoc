@@ -36,6 +36,8 @@ pub struct TraitDef {
     methods: Vec<TraitMethod>,
     /// Whether the `clone` attribute is present.
     clone: bool,
+    /// Whether the `async_trait` attribute is present.
+    async_trait: bool,
 }
 
 impl Parse for TraitDef {
@@ -84,7 +86,7 @@ impl Parse for TraitDef {
             methods.push(content.parse()?);
         }
 
-        Ok(Self { attrs, vis, ident, generics, colon, supertraits, methods, clone: false })
+        Ok(Self { attrs, vis, ident, generics, colon, supertraits, methods, clone: false, async_trait: false })
     }
 }
 
@@ -96,6 +98,9 @@ impl TraitDef {
                 return Err(meta.error("the client cannot be clonable if a method takes self by value"));
             }
             self.clone = true;
+            Ok(())
+        } else if meta.path.is_ident("async_trait") {
+            self.async_trait = true;
             Ok(())
         } else {
             Err(meta.error("unknown attribute"))
@@ -121,17 +126,20 @@ impl TraitDef {
     pub fn vanilla_trait(&self) -> TokenStream {
         let Self { vis, ident, attrs, colon, supertraits, generics, .. } = self;
         let where_clause = &generics.where_clause;
-        let attrs = attribute_tokens(attrs);
+        let mut attrs = attribute_tokens(attrs);
 
         // Trait methods.
         let mut defs = quote! {};
         for m in &self.methods {
-            defs.append_all(m.trait_method());
+            defs.append_all(m.trait_method(!self.async_trait));
+        }
+
+        if self.async_trait {
+            attrs.extend(quote! { #[::async_trait::async_trait] });
         }
 
         quote! {
             #attrs
-            #[::remoc::rtc::async_trait]
             #vis trait #ident #generics #colon #supertraits #where_clause {
                 #defs
             }
@@ -424,7 +432,6 @@ impl TraitDef {
                 }
             }
 
-            #[::remoc::rtc::async_trait]
             impl #impl_generics_impl ::remoc::rtc::Server <Target, Codec> for #server #impl_generics_ty #impl_generics_where
             {
                 fn new(target: Target, request_buffer: usize) -> (Self, Self::Client) {
@@ -512,7 +519,6 @@ impl TraitDef {
                 }
             }
 
-            #[::remoc::rtc::async_trait(?Send)]
             impl #impl_generics_impl ::remoc::rtc::ServerRef <'target, Target, Codec> for #server #impl_generics_ty #impl_generics_where
             {
                 fn new(target: &'target Target, request_buffer: usize) -> (Self, Self::Client) {
@@ -594,7 +600,6 @@ impl TraitDef {
                 }
             }
 
-            #[::remoc::rtc::async_trait(?Send)]
             impl #impl_generics_impl ::remoc::rtc::ServerRefMut <'target, Target, Codec> for #server #impl_generics_ty #impl_generics_where
             {
                 fn new(target: &'target mut Target, request_buffer: usize) -> (Self, Self::Client) {
@@ -679,7 +684,6 @@ impl TraitDef {
                 }
             }
 
-            #[::remoc::rtc::async_trait]
             impl #impl_generics_impl ::remoc::rtc::ServerShared <Target, Codec> for #server #impl_generics_ty #impl_generics_where
             {
                 fn new(target: ::std::sync::Arc<Target>, request_buffer: usize) -> (Self, Self::Client) {
@@ -770,7 +774,6 @@ impl TraitDef {
                 }
             }
 
-            #[::remoc::rtc::async_trait]
             impl #impl_generics_impl ::remoc::rtc::ServerSharedMut <Target, Codec> for #server #impl_generics_ty #impl_generics_where
             {
                 fn new(target: ::std::sync::Arc<::remoc::rtc::LocalRwLock<Target>>, request_buffer: usize) -> (Self, Self::Client) {
@@ -864,7 +867,6 @@ impl TraitDef {
                 }
             }
 
-            #[::remoc::rtc::async_trait]
             impl #impl_generics_impl ::remoc::rtc::ReqReceiver <Codec> for #server #impl_generics_ty #impl_generics_where
             {
                 type Req = #req_all #req_generics;
@@ -950,6 +952,12 @@ impl TraitDef {
             quote! {}
         };
 
+        let async_trait = if self.async_trait {
+            quote! { #[::async_trait::async_trait] }
+        } else {
+            quote! {}
+        };
+
         quote! {
             #[doc=#doc]
             #[derive(::remoc::rtc::Serialize, ::remoc::rtc::Deserialize)]
@@ -1022,7 +1030,7 @@ impl TraitDef {
                 }
             }
 
-            #[::remoc::rtc::async_trait]
+            #async_trait
             impl #impl_generics_impl #ident #generics for #client_ident #impl_generics_ty #impl_generics_where {
                 #methods
             }

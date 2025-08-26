@@ -59,7 +59,6 @@ where
     }
 }
 
-#[remoc::rtc::async_trait]
 impl<T> GenericCounter<T> for GenericCounterObj<T>
 where
     T: remoc::RemoteSend + CheckedAddable + Default + Sync,

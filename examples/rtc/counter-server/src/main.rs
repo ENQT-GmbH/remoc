@@ -18,7 +18,6 @@ pub struct CounterObj {
 }
 
 /// Implementation of remote counting service.
-#[rtc::async_trait]
 impl Counter for CounterObj {
     async fn value(&self) -> Result<u32, rtc::CallError> {
         Ok(self.value)

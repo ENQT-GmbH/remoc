@@ -20,7 +20,6 @@ impl ReadValueObj {
     }
 }
 
-#[remoc::rtc::async_trait]
 impl ReadValue for ReadValueObj {
     async fn value(&self) -> Result<u32, remoc::rtc::CallError> {
         Ok(self.value)

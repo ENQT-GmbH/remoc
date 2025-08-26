@@ -15,11 +15,11 @@ authors = { workspace = true }
 [features]
 default = ["full", "default-codec-json"]
 full = ["serde", "rch", "rfn", "robj", "robs", "rtc"]
-rch = ["async-trait", "serde", "tokio-util/codec", "tokio/io-util"]
+rch = ["serde", "tokio-util/codec", "tokio/io-util"]
 rfn = ["rch"]
 robj = ["rch"]
 robs = ["rch"]
-rtc = ["rch", "remoc_macro", "async-trait"]
+rtc = ["rch", "remoc_macro"]
 js = [
     "dep:getrandom",
     "dep:js-sys",
@@ -62,7 +62,6 @@ tracing = "0.1.29"
 bytes = "1"
 byteorder = "1.4"
 uuid = { version = "1.15", features = ["serde", "v4"] }
-async-trait = { version = "0.1", optional = true }
 serde = { version = "1.0", features = ["derive"], optional = true }
 
 # Codecs
@@ -82,6 +81,7 @@ wasm-bindgen-futures = { version = "0.4.45", optional = true }
 tracing-subscriber = { version = "0.3.7", features = ["env-filter"] }
 
 [dev-dependencies]
+async-trait = "0.1"
 tracing-subscriber = { version = "0.3.7", features = ["env-filter"] }
 tokio = { version = "1.43", features = ["io-util", "rt"] }
 wasm-bindgen-test = "0.3.45"

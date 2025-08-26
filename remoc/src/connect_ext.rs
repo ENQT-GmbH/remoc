@@ -1,6 +1,5 @@
 //! Connection extensions.
 
-use async_trait::async_trait;
 use std::{error::Error, fmt};
 
 use crate::{
@@ -139,7 +138,6 @@ where
 /// This trait is implemented for the return value of any [Connect] method
 /// using the default codec and a transport with `'static` lifetime.
 #[cfg_attr(docsrs, doc(cfg(feature = "rch")))]
-#[async_trait]
 pub trait ConnectExt<T, TransportSinkError, TransportStreamError> {
     /// Establishes the connection and provides a single value to the remote endpoint.
     ///
@@ -149,7 +147,9 @@ pub trait ConnectExt<T, TransportSinkError, TransportStreamError> {
     ///
     /// This is intended to be used with the [consume](Self::consume) method on
     /// the remote endpoint.
-    async fn provide(self, value: T) -> Result<(), ProvideError<TransportSinkError, TransportStreamError>>;
+    fn provide(
+        self, value: T,
+    ) -> impl Future<Output = Result<(), ProvideError<TransportSinkError, TransportStreamError>>> + Send;
 
     /// Establishes the connection and consumes a single value from the remote endpoint.
     ///
@@ -159,10 +159,11 @@ pub trait ConnectExt<T, TransportSinkError, TransportStreamError> {
     ///
     /// This is intended to be used with the [provide](Self::provide) method on
     /// the remote endpoint.
-    async fn consume(self) -> Result<T, ConsumeError<TransportSinkError, TransportStreamError>>;
+    fn consume(
+        self,
+    ) -> impl Future<Output = Result<T, ConsumeError<TransportSinkError, TransportStreamError>>> + Send;
 }
 
-#[async_trait]
 #[cfg(feature = "default-codec-set")]
 impl<TransportSinkError, TransportStreamError, T, ConnectFuture>
     ConnectExt<T, TransportSinkError, TransportStreamError> for ConnectFuture
