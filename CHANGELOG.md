@@ -4,6 +4,15 @@ All notable changes to Remoc will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.16.0 - 2025-08-26
+### Added
+- rtc: allow limiting the generated server variants by using #[rtc::remote(server(...))]
+### Changed
+- rtc: use Rust built-in support for async trait methods by default.
+  If dyn-capable traits are required, specify #[rtc::remote(async_trait)] to
+  use the async-trait attribute macro as before.
+- update MSRV to 1.89
+
 ## 0.15.10 - 2025-08-19
 ### Added
 - better integration with tracing crate

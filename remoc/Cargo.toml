@@ -52,7 +52,7 @@ full-codecs = [
 
 
 [dependencies]
-remoc_macro = { version = "=0.15.10", path = "../remoc_macro", optional = true }
+remoc_macro = { version = "=0.16.0", path = "../remoc_macro", optional = true }
 
 futures = { version = "0.3.31", default-features = false, features = ["std"] }
 tokio = { version = "1.43", features = ["macros", "rt", "sync", "time"] }
