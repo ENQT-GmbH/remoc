@@ -9,6 +9,7 @@ mod simple_clone;
 mod simple_req;
 mod simple_rpit;
 mod value;
+mod variants;
 
 // Must result in compile error:
 // mod lifetime;

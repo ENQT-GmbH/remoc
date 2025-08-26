@@ -2,6 +2,7 @@
 
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote, TokenStreamExt};
+use std::{collections::HashSet, str::FromStr};
 use syn::{
     braced,
     meta::ParseNestedMeta,
@@ -15,6 +16,34 @@ use crate::{
     method::{SelfRef, TraitMethod},
     util::attribute_tokens,
 };
+
+/// Server variants.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum ServerVariant {
+    Value,
+    Ref,
+    RefMut,
+    Shared,
+    SharedMut,
+    ReqReceiver,
+}
+
+struct InvalidServerVariant;
+
+impl FromStr for ServerVariant {
+    type Err = InvalidServerVariant;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "value" | "Value" => Ok(Self::Value),
+            "ref" | "Ref" => Ok(Self::Ref),
+            "ref_mut" | "RefMut" => Ok(Self::RefMut),
+            "shared" | "Shared" => Ok(Self::Shared),
+            "shared_mut" | "SharedMut" => Ok(Self::SharedMut),
+            "req_receiver" | "ReqReceiver" => Ok(Self::ReqReceiver),
+            _ => Err(InvalidServerVariant),
+        }
+    }
+}
 
 /// Trait definition.
 #[derive(Debug)]
@@ -38,6 +67,8 @@ pub struct TraitDef {
     clone: bool,
     /// Whether the `async_trait` attribute is present.
     async_trait: bool,
+    /// Server variants to generate.
+    server_variants: Option<HashSet<ServerVariant>>,
 }
 
 impl Parse for TraitDef {
@@ -86,7 +117,18 @@ impl Parse for TraitDef {
             methods.push(content.parse()?);
         }
 
-        Ok(Self { attrs, vis, ident, generics, colon, supertraits, methods, clone: false, async_trait: false })
+        Ok(Self {
+            attrs,
+            vis,
+            ident,
+            generics,
+            colon,
+            supertraits,
+            methods,
+            clone: false,
+            async_trait: false,
+            server_variants: None,
+        })
     }
 }
 
@@ -101,6 +143,26 @@ impl TraitDef {
             Ok(())
         } else if meta.path.is_ident("async_trait") {
             self.async_trait = true;
+            Ok(())
+        } else if meta.path.is_ident("server") || meta.path.is_ident("Server") {
+            let content;
+            syn::parenthesized!(content in meta.input);
+
+            let variants = self.server_variants.get_or_insert_default();
+            while !content.is_empty() {
+                let variant: Ident = content.parse()?;
+                let variant = variant.to_string().parse::<ServerVariant>().map_err(|_| {
+                    content.error("supported server variants: Value, Ref, RefMut, Shared, SharedMut, ReqReceiver")
+                })?;
+                variants.insert(variant);
+
+                if content.peek(Token![,]) {
+                    content.parse::<Token![,]>()?;
+                } else {
+                    break;
+                }
+            }
+
             Ok(())
         } else {
             Err(meta.error("unknown attribute"))
@@ -888,25 +950,64 @@ impl TraitDef {
     }
 
     /// Server types and implementations.
-    pub fn servers(&self) -> TokenStream {
+    pub fn servers(&self) -> Result<TokenStream, &'static str> {
+        let enabled = |variant: ServerVariant| match &self.server_variants {
+            Some(variants) => variants.contains(&variant),
+            None => false,
+        };
+        let enabled_or_auto = |variant: ServerVariant| match &self.server_variants {
+            Some(variants) => variants.contains(&variant),
+            None => true,
+        };
+
+        let mut servers = quote! {};
+
         // Always generate server taking value.
-        let mut servers = self.server_value();
+        if enabled_or_auto(ServerVariant::Value) {
+            servers.append_all(self.server_value());
+        }
 
         // Generate servers taking (mutable, shared) references, if possible.
         if !self.is_taking_value() {
-            servers.append_all(self.server_ref_mut());
-            servers.append_all(self.server_shared_mut());
+            if enabled_or_auto(ServerVariant::RefMut) {
+                servers.append_all(self.server_ref_mut());
+            }
+            if enabled_or_auto(ServerVariant::SharedMut) {
+                servers.append_all(self.server_shared_mut());
+            }
 
             if !self.is_taking_ref_mut() {
-                servers.append_all(self.server_ref());
-                servers.append_all(self.server_shared());
+                if enabled_or_auto(ServerVariant::Ref) {
+                    servers.append_all(self.server_ref());
+                }
+                if enabled_or_auto(ServerVariant::Shared) {
+                    servers.append_all(self.server_shared());
+                }
+            } else {
+                if enabled(ServerVariant::Ref) {
+                    return Err("cannot generate ServerRef for trait containing methods that take '&mut self'");
+                }
+                if enabled(ServerVariant::Shared) {
+                    return Err(
+                        "cannot generate ServerShared for trait containing methods that take '&mut self'",
+                    );
+                }
+            }
+        } else {
+            if enabled(ServerVariant::RefMut) {
+                return Err("cannot generate ServerRefMut for trait containing methods that take 'self'");
+            }
+            if enabled(ServerVariant::SharedMut) {
+                return Err("cannot generate ServerSharedMut for trait containing methods that take 'self'");
             }
         }
 
         // Always generate request receiver.
-        servers.append_all(self.req_receiver());
+        if enabled_or_auto(ServerVariant::ReqReceiver) {
+            servers.append_all(self.req_receiver());
+        }
 
-        servers
+        Ok(servers)
     }
 
     /// The client proxy.

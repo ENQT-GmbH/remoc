@@ -19,7 +19,10 @@ pub fn remote(args: proc_macro::TokenStream, input: proc_macro::TokenStream) -> 
 
     let vanilla_trait = trait_def.vanilla_trait();
     let request_enums = trait_def.request_enums();
-    let servers = trait_def.servers();
+    let servers = match trait_def.servers() {
+        Ok(servers) => servers,
+        Err(msg) => quote! { ::std::compile_error!(#msg); },
+    };
     let client = trait_def.client();
 
     #[allow(clippy::let_and_return)]

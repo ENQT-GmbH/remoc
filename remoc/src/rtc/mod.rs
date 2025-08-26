@@ -288,6 +288,13 @@ use crate::{
 /// `dyn` dispatch. You must then include `async-trait` as a dependency in your `Cargo.toml` and apply the
 /// `#[async_trait::async_trait]` attribute on all implementations of the trait.
 ///
+/// The `server(...)` argument allows to limit the generated server variants.
+/// Supported variants are: `Value`, `Ref`, `RefMut`, `Shared`, `SharedMut`, `ReqReceiver`.
+/// Multiple variants can be specified as a comma-separated list.
+/// For example, when `#[remoc::rtc::remote(server(SharedMut))]` is applied to `trait Trait` only the
+/// `TraitServerSharedMut` server will be generated.
+/// If unspecified, all server variants are generated.
+///
 /// If the `#[no_cancel]` attribute is applied on a trait method, it will run to completion,
 /// even if the client cancels the request by dropping the future.
 ///

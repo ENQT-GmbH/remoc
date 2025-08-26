@@ -28,7 +28,7 @@ impl From<rtc::CallError> for IncreaseError {
 }
 
 /// Remote counting service.
-#[rtc::remote]
+#[rtc::remote(server(SharedMut))]
 pub trait Counter {
     /// Obtain the current value of the counter.
     async fn value(&self) -> Result<u32, rtc::CallError>;
