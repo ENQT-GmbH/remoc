@@ -534,7 +534,7 @@ where
 }
 
 /// A receiver of requests made by the client of a remotable trait.
-pub trait ReqReceiver<Codec>: ServerBase
+pub trait ReqReceiver<Codec>: ServerBase + Stream<Item = Result<Self::Req, mpsc::RecvError>>
 where
     Self: Sized,
 {
@@ -644,6 +644,10 @@ pub use tokio::sync::mpsc as local_mpsc;
 pub use tokio::sync::RwLock as LocalRwLock;
 #[doc(hidden)]
 pub type ReplyErrorSender = tokio::sync::mpsc::Sender<SendingErrorKind>;
+#[doc(hidden)]
+pub use futures::stream::Stream;
+#[doc(hidden)]
+pub use futures::stream::StreamExt;
 #[doc(hidden)]
 pub use tracing::Instrument;
 

@@ -7,6 +7,7 @@ mod readonly;
 mod simple;
 mod simple_clone;
 mod simple_req;
+mod simple_req_stream;
 mod simple_rpit;
 mod value;
 mod variants;

@@ -924,6 +924,8 @@ impl TraitDef {
             {
                 type Client = #client #req_generics;
 
+                /// This method does nothing on a [request receiver](::remoc::rtc::ReqReceiver) since
+                /// all errors are reported directly by the [recv](Self::recv) method.
                 fn set_on_req_receive_error(&mut self, _on_req_receive_error: ::remoc::rtc::OnReqReceiveError) {
                     // ignored since all errors are reported directly
                 }
@@ -944,6 +946,20 @@ impl TraitDef {
 
                 fn close(&mut self) {
                     self.req_rx.close()
+                }
+            }
+
+            impl #impl_generics_impl ::remoc::rtc::Stream for #server #impl_generics_ty #impl_generics_where
+            {
+                /// Request type.
+                type Item = Result<#req_all #req_generics, ::remoc::rch::mpsc::RecvError>;
+
+                /// Attempt to receive the next request, i.e. method call, from the client.
+                fn poll_next(mut self: ::std::pin::Pin<&mut Self>, cx: &mut ::std::task::Context<'_>)
+                    -> ::std::task::Poll<::std::option::Option<Self::Item>>
+                {
+                    use ::remoc::rtc::StreamExt;
+                    self.req_rx.poll_next_unpin(cx).map(|opt| opt.map(|res| res.map(|v| v.into())))
                 }
             }
         }
