@@ -946,7 +946,7 @@ impl TraitDef {
                     (Self { req_rx }, Self::Client::new(req_tx))
                 }
 
-                async fn recv(&mut self) -> ::std::result::Result<Option<Self::Req>, ::remoc::rch::mpsc::RecvError> {
+                async fn recv(&mut self) -> ::std::result::Result<::std::option::Option<Self::Req>, ::remoc::rch::mpsc::RecvError> {
                     self.req_rx.recv().await.map(|res| res.map(|opt| opt.into()))
                 }
 
@@ -958,7 +958,7 @@ impl TraitDef {
             impl #impl_generics_impl ::remoc::rtc::Stream for #server #impl_generics_ty #impl_generics_where
             {
                 /// Request type.
-                type Item = Result<#req_all #req_generics, ::remoc::rch::mpsc::RecvError>;
+                type Item = ::std::result::Result<#req_all #req_generics, ::remoc::rch::mpsc::RecvError>;
 
                 /// Attempt to receive the next request, i.e. method call, from the client.
                 fn poll_next(mut self: ::std::pin::Pin<&mut Self>, cx: &mut ::std::task::Context<'_>)
