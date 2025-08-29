@@ -455,7 +455,6 @@ pub trait ServerBase {
 pub trait Server<Target, Codec>: ServerBase
 where
     Self: Sized,
-    Target: Send + Sync + 'static,
 {
     /// Creates a new server instance for the target object.
     fn new(target: Target, request_buffer: usize) -> (Self, Self::Client);
@@ -465,7 +464,7 @@ where
     /// Serving ends when the client is dropped or a method taking self by value
     /// is called. In the first case, the target object is returned and, in the
     /// second case, None is returned.
-    fn serve(self) -> impl Future<Output = (Option<Target>, Result<(), ServeError>)> + Send;
+    fn serve(self) -> impl Future<Output = (Option<Target>, Result<(), ServeError>)>;
 }
 
 /// A server of a remotable trait taking the target object by reference.
@@ -501,7 +500,6 @@ pub trait ServerShared<Target, Codec>: ServerBase
 where
     Self: Sized,
     Self::Client: Clone,
-    Target: Send + Sync + 'static,
 {
     /// Creates a new server instance for a shared reference to the target object.
     fn new(target: Arc<Target>, request_buffer: usize) -> (Self, Self::Client);
@@ -511,14 +509,13 @@ where
     /// If `spawn` is true, remote calls are executed in parallel by spawning a task per call.
     ///
     /// Serving ends when the client is dropped.
-    fn serve(self, spawn: bool) -> impl Future<Output = Result<(), ServeError>> + Send;
+    fn serve(self, spawn: bool) -> impl Future<Output = Result<(), ServeError>>;
 }
 
 /// A server of a remotable trait taking the target object by shared mutable reference.
 pub trait ServerSharedMut<Target, Codec>: ServerBase
 where
     Self: Sized,
-    Target: Send + Sync + 'static,
 {
     /// Creates a new server instance for a shared mutable reference to the target object.
     fn new(target: Arc<LocalRwLock<Target>>, request_buffer: usize) -> (Self, Self::Client);
@@ -530,7 +527,7 @@ where
     /// Remote calls taking a `&mut self` reference are serialized by obtaining a write lock.
     ///
     /// Serving ends when the client is dropped.
-    fn serve(self, spawn: bool) -> impl Future<Output = Result<(), ServeError>> + Send;
+    fn serve(self, spawn: bool) -> impl Future<Output = Result<(), ServeError>>;
 }
 
 /// A receiver of requests made by the client of a remotable trait.
