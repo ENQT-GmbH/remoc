@@ -174,6 +174,11 @@ impl TraitDef {
         self.methods.iter().any(|m| m.self_ref == SelfRef::Value)
     }
 
+    /// True, if any trait method takes self by reference.
+    fn is_taking_ref(&self) -> bool {
+        self.methods.iter().any(|m| m.self_ref == SelfRef::Ref)
+    }
+
     /// True, if any trait method takes self by mutable reference.
     fn is_taking_ref_mut(&self) -> bool {
         self.methods.iter().any(|m| m.self_ref == SelfRef::RefMut)
@@ -470,6 +475,24 @@ impl TraitDef {
 
         let doc = format!("Server for [{}] taking the target object by value.", &ident);
 
+        let dispatch_value = if self.is_taking_value() {
+            quote! { req.dispatch(target, err_tx.clone()).await; }
+        } else {
+            quote! {}
+        };
+
+        let dispatch_ref = if self.is_taking_ref() {
+            quote! { req.dispatch(&target, err_tx.clone()).await; }
+        } else {
+            quote! {}
+        };
+
+        let dispatch_ref_mut = if self.is_taking_ref_mut() {
+            quote! { req.dispatch(&mut target, err_tx.clone()).await; }
+        } else {
+            quote! {}
+        };
+
         quote! {
             #[doc=#doc]
             #vis struct #server #ty_generics #ty_generics_where {
@@ -515,14 +538,14 @@ impl TraitDef {
                             req = req_rx.recv() => {
                                 match req {
                                     Ok(Some(::remoc::rtc::Req::Value(req))) => {
-                                        req.dispatch(target, err_tx.clone()).await;
+                                        #dispatch_value
                                         break None;
                                     },
                                     Ok(Some(::remoc::rtc::Req::Ref(req))) => {
-                                        req.dispatch(&target, err_tx.clone()).await;
+                                        #dispatch_ref
                                     },
                                     Ok(Some(::remoc::rtc::Req::RefMut(req))) => {
-                                        req.dispatch(&mut target, err_tx.clone()).await;
+                                        #dispatch_ref_mut
                                     },
                                     Ok(None) => break Some(target),
                                     Err(err) if err.is_final() => break Some(target),
@@ -562,6 +585,12 @@ impl TraitDef {
         let server = format_ident!("{}ServerRef", &ident);
 
         let doc = format!("Server for [{}] taking the target object by reference.", &ident);
+
+        let dispatch_ref = if self.is_taking_ref() {
+            quote! { req.dispatch(target, err_tx.clone()).await; }
+        } else {
+            quote! {}
+        };
 
         quote! {
             #[doc=#doc]
@@ -608,7 +637,7 @@ impl TraitDef {
                             req = req_rx.recv() => {
                                 match req {
                                     Ok(Some(::remoc::rtc::Req::Ref(req))) => {
-                                        req.dispatch(target, err_tx.clone()).await;
+                                        #dispatch_ref
                                     },
                                     Ok(Some(_)) => (),
                                     Ok(None) => break,
@@ -643,6 +672,18 @@ impl TraitDef {
         let server = format_ident!("{}ServerRefMut", &ident);
 
         let doc = format!("Server for [{}] taking the target object by mutable reference.", &ident);
+
+        let dispatch_ref = if self.is_taking_ref() {
+            quote! { req.dispatch(target, err_tx.clone()).await; }
+        } else {
+            quote! {}
+        };
+
+        let dispatch_ref_mut = if self.is_taking_ref_mut() {
+            quote! { req.dispatch(target, err_tx.clone()).await; }
+        } else {
+            quote! {}
+        };
 
         quote! {
             #[doc=#doc]
@@ -689,10 +730,10 @@ impl TraitDef {
                             req = req_rx.recv() => {
                                 match req {
                                     Ok(Some(::remoc::rtc::Req::Ref(req))) => {
-                                        req.dispatch(target, err_tx.clone()).await;
+                                        #dispatch_ref
                                     },
                                     Ok(Some(::remoc::rtc::Req::RefMut(req))) => {
-                                        req.dispatch(target, err_tx.clone()).await;
+                                        #dispatch_ref_mut
                                     },
                                     Ok(Some(_)) => (),
                                     Ok(None) => break,
@@ -727,6 +768,12 @@ impl TraitDef {
         let server = format_ident!("{}ServerShared", &ident);
 
         let doc = format!("Server for [{}] taking the target object by shared reference.", &ident);
+
+        let dispatch_ref = if self.is_taking_ref() {
+            quote! { req.dispatch(&*target, err_tx).await; }
+        } else {
+            quote! {}
+        };
 
         quote! {
             #[doc=#doc]
@@ -773,15 +820,15 @@ impl TraitDef {
                             req = req_rx.recv() => {
                                 match req {
                                     Ok(Some(::remoc::rtc::Req::Ref(req))) => {
+                                        let err_tx = err_tx.clone();
                                         if spawn {
                                             use ::remoc::rtc::Instrument;
                                             let target = target.clone();
-                                            let err_tx = err_tx.clone();
                                             ::remoc::rtc::spawn(async move {
-                                                req.dispatch(&*target, err_tx).await;
+                                                #dispatch_ref
                                             }.in_current_span());
                                         } else {
-                                            req.dispatch(&*target, err_tx.clone()).await;
+                                            #dispatch_ref
                                         }
                                     },
                                     Ok(Some(_)) => (),
@@ -817,6 +864,18 @@ impl TraitDef {
         let server = format_ident!("{}ServerSharedMut", &ident);
 
         let doc = format!("Server for [{}] taking the target object by shared mutable reference.", &ident);
+
+        let dispatch_ref = if self.is_taking_ref() {
+            quote! { req.dispatch(&*target, err_tx).await; }
+        } else {
+            quote! {}
+        };
+
+        let dispatch_ref_mut = if self.is_taking_ref_mut() {
+            quote! { req.dispatch(&mut *target, err_tx.clone()).await; }
+        } else {
+            quote! {}
+        };
 
         quote! {
             #[doc=#doc]
@@ -863,21 +922,21 @@ impl TraitDef {
                             req = req_rx.recv() => {
                                 match req {
                                     Ok(Some(::remoc::rtc::Req::Ref(req))) => {
+                                        let err_tx = err_tx.clone();
                                         if spawn {
                                             use ::remoc::rtc::Instrument;
                                             let target = target.clone().read_owned().await;
-                                            let err_tx = err_tx.clone();
                                             ::remoc::rtc::spawn(async move {
-                                                req.dispatch(&*target, err_tx).await;
+                                                #dispatch_ref
                                             }.in_current_span());
                                         } else {
                                             let target = target.read().await;
-                                            req.dispatch(&*target, err_tx.clone()).await;
+                                            #dispatch_ref
                                         }
                                     },
                                     Ok(Some(::remoc::rtc::Req::RefMut(req))) => {
                                         let mut target = target.write().await;
-                                        req.dispatch(&mut *target, err_tx.clone()).await;
+                                        #dispatch_ref_mut
                                     },
                                     Ok(Some(_)) => (),
                                     Ok(None) => break,
