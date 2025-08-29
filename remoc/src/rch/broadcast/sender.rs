@@ -142,8 +142,8 @@ where
     T: RemoteSend + Clone,
     Codec: codec::Codec,
 {
-    /// Creates a new sender.
-    pub(crate) fn new() -> Self {
+    /// Creates the sending-half of the broadcast channel.
+    pub fn new() -> Self {
         let (ready_tx, ready_rx) = tokio::sync::mpsc::unbounded_channel();
         let inner = SenderInner { subs: Vec::new(), ready_tx, ready_rx, not_ready: 0 };
         Self { inner: Arc::new(Mutex::new(inner)) }
