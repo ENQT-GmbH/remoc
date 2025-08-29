@@ -137,6 +137,16 @@ impl<T, Codec> fmt::Debug for Sender<T, Codec> {
     }
 }
 
+impl<T, Codec> Default for Sender<T, Codec>
+where
+    T: RemoteSend + Clone,
+    Codec: codec::Codec,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T, Codec> Sender<T, Codec>
 where
     T: RemoteSend + Clone,
