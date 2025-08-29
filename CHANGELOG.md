@@ -4,6 +4,11 @@ All notable changes to Remoc will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.17.0 - 2025-08-29
+### Added
+- rtc: make by-value server always return target object when serving is done, 
+  even in error case
+
 ## 0.16.1 - 2025-08-28
 ### Added
 - rtc: implement Stream for ReqReceiver
