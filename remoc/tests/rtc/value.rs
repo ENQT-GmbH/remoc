@@ -94,8 +94,9 @@ async fn simple() {
         assert_eq!(value, 65);
     };
 
-    let (_, counter_obj) = tokio::join!(client_task, server.serve());
-    assert!(counter_obj.unwrap().is_none());
+    let (_, (counter_obj_opt, res)) = tokio::join!(client_task, server.serve());
+    res.unwrap();
+    assert!(counter_obj_opt.is_none());
 }
 
 #[cfg_attr(not(feature = "js"), tokio::test)]
@@ -128,8 +129,9 @@ async fn simple_plus() {
         assert_eq!(value, 75);
     };
 
-    let (_, counter_obj) = tokio::join!(client_task, server.serve());
-    assert!(counter_obj.unwrap().is_none());
+    let (_, (counter_obj_opt, res)) = tokio::join!(client_task, server.serve());
+    res.unwrap();
+    assert!(counter_obj_opt.is_none());
 }
 
 #[cfg_attr(not(feature = "js"), tokio::test)]
@@ -144,7 +146,9 @@ async fn simple_spawn() {
     let counter_obj = CounterObj::new();
     let (server, client) = CounterServer::new(counter_obj, 1);
     let server_task = remoc::exec::spawn(async move {
-        let counter_obj = server.serve().await.unwrap().unwrap();
+        let (counter_obj_opt, res) = server.serve().await;
+        res.unwrap();
+        let counter_obj = counter_obj_opt.unwrap();
         println!("Server done");
 
         let value = counter_obj.value;

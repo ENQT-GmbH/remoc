@@ -114,6 +114,6 @@ async fn simple() {
         assert_eq!(client.value().await.unwrap(), 65);
     };
 
-    let ((), res) = tokio::join!(client_task, server.serve());
+    let ((), (_counter_obj, res)) = tokio::join!(client_task, server.serve());
     res.unwrap();
 }

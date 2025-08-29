@@ -504,14 +504,14 @@ impl TraitDef {
                     )
                 }
 
-                async fn serve(self) -> ::std::result::Result<Option<Target>, ::remoc::rtc::ServeError> {
+                async fn serve(self) -> (::std::option::Option<Target>, ::std::result::Result<(), ::remoc::rtc::ServeError>) {
                     let Self { mut target, mut req_rx, on_req_receive_error } = self;
                     let (err_tx, mut err_rx) = ::remoc::rtc::reply_error_channel();
 
-                    let ret = loop {
+                    let target_opt = loop {
                         ::remoc::rtc::select! {
                             biased;
-                            Some(err) = err_rx.recv() => return Err(err.into()),
+                            Some(err) = err_rx.recv() => return (Some(target), Err(err.into())),
                             req = req_rx.recv() => {
                                 match req {
                                     Ok(Some(::remoc::rtc::Req::Value(req))) => {
@@ -526,17 +526,23 @@ impl TraitDef {
                                     },
                                     Ok(None) => break Some(target),
                                     Err(err) if err.is_final() => break Some(target),
-                                    Err(err) => on_req_receive_error.handle(err).await?,
+                                    Err(err) => {
+                                        if let Err(err) = on_req_receive_error.handle(err).await {
+                                            return (Some(target), Err(err));
+                                        }
+                                    },
                                 }
                             }
                         }
                     };
 
                     drop(err_tx);
-                    match err_rx.recv().await {
-                        None => Ok(ret),
+                    let res = match err_rx.recv().await {
+                        None => Ok(()),
                         Some(err) => Err(err.into()),
-                    }
+                    };
+
+                    (target_opt, res)
                 }
             }
         }

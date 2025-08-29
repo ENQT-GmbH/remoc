@@ -465,7 +465,7 @@ where
     /// Serving ends when the client is dropped or a method taking self by value
     /// is called. In the first case, the target object is returned and, in the
     /// second case, None is returned.
-    fn serve(self) -> impl Future<Output = Result<Option<Target>, ServeError>> + Send;
+    fn serve(self) -> impl Future<Output = (Option<Target>, Result<(), ServeError>)> + Send;
 }
 
 /// A server of a remotable trait taking the target object by reference.
