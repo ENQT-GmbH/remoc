@@ -2,7 +2,7 @@
 
 use std::{
     any::Any,
-    collections::{hash_map::Entry, HashMap},
+    collections::{HashMap, hash_map::Entry},
     fmt,
     sync::Arc,
 };

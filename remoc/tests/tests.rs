@@ -9,7 +9,7 @@ use std::{net::Ipv4Addr, sync::Once};
 use tokio::net::{TcpListener, TcpStream};
 
 #[cfg(feature = "rch")]
-use remoc::{rch::base, RemoteSend};
+use remoc::{RemoteSend, rch::base};
 
 use remoc::exec;
 
@@ -47,7 +47,7 @@ pub fn init() {
 
 #[macro_export]
 macro_rules! loop_transport {
-    ($queue_length:expr, $a_tx:ident, $a_rx:ident, $b_tx:ident, $b_rx:ident) => {
+    ($queue_length:expr_2021, $a_tx:ident, $a_rx:ident, $b_tx:ident, $b_rx:ident) => {
         let ($a_tx, $b_rx) = futures::channel::mpsc::channel::<bytes::Bytes>($queue_length);
         let ($b_tx, $a_rx) = futures::channel::mpsc::channel::<bytes::Bytes>($queue_length);
 
@@ -66,8 +66,8 @@ where
 }
 
 #[cfg(feature = "rch")]
-pub async fn droppable_loop_channel<T>(
-) -> ((base::Sender<T>, base::Receiver<T>), (base::Sender<T>, base::Receiver<T>), tokio::sync::mpsc::Receiver<()>)
+pub async fn droppable_loop_channel<T>()
+-> ((base::Sender<T>, base::Receiver<T>), (base::Sender<T>, base::Receiver<T>), tokio::sync::mpsc::Receiver<()>)
 where
     T: RemoteSend,
 {

@@ -11,8 +11,8 @@ mod receiver;
 mod sender;
 
 use super::{
-    interlock::{Interlock, Location},
     DEFAULT_MAX_ITEM_SIZE,
+    interlock::{Interlock, Location},
 };
 pub use receiver::{Receiver, RecvError};
 pub use sender::{SendError, SendErrorKind, Sender};

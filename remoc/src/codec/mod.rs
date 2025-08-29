@@ -36,7 +36,7 @@
 //! referencing Remoc in your `Cargo.toml`.
 //!
 
-use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de::DeserializeOwned};
 use std::{
     error::Error,
     fmt,

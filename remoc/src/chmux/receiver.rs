@@ -9,10 +9,10 @@ use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::ReusableBoxFuture;
 
 use super::{
+    AnyStorage, ForwardError, PortAllocator, Request, Sender,
     credit::{ChannelCreditReturner, UsedCredit},
     forward,
     mux::PortEvt,
-    AnyStorage, ForwardError, PortAllocator, Request, Sender,
 };
 use crate::exec;
 
@@ -233,11 +233,7 @@ impl From<DataBuf> for BytesMut {
 
 impl From<DataBuf> for Bytes {
     fn from(mut data: DataBuf) -> Self {
-        if data.bufs.len() == 1 {
-            data.bufs.pop_front().unwrap()
-        } else {
-            BytesMut::from(data).into()
-        }
+        if data.bufs.len() == 1 { data.bufs.pop_front().unwrap() } else { BytesMut::from(data).into() }
     }
 }
 
@@ -419,7 +415,7 @@ impl Receiver {
             match &mut self.receiving {
                 // Chunks from receive operation started by recv_any available.
                 Receiving::Chunks { chunks, .. } if !chunks.is_empty() => {
-                    return Ok(Some(chunks.pop_front().unwrap()))
+                    return Ok(Some(chunks.pop_front().unwrap()));
                 }
 
                 // Previous received chunk was last of message.

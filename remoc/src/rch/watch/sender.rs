@@ -4,13 +4,13 @@ use std::{error::Error, fmt, marker::PhantomData, sync::Mutex};
 
 use super::{
     super::{
-        base::{self, PortDeserializer, PortSerializer},
         RemoteSendError, SendErrorExt,
+        base::{self, PortDeserializer, PortSerializer},
     },
-    receiver::RecvError,
     Receiver, Ref,
+    receiver::RecvError,
 };
-use crate::{chmux, codec, RemoteSend};
+use crate::{RemoteSend, chmux, codec};
 
 /// An error occurred during sending over an mpsc channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]

@@ -5,7 +5,7 @@ use tokio::{
     net::{UnixListener, UnixStream},
     time::sleep,
 };
-use tokio_util::codec::{length_delimited::LengthDelimitedCodec, FramedRead, FramedWrite};
+use tokio_util::codec::{FramedRead, FramedWrite, length_delimited::LengthDelimitedCodec};
 
 use remoc::{chmux, exec};
 

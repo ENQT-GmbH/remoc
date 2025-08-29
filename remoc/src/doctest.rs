@@ -56,7 +56,6 @@ pub async fn client_server_bidir<T1, T2, ClientFut, ServerFut>(
 ) where
     T1: crate::RemoteSend,
     T2: crate::RemoteSend,
-
     ClientFut: Future<Output = ()> + Send + 'static,
     ServerFut: Future<Output = ()> + Send + 'static,
 {

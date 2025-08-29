@@ -1,4 +1,4 @@
-use futures::{future, SinkExt, StreamExt};
+use futures::{SinkExt, StreamExt, future};
 use rand::Rng;
 use std::time::Duration;
 
@@ -10,9 +10,9 @@ use remoc::{
     codec,
     exec::{self, time::sleep},
     rch::{
+        ClosedReason, SendResultExt, SendingError,
         base::{self, SendErrorKind},
         mpsc::{self, SendError},
-        ClosedReason, SendResultExt, SendingError,
     },
 };
 

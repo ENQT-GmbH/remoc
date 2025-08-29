@@ -7,7 +7,7 @@ pub mod runtime {
 pub mod task {
     use std::future::Future;
 
-    pub use tokio::task::{spawn, spawn_blocking, JoinError, JoinHandle};
+    pub use tokio::task::{JoinError, JoinHandle, spawn, spawn_blocking};
 
     /// Runs a future to completion.
     #[track_caller]
@@ -18,7 +18,7 @@ pub mod task {
 }
 
 pub mod time {
-    pub use tokio::time::{sleep, timeout, Sleep, Timeout};
+    pub use tokio::time::{Sleep, Timeout, sleep, timeout};
 
     pub mod error {
         pub use tokio::time::error::Elapsed;

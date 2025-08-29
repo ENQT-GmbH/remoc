@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt};
 
-use super::super::{mpsc, ClosedReason, SendErrorExt, Sending};
-use crate::{codec, RemoteSend};
+use super::super::{ClosedReason, SendErrorExt, Sending, mpsc};
+use crate::{RemoteSend, codec};
 
 /// An error occurred during sending over an mpsc channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]

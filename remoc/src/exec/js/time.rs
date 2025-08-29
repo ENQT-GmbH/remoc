@@ -22,7 +22,7 @@ mod js {
         task::{Context, Poll, Waker},
         time::Duration,
     };
-    use wasm_bindgen::{prelude::*, JsCast};
+    use wasm_bindgen::{JsCast, prelude::*};
     use web_sys::{Window, WorkerGlobalScope};
 
     /// JavaScript sleep.
@@ -132,7 +132,7 @@ pub use js::JsSleep as Sleep;
 /// Thread-safe sleep.
 #[cfg(all(target_family = "wasm", target_feature = "atomics"))]
 mod threads {
-    use futures::{ready, FutureExt};
+    use futures::{FutureExt, ready};
     use std::{
         fmt,
         future::Future,

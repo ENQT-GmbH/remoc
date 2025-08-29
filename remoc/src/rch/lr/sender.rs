@@ -1,5 +1,5 @@
 use futures::FutureExt;
-use serde::{de::DeserializeOwned, ser, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned, ser};
 use std::{
     error::Error,
     fmt,
@@ -9,8 +9,8 @@ use std::{
 
 use super::{
     super::{
-        base::{self, PortDeserializer, PortSerializer},
         ConnectError, SendErrorExt,
+        base::{self, PortDeserializer, PortSerializer},
     },
     Interlock, Location,
 };

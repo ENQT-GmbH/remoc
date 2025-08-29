@@ -1,6 +1,6 @@
 //! Binary channel with remotely sendable and forwardable sender.
 
-use serde::{ser, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, ser};
 use std::sync::Mutex;
 use tracing::Instrument;
 

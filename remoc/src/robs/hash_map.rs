@@ -28,10 +28,10 @@ use std::{
     ops::{Deref, DerefMut},
     sync::Arc,
 };
-use tokio::sync::{oneshot, watch, RwLock, RwLockReadGuard};
+use tokio::sync::{RwLock, RwLockReadGuard, oneshot, watch};
 use tracing::Instrument;
 
-use super::{default_on_err, send_event, ChangeNotifier, ChangeSender, RecvError, SendError};
+use super::{ChangeNotifier, ChangeSender, RecvError, SendError, default_on_err, send_event};
 use crate::{exec, prelude::*};
 
 /// A hash map change event.

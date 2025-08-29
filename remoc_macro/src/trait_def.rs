@@ -1,15 +1,15 @@
 //! Trait parsing and client and server generation.
 
 use proc_macro2::TokenStream;
-use quote::{format_ident, quote, TokenStreamExt};
+use quote::{TokenStreamExt, format_ident, quote};
 use std::{collections::HashSet, str::FromStr};
 use syn::{
-    braced,
+    Attribute, GenericParam, Generics, Ident, Lifetime, LifetimeParam, Token, TypeParam, TypeParamBound,
+    Visibility, WhereClause, braced,
     meta::ParseNestedMeta,
     parse::{Parse, ParseStream},
     punctuated::Punctuated,
-    token, Attribute, GenericParam, Generics, Ident, Lifetime, LifetimeParam, Token, TypeParam, TypeParamBound,
-    Visibility, WhereClause,
+    token,
 };
 
 use crate::{

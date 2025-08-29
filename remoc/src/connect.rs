@@ -1,7 +1,7 @@
 //! Initial connection functions.
 
 use bytes::Bytes;
-use futures::{future::BoxFuture, Future, FutureExt, Sink, Stream, TryStreamExt};
+use futures::{Future, FutureExt, Sink, Stream, TryStreamExt, future::BoxFuture};
 use std::{
     convert::TryInto,
     error::Error,
@@ -13,10 +13,10 @@ use tokio::io::{AsyncRead, AsyncWrite, BufReader, BufWriter};
 use tokio_util::codec::LengthDelimitedCodec;
 
 use crate::{
+    RemoteSend,
     chmux::{ChMux, ChMuxError},
     codec,
     rch::base,
-    RemoteSend,
 };
 
 /// Error occurred during establishing a connection over a physical transport.

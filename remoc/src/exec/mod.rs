@@ -19,7 +19,7 @@ pub use task::spawn;
 
 /// Whether threads are available and working on this platform.
 pub async fn are_threads_available() -> bool {
-    use tokio::sync::{oneshot, OnceCell};
+    use tokio::sync::{OnceCell, oneshot};
 
     static AVAILABLE: OnceCell<bool> = OnceCell::const_new();
     *AVAILABLE

@@ -1,9 +1,8 @@
 use bytes::Bytes;
 use futures::{
-    future, ready,
+    Future, FutureExt, future, ready,
     sink::Sink,
     task::{Context, Poll},
-    Future, FutureExt,
 };
 use std::{
     error::Error,
@@ -11,18 +10,18 @@ use std::{
     mem::size_of,
     pin::Pin,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc, Weak,
+        atomic::{AtomicBool, Ordering},
     },
 };
-use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::sync::{Mutex, mpsc, oneshot};
 use tokio_util::sync::ReusableBoxFuture;
 
 use super::{
+    AnyStorage, Connect, ConnectError, PortAllocator, PortReq,
     client::ConnectResponse,
     credit::{AssignedCredits, CreditUser},
     mux::PortEvt,
-    AnyStorage, Connect, ConnectError, PortAllocator, PortReq,
 };
 use crate::exec;
 
@@ -161,21 +160,22 @@ impl fmt::Debug for Closed {
 
 impl Closed {
     fn new(hangup_notify: &Weak<std::sync::Mutex<Option<Vec<oneshot::Sender<()>>>>>) -> Self {
-        if let Some(hangup_notify) = hangup_notify.upgrade() {
-            if let Some(notifiers) = hangup_notify.lock().unwrap().as_mut() {
-                let (tx, rx) = oneshot::channel();
-                notifiers.push(tx);
-                Self {
-                    fut: async move {
-                        let _ = rx.await;
+        match hangup_notify.upgrade() {
+            Some(hangup_notify) => {
+                if let Some(notifiers) = hangup_notify.lock().unwrap().as_mut() {
+                    let (tx, rx) = oneshot::channel();
+                    notifiers.push(tx);
+                    Self {
+                        fut: async move {
+                            let _ = rx.await;
+                        }
+                        .boxed(),
                     }
-                    .boxed(),
+                } else {
+                    Self { fut: future::ready(()).boxed() }
                 }
-            } else {
-                Self { fut: future::ready(()).boxed() }
             }
-        } else {
-            Self { fut: future::ready(()).boxed() }
+            _ => Self { fut: future::ready(()).boxed() },
         }
     }
 }

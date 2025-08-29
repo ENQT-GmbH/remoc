@@ -3,14 +3,13 @@ use std::fmt;
 use tracing::Instrument;
 
 use super::{
-    msg::{ReadRequest, Value, WriteRequest},
     ReadLock, RwLock,
+    msg::{ReadRequest, Value, WriteRequest},
 };
 use crate::{
-    codec, exec,
+    RemoteSend, codec, exec,
     exec::task::JoinHandle,
     rch::{mpsc, watch},
-    RemoteSend,
 };
 
 /// The owner of [RwLock]s holding a shared value.

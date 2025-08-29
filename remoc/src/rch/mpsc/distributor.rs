@@ -3,9 +3,9 @@ use tracing::Instrument;
 
 use super::{
     super::{DEFAULT_BUFFER, DEFAULT_MAX_ITEM_SIZE},
-    channel, Permit, Receiver, Sender,
+    Permit, Receiver, Sender, channel,
 };
-use crate::{codec, exec, RemoteSend};
+use crate::{RemoteSend, codec, exec};
 
 struct DistributedReceiver<T, Codec, const BUFFER: usize = DEFAULT_BUFFER> {
     tx: Sender<T, Codec, BUFFER>,

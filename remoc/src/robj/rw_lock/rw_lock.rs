@@ -9,9 +9,8 @@ use tracing::Instrument;
 
 use super::msg::{ReadRequest, Value, WriteRequest};
 use crate::{
-    chmux, codec, exec,
+    RemoteSend, chmux, codec, exec,
     rch::{base, mpsc, oneshot},
-    RemoteSend,
 };
 
 /// An error occurred during locking of an RwLock value for reading or writing.
@@ -133,7 +132,7 @@ where
             let cache_opt = self.cache.read().await;
             match &*cache_opt {
                 Some(cache) if cache.is_valid() => {
-                    return Ok(tokio::sync::RwLockReadGuard::map(cache_opt, |co| co.as_ref().unwrap()))
+                    return Ok(tokio::sync::RwLockReadGuard::map(cache_opt, |co| co.as_ref().unwrap()));
                 }
                 _ => (),
             }

@@ -1,9 +1,9 @@
 use bytes::{Buf, Bytes};
 use futures::{
-    future::{BoxFuture, FutureExt},
     Future,
+    future::{BoxFuture, FutureExt},
 };
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::{
     cell::RefCell,
     collections::HashMap,
@@ -15,7 +15,7 @@ use std::{
 };
 use tracing::Instrument;
 
-use super::{super::DEFAULT_MAX_ITEM_SIZE, io::ChannelBytesReader, BIG_DATA_CHUNK_QUEUE};
+use super::{super::DEFAULT_MAX_ITEM_SIZE, BIG_DATA_CHUNK_QUEUE, io::ChannelBytesReader};
 use crate::{
     chmux::{self, AnyStorage, Received, RecvChunkError},
     codec::{self, DeserializationError, StreamingUnavailable},
@@ -234,10 +234,10 @@ where
                         self.recved = Some(self.receiver.recv_any().await?);
                     }
 
-                    if let Some(Some(Received::Chunks)) = &self.recved {
-                        if !exec::are_threads_available().await {
-                            return Err(RecvError::Deserialize(DeserializationError::new(StreamingUnavailable)));
-                        }
+                    if let Some(Some(Received::Chunks)) = &self.recved
+                        && !exec::are_threads_available().await
+                    {
+                        return Err(RecvError::Deserialize(DeserializationError::new(StreamingUnavailable)));
                     }
 
                     self.data = match self.recved.take().unwrap() {
@@ -297,10 +297,11 @@ where
                         // Feed received data chunks to deserialization thread.
                         if let Some(tx) = &tx {
                             let res = loop {
-                                let tx_permit = if let Ok(tx_permit) = tx.reserve().await {
-                                    tx_permit
-                                } else {
-                                    break Ok(());
+                                let tx_permit = match tx.reserve().await {
+                                    Ok(tx_permit) => tx_permit,
+                                    _ => {
+                                        break Ok(());
+                                    }
                                 };
 
                                 match self.receiver.recv_chunk().await {
@@ -351,7 +352,7 @@ where
                                 match err.try_into_panic() {
                                     Ok(payload) => panic::resume_unwind(payload),
                                     Err(err) => {
-                                        return Err(RecvError::Deserialize(DeserializationError::new(err)))
+                                        return Err(RecvError::Deserialize(DeserializationError::new(err)));
                                     }
                                 }
                             }

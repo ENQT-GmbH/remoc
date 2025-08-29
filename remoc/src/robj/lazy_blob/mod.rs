@@ -58,9 +58,8 @@
 
 use bytes::Bytes;
 use futures::{
-    future,
+    FutureExt, future,
     future::{BoxFuture, MaybeDone},
-    FutureExt,
 };
 use serde::{Deserialize, Serialize};
 use std::{convert::TryFrom, fmt, pin::Pin, sync::Arc};
@@ -71,7 +70,7 @@ use crate::{
     chmux,
     chmux::DataBuf,
     codec, exec,
-    rch::{mpsc, ConnectError},
+    rch::{ConnectError, mpsc},
 };
 
 mod fw_bin;
@@ -214,8 +213,14 @@ where
                         let data = data.clone();
                         exec::spawn(
                             async move {
-                                let bin_tx = if let Some(tx) = fw_tx.into_inner() { tx } else { return };
-                                let mut tx = if let Ok(tx) = bin_tx.into_inner().await { tx } else { return };
+                                let bin_tx = match fw_tx.into_inner() {
+                                    Some(tx) => tx,
+                                    _ => return,
+                                };
+                                let mut tx = match bin_tx.into_inner().await {
+                                    Ok(tx) => tx,
+                                    _ => return,
+                                };
                                 let _ = tx.send(data).await;
                             }
                             .in_current_span(),

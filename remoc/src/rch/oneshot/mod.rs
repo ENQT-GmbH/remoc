@@ -39,10 +39,10 @@
 //! ```
 //!
 
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 
 use super::mpsc;
-use crate::{codec, RemoteSend};
+use crate::{RemoteSend, codec};
 
 mod receiver;
 mod sender;

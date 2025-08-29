@@ -10,7 +10,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{codec, RemoteSend};
+use crate::{RemoteSend, codec};
 
 mod receiver;
 mod sender;

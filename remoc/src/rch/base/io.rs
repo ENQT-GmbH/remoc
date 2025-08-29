@@ -17,11 +17,7 @@ impl LimitedBytesWriter {
     /// Returns the write buffer, if no overflow has occurred.
     /// Otherwise None is returned.
     pub fn into_inner(self) -> Option<BytesMut> {
-        if self.overflown {
-            None
-        } else {
-            Some(self.buf)
-        }
+        if self.overflown { None } else { Some(self.buf) }
     }
 
     /// True if limit has been reached.

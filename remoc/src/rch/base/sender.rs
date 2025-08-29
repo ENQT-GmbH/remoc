@@ -1,9 +1,9 @@
 use bytes::BytesMut;
 use futures::{
-    future::{BoxFuture, FutureExt},
     Future,
+    future::{BoxFuture, FutureExt},
 };
-use serde::{ser, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, ser};
 use std::{
     cell::RefCell,
     error::Error,
@@ -17,9 +17,9 @@ use std::{
 use tracing::Instrument;
 
 use super::{
-    super::{SendErrorExt, DEFAULT_MAX_ITEM_SIZE},
-    io::{ChannelBytesWriter, LimitedBytesWriter},
+    super::{DEFAULT_MAX_ITEM_SIZE, SendErrorExt},
     BIG_DATA_CHUNK_QUEUE, BIG_DATA_LIMIT,
+    io::{ChannelBytesWriter, LimitedBytesWriter},
 };
 use crate::{
     chmux::{self, AnyStorage, PortReq},

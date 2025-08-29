@@ -1,13 +1,12 @@
-use futures::{future, pin_mut, Future};
+use futures::{Future, future, pin_mut};
 use serde::{Deserialize, Serialize};
 use std::{fmt, sync::Arc};
 use tracing::Instrument;
 
-use super::{msg::RFnRequest, CallError};
+use super::{CallError, msg::RFnRequest};
 use crate::{
-    codec, exec,
+    RemoteSend, codec, exec,
     rch::{mpsc, oneshot},
-    RemoteSend,
 };
 
 /// Provides a remotely callable async [Fn] function.

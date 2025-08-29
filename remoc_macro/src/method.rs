@@ -1,15 +1,14 @@
 //! Method parsing and generation.
 
 use proc_macro2::TokenStream;
-use quote::{quote, TokenStreamExt};
+use quote::{TokenStreamExt, quote};
 use syn::{
-    braced, parenthesized,
+    Attribute, Block, FnArg, GenericArgument, Generics, Ident, Pat, PatType, Path, PathArguments, ReturnType,
+    Stmt, Token, Type, TypeParamBound, braced, parenthesized,
     parse::{Parse, ParseStream},
     punctuated::Punctuated,
     spanned::Spanned,
     token::{self, Comma},
-    Attribute, Block, FnArg, GenericArgument, Generics, Ident, Pat, PatType, Path, PathArguments, ReturnType,
-    Stmt, Token, Type, TypeParamBound,
 };
 
 use crate::util::{attribute_tokens, to_pascal_case};
@@ -117,11 +116,11 @@ impl Parse for TraitMethod {
         // Check for no_cancel attribute.
         let mut cancel = true;
         attrs.retain(|attr| {
-            if let Some(attr) = attr.path().get_ident() {
-                if *attr == "no_cancel" {
-                    cancel = false;
-                    return false;
-                }
+            if let Some(attr) = attr.path().get_ident()
+                && *attr == "no_cancel"
+            {
+                cancel = false;
+                return false;
             }
             true
         });
@@ -145,11 +144,7 @@ impl Parse for TraitMethod {
                 // self, &self or &mut self receiver
                 FnArg::Receiver(recv) => {
                     self_ref = Some(if recv.reference.is_some() {
-                        if recv.mutability.is_some() {
-                            SelfRef::RefMut
-                        } else {
-                            SelfRef::Ref
-                        }
+                        if recv.mutability.is_some() { SelfRef::RefMut } else { SelfRef::Ref }
                     } else {
                         SelfRef::Value
                     });

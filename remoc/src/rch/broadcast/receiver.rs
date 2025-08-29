@@ -1,4 +1,4 @@
-use futures::{ready, Stream};
+use futures::{Stream, ready};
 use serde::{Deserialize, Serialize};
 use std::{
     convert::TryFrom,
@@ -10,10 +10,10 @@ use std::{
 use tokio_util::sync::ReusableBoxFuture;
 
 use super::{
-    super::{base, mpsc, DEFAULT_BUFFER, DEFAULT_MAX_ITEM_SIZE},
+    super::{DEFAULT_BUFFER, DEFAULT_MAX_ITEM_SIZE, base, mpsc},
     BroadcastMsg,
 };
-use crate::{chmux, codec, RemoteSend};
+use crate::{RemoteSend, chmux, codec};
 
 /// An error occurred during receiving over a broadcast channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]

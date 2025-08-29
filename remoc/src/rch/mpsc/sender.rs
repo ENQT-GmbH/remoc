@@ -7,19 +7,20 @@ use std::{
     marker::PhantomData,
     pin::Pin,
     sync::{Arc, Weak},
-    task::{ready, Context, Poll},
+    task::{Context, Poll, ready},
 };
 use tokio_util::sync::ReusableBoxFuture;
 
 use super::{
     super::{
+        ClosedReason, DEFAULT_BUFFER, DEFAULT_MAX_ITEM_SIZE, RemoteSendError, SendErrorExt, Sending,
         base::{self, PortDeserializer, PortSerializer},
-        ClosedReason, RemoteSendError, SendErrorExt, Sending, DEFAULT_BUFFER, DEFAULT_MAX_ITEM_SIZE,
     },
+    SendReq,
     receiver::RecvError,
-    send_req, SendReq,
+    send_req,
 };
-use crate::{chmux, codec, exec, rch::SendingError, RemoteSend};
+use crate::{RemoteSend, chmux, codec, exec, rch::SendingError};
 
 /// An error occurred during sending over an mpsc channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -423,14 +424,15 @@ where
             return Err(SendError::from_remote_send_error(err.clone(), ()));
         }
 
-        if let Some(tx) = self.tx.upgrade() {
-            let tx = (*tx).clone();
-            match tx.reserve_owned().await {
-                Ok(permit) => Ok(Permit(permit)),
-                Err(_) => Err(SendError::Closed(())),
+        match self.tx.upgrade() {
+            Some(tx) => {
+                let tx = (*tx).clone();
+                match tx.reserve_owned().await {
+                    Ok(permit) => Ok(Permit(permit)),
+                    Err(_) => Err(SendError::Closed(())),
+                }
             }
-        } else {
-            Err(SendError::Closed(()))
+            _ => Err(SendError::Closed(())),
         }
     }
 

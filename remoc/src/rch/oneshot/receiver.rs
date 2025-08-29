@@ -1,5 +1,5 @@
-use futures::{ready, Future};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use futures::{Future, ready};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::{
     convert::TryFrom,
     error::Error,
@@ -8,8 +8,8 @@ use std::{
     task::{Context, Poll},
 };
 
-use super::super::{base, mpsc, DEFAULT_MAX_ITEM_SIZE};
-use crate::{chmux, codec, RemoteSend};
+use super::super::{DEFAULT_MAX_ITEM_SIZE, base, mpsc};
+use crate::{RemoteSend, chmux, codec};
 
 /// An error occurred during receiving over an oneshot channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]

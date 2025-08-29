@@ -4,7 +4,7 @@ use futures::{
     task::{Context, Poll},
 };
 use std::{error::Error, fmt, pin::Pin, sync::Arc};
-use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::sync::{Mutex, mpsc, oneshot};
 use tokio_util::sync::ReusableBoxFuture;
 
 use super::{

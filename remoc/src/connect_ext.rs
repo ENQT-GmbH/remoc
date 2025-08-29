@@ -10,7 +10,7 @@ use crate::{
 };
 
 #[cfg(feature = "default-codec-set")]
-use crate::{connect::Connect, rch::base, RemoteSend};
+use crate::{RemoteSend, connect::Connect, rch::base};
 
 /// Error occurred during establishing a providing connection.
 #[cfg_attr(docsrs, doc(cfg(feature = "rch")))]

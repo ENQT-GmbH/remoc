@@ -44,17 +44,16 @@
 //!
 
 use futures::{
-    future::{self, BoxFuture, MaybeDone},
     Future, FutureExt,
+    future::{self, BoxFuture, MaybeDone},
 };
 use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt, marker::PhantomData, ops::Deref, pin::Pin, sync::Arc};
 use tokio::sync::Mutex;
 
 use crate::{
-    chmux, codec, exec,
+    RemoteSend, chmux, codec, exec,
     rch::{base, mpsc, oneshot},
-    RemoteSend,
 };
 
 /// An error occurred during fetching a lazily transmitted value.

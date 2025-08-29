@@ -1,4 +1,4 @@
-use futures::{ready, FutureExt, Stream};
+use futures::{FutureExt, Stream, ready};
 use serde::{Deserialize, Serialize};
 use std::{
     error::Error,
@@ -12,12 +12,12 @@ use tokio_util::sync::ReusableBoxFuture;
 
 use super::{
     super::{
+        DEFAULT_MAX_ITEM_SIZE, RemoteSendError,
         base::{self, PortDeserializer, PortSerializer},
-        RemoteSendError, DEFAULT_MAX_ITEM_SIZE,
     },
     Ref,
 };
-use crate::{chmux, codec, RemoteSend};
+use crate::{RemoteSend, chmux, codec};
 
 /// An error occurred during receiving over a watch channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]

@@ -1,22 +1,22 @@
-use futures::{ready, Future, FutureExt};
+use futures::{Future, FutureExt, ready};
 use std::{
     clone::Clone,
     error::Error,
     fmt,
     pin::Pin,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     task::{Context, Poll},
 };
-use tokio::sync::{mpsc, oneshot, OwnedSemaphorePermit, Semaphore};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, oneshot};
 
 use super::{
+    PortReq,
     port_allocator::{PortAllocator, PortNumber},
     receiver::Receiver,
     sender::Sender,
-    PortReq,
 };
 use crate::{exec, exec::task::JoinHandle};
 

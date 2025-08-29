@@ -19,21 +19,21 @@
 //! vector or process each change event individually using [ListSubscription::recv].
 //!
 
-use futures::{future, Future, FutureExt};
+use futures::{Future, FutureExt, future};
 use serde::{Deserialize, Serialize};
 use std::{
     fmt,
     marker::PhantomData,
     ops::Deref,
     sync::{
-        atomic::{AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicUsize, Ordering},
     },
 };
-use tokio::sync::{mpsc, oneshot, watch, Mutex, OwnedMutexGuard, RwLock, RwLockReadGuard};
+use tokio::sync::{Mutex, OwnedMutexGuard, RwLock, RwLockReadGuard, mpsc, oneshot, watch};
 use tracing::Instrument;
 
-use super::{default_on_err, ChangeNotifier, ChangeSender, RecvError, SendError};
+use super::{ChangeNotifier, ChangeSender, RecvError, SendError, default_on_err};
 use crate::{exec, prelude::*};
 
 /// A list change event.
@@ -122,7 +122,7 @@ where
     /// If no subscribers are currently present, this return immediately.
     /// This also returns when [done](ObservableList::done) has been called and
     /// all subscribers have received all elements of the list.
-    pub fn closed(&self) -> impl Future<Output = ()> {
+    pub fn closed(&self) -> impl Future<Output = ()> + use<T, Codec> {
         let (tx, rx) = oneshot::channel();
         self.req(DistReq::NotifyNoSubscribers(tx));
         async move {
@@ -254,7 +254,7 @@ where
     /// If no subscribers are currently present, this return immediately.
     /// This also returns when [done](Self::done) has been called and
     /// all subscribers have received all elements of the list.
-    pub fn closed(&self) -> impl Future<Output = ()> {
+    pub fn closed(&self) -> impl Future<Output = ()> + use<T, Codec> {
         self.dist.closed()
     }
 

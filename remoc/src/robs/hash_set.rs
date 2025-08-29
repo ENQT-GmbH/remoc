@@ -20,10 +20,10 @@
 
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, fmt, hash::Hash, mem::take, ops::Deref, sync::Arc};
-use tokio::sync::{oneshot, watch, RwLock, RwLockReadGuard};
+use tokio::sync::{RwLock, RwLockReadGuard, oneshot, watch};
 use tracing::Instrument;
 
-use super::{default_on_err, send_event, ChangeNotifier, ChangeSender, RecvError, SendError};
+use super::{ChangeNotifier, ChangeSender, RecvError, SendError, default_on_err, send_event};
 use crate::{exec, prelude::*};
 
 /// A hash set change event.
@@ -91,7 +91,6 @@ impl<T, Codec> From<ObservableHashSet<T, Codec>> for HashSet<T> {
 impl<T, Codec> Default for ObservableHashSet<T, Codec>
 where
     T: Clone + RemoteSend,
-
     Codec: crate::codec::Codec,
 {
     fn default() -> Self {

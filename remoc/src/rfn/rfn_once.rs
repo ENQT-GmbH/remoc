@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use tracing::Instrument;
 
-use super::{msg::RFnRequest, CallError};
-use crate::{codec, exec, rch::oneshot, RemoteSend};
+use super::{CallError, msg::RFnRequest};
+use crate::{RemoteSend, codec, exec, rch::oneshot};
 
 /// Provides a remotely callable async [FnOnce] function.
 ///

@@ -231,9 +231,8 @@ use std::{
 use tokio_util::sync::ReusableBoxFuture;
 
 use crate::{
-    chmux, codec, exec,
-    rch::{base, mpsc, oneshot, SendingError, SendingErrorKind},
-    RemoteSend,
+    RemoteSend, chmux, codec, exec,
+    rch::{SendingError, SendingErrorKind, base, mpsc, oneshot},
 };
 
 /// Denotes a trait as remotely callable and generate a client and servers for it.
@@ -634,11 +633,11 @@ pub use serde::{Deserialize, Serialize};
 #[doc(hidden)]
 pub use tokio::select;
 #[doc(hidden)]
+pub use tokio::sync::RwLock as LocalRwLock;
+#[doc(hidden)]
 pub use tokio::sync::broadcast as local_broadcast;
 #[doc(hidden)]
 pub use tokio::sync::mpsc as local_mpsc;
-#[doc(hidden)]
-pub use tokio::sync::RwLock as LocalRwLock;
 #[doc(hidden)]
 pub type ReplyErrorSender = tokio::sync::mpsc::Sender<SendingErrorKind>;
 #[doc(hidden)]

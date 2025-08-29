@@ -1,4 +1,4 @@
-use futures::{future::BoxFuture, FutureExt};
+use futures::{FutureExt, future::BoxFuture};
 use std::{
     mem,
     sync::{Arc, Mutex, Weak},
@@ -8,7 +8,7 @@ use tokio::sync::{
     oneshot,
 };
 
-use super::{mux::PortEvt, ChMuxError, SendError};
+use super::{ChMuxError, SendError, mux::PortEvt};
 
 // ===========================================================================
 // Credit accounting for sending data
@@ -54,11 +54,11 @@ impl AssignedCredits {
 
 impl Drop for AssignedCredits {
     fn drop(&mut self) {
-        if self.port > 0 {
-            if let Some(port) = self.port_inner.upgrade() {
-                let mut port = port.lock().unwrap();
-                port.credits += self.port;
-            }
+        if self.port > 0
+            && let Some(port) = self.port_inner.upgrade()
+        {
+            let mut port = port.lock().unwrap();
+            port.credits += self.port;
         }
     }
 }
@@ -133,10 +133,10 @@ impl CreditUser {
                     None => return Err(SendError::ChMux),
                 };
                 let mut channel = channel.lock().unwrap();
-                if let Some(gracefully) = channel.closed {
-                    if !self.override_graceful_close || !gracefully {
-                        return Err(SendError::Closed { gracefully });
-                    }
+                if let Some(gracefully) = channel.closed
+                    && (!self.override_graceful_close || !gracefully)
+                {
+                    return Err(SendError::Closed { gracefully });
                 }
 
                 if channel.credits >= min_req {
@@ -167,10 +167,10 @@ impl CreditUser {
             None => return Err(SendError::ChMux),
         };
         let mut channel = channel.lock().unwrap();
-        if let Some(gracefully) = channel.closed {
-            if !self.override_graceful_close || !gracefully {
-                return Err(SendError::Closed { gracefully });
-            }
+        if let Some(gracefully) = channel.closed
+            && (!self.override_graceful_close || !gracefully)
+        {
+            return Err(SendError::Closed { gracefully });
         }
 
         if channel.credits >= req {

@@ -10,8 +10,8 @@ use remoc::{
     exec,
     exec::time::timeout,
     rch::{
-        base::{RecvError, SendError, SendErrorKind},
         DEFAULT_MAX_ITEM_SIZE,
+        base::{RecvError, SendError, SendErrorKind},
     },
 };
 

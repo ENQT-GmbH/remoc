@@ -6,8 +6,8 @@ use wasm_bindgen_test::wasm_bindgen_test;
 use remoc::{
     exec::time::sleep,
     robs::{
-        vec::{ObservableVec, VecEvent},
         RecvError,
+        vec::{ObservableVec, VecEvent},
     },
 };
 

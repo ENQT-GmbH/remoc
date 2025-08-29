@@ -8,14 +8,14 @@ use std::{
     mem,
     pin::Pin,
     sync::{Arc, Mutex},
-    task::{ready, Context, Poll},
+    task::{Context, Poll, ready},
 };
 
 use super::{
-    super::{base, mpsc, SendErrorExt, Sending as BaseSending, SendingError},
+    super::{SendErrorExt, Sending as BaseSending, SendingError, base, mpsc},
     BroadcastMsg, Receiver,
 };
-use crate::{chmux, codec, exec, RemoteSend};
+use crate::{RemoteSend, chmux, codec, exec};
 
 /// An error occurred during sending over a broadcast channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]

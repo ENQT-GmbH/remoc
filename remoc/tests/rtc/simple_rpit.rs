@@ -23,7 +23,7 @@ pub trait Counter {
     fn watch(
         &mut self,
     ) -> impl ::core::future::Future<Output = Result<remoc::rch::watch::Receiver<u32>, remoc::rtc::CallError>>
-           + ::core::marker::Send;
+    + ::core::marker::Send;
     #[no_cancel]
     fn increase(
         &mut self, #[serde(default)] by: u32,

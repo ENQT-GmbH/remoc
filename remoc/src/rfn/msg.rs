@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{codec, rch::oneshot, RemoteSend};
+use crate::{RemoteSend, codec, rch::oneshot};
 
 /// Remote function call request.
 #[derive(Serialize, Deserialize)]

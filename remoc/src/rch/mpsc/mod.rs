@@ -46,13 +46,12 @@
 //!
 
 use bytes::Buf;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 
-use super::{base, ClosedReason, RemoteSendError, Sending};
+use super::{ClosedReason, RemoteSendError, Sending, base};
 use crate::{
-    chmux, codec,
+    RemoteSend, chmux, codec,
     rch::{BACKCHANNEL_MSG_CLOSE, BACKCHANNEL_MSG_ERROR},
-    RemoteSend,
 };
 
 mod distributor;
@@ -209,16 +208,14 @@ async fn send_impl<T, Codec>(
                             Err(err) => {
                                 let _ = remote_send_err_tx.send(Some(RemoteSendError::Send(err.kind.clone())));
                                 let _ = closed_tx.send(Some(ClosedReason::Failed));
-                                if let Ok(item) = err.item {
-                                    if let Err(Err(err)) = result_tx.send(Err(base::SendError {
+                                if let Ok(item) = err.item
+                                    && let Err(Err(err)) = result_tx.send(Err(base::SendError {
                                         kind: err.kind,
                                         item,
-                                    })) {
-                                        if err.is_item_specific() {
+                                    }))
+                                        && err.is_item_specific() {
                                             tracing::warn!(%err, "sending over remote channel failed");
                                         }
-                                    }
-                                }
                             }
                         }
                     }

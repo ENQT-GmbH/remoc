@@ -1,4 +1,4 @@
-use futures::{ready, FutureExt, Stream};
+use futures::{FutureExt, Stream, ready};
 use serde::{Deserialize, Serialize};
 use std::{
     convert::TryFrom,
@@ -12,12 +12,12 @@ use std::{
 
 use super::{
     super::{
+        ClosedReason, DEFAULT_BUFFER, DEFAULT_MAX_ITEM_SIZE, RemoteSendError,
         base::{self, PortDeserializer, PortSerializer},
-        ClosedReason, RemoteSendError, DEFAULT_BUFFER, DEFAULT_MAX_ITEM_SIZE,
     },
     Distributor, SendReq,
 };
-use crate::{chmux, codec, exec, RemoteSend};
+use crate::{RemoteSend, chmux, codec, exec};
 
 /// An error occurred during receiving over an mpsc channel.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -460,10 +460,15 @@ impl<T, Codec, const BUFFER: usize, const MAX_ITEM_SIZE: usize> Drop
     fn drop(&mut self) {
         if let Some(inner) = self.inner.take() {
             let mut successor_tx = self.successor_tx.lock().unwrap();
-            if let Some(successor_tx) = successor_tx.take() {
-                let _ = successor_tx.send(inner);
-            } else if !inner.closed {
-                let _ = inner.closed_tx.send(Some(ClosedReason::Dropped));
+            match successor_tx.take() {
+                Some(successor_tx) => {
+                    let _ = successor_tx.send(inner);
+                }
+                _ => {
+                    if !inner.closed {
+                        let _ = inner.closed_tx.send(Some(ClosedReason::Dropped));
+                    }
+                }
             }
         }
     }

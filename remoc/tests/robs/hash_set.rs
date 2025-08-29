@@ -6,8 +6,8 @@ use wasm_bindgen_test::wasm_bindgen_test;
 use remoc::{
     exec::time::sleep,
     robs::{
-        hash_set::{HashSetEvent, ObservableHashSet},
         RecvError,
+        hash_set::{HashSetEvent, ObservableHashSet},
     },
 };
 

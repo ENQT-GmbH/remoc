@@ -1,9 +1,8 @@
 use bytes::Bytes;
 use futures::{
-    future, pin_mut,
+    Future, FutureExt, future, pin_mut,
     sink::{Sink, SinkExt},
     stream::{Stream, StreamExt},
-    Future, FutureExt,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -14,8 +13,8 @@ use std::{
     mem::size_of,
     pin::Pin,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
     task::{Context, Poll},
     time::Duration,
@@ -26,14 +25,14 @@ use tokio::{
 };
 
 use super::{
+    AnyStorage, Cfg, ChMuxError, PROTOCOL_VERSION, PROTOCOL_VERSION_PORT_ID, PortReq,
     client::{Client, ConnectRequest, ConnectResponse},
-    credit::{credit_monitor_pair, credit_send_pair, ChannelCreditMonitor, CreditProvider},
+    credit::{ChannelCreditMonitor, CreditProvider, credit_monitor_pair, credit_send_pair},
     listener::{Listener, RemoteConnectMsg, Request},
     msg::{ExchangedCfg, MultiplexMsg},
     port_allocator::{PortAllocator, PortNumber},
     receiver::{PortReceiveMsg, ReceivedData, ReceivedPortRequests, Receiver},
     sender::Sender,
-    AnyStorage, Cfg, ChMuxError, PortReq, PROTOCOL_VERSION, PROTOCOL_VERSION_PORT_ID,
 };
 use crate::exec::time::{sleep, timeout};
 
@@ -395,7 +394,7 @@ where
             loop {
                 match Self::recv_msg(stream).await {
                     Ok(TransportMsg { msg: MultiplexMsg::Hello { version, cfg }, .. }) => {
-                        break Ok((version, cfg))
+                        break Ok((version, cfg));
                     }
                     Ok(_) => (),
                     Err(ChMuxError::Protocol(_)) => (),
@@ -940,28 +939,30 @@ where
 
             // Port opened response from remote endpoint.
             MultiplexMsg::PortOpened { client_port, server_port } => {
-                if let Some((local_port, PortState::Connecting { response_tx })) =
-                    self.ports.remove_entry(&client_port)
-                {
-                    let (sender, receiver) = self.create_port(local_port, server_port);
-                    let _ = response_tx.send(ConnectResponse::Accepted(sender, receiver));
-                } else {
-                    return Err(protocol_err(format!(
-                        "received PortOpened message for port {client_port} not in connecting state"
-                    )));
+                match self.ports.remove_entry(&client_port) {
+                    Some((local_port, PortState::Connecting { response_tx })) => {
+                        let (sender, receiver) = self.create_port(local_port, server_port);
+                        let _ = response_tx.send(ConnectResponse::Accepted(sender, receiver));
+                    }
+                    _ => {
+                        return Err(protocol_err(format!(
+                            "received PortOpened message for port {client_port} not in connecting state"
+                        )));
+                    }
                 }
             }
 
             // Port open rejected response from remote endpoint.
-            MultiplexMsg::Rejected { client_port, no_ports } => {
-                if let Some(PortState::Connecting { response_tx }) = self.ports.remove(&client_port) {
+            MultiplexMsg::Rejected { client_port, no_ports } => match self.ports.remove(&client_port) {
+                Some(PortState::Connecting { response_tx }) => {
                     let _ = response_tx.send(ConnectResponse::Rejected { no_ports });
-                } else {
+                }
+                _ => {
                     return Err(protocol_err(format!(
                         "received Rejected message for port {client_port} not in connecting state"
                     )));
                 }
-            }
+            },
 
             // Data from remote endpoint.
             MultiplexMsg::Data { port, first, last } => {
@@ -980,7 +981,7 @@ where
                             return Err(protocol_err(format!(
                                 "received data exceeds maximum chunk size on port {}",
                                 &port
-                            )))
+                            )));
                         }
                     };
                     let _ = receiver_tx_data.send(PortReceiveMsg::Data(ReceivedData {
@@ -1022,7 +1023,7 @@ where
                                 return Err(protocol_err(format!(
                                     "received ports exceeds maximum chunk size on port {}",
                                     &port
-                                )))
+                                )));
                             }
                         };
 
@@ -1065,14 +1066,17 @@ where
             // Remote endpoint indicates that it will send no more data for port.
             MultiplexMsg::SendFinish { port } => {
                 if let Some(PortState::Connected { receiver_tx_data, .. }) = self.ports.get_mut(&port) {
-                    if let Some(receiver_tx_data) = receiver_tx_data.take() {
-                        let _ = receiver_tx_data.send(PortReceiveMsg::Finished);
-                        self.maybe_free_port(port);
-                    } else {
-                        return Err(protocol_err(format!(
-                            "received SendFinish message for local port {} more than once",
-                            &port
-                        )));
+                    match receiver_tx_data.take() {
+                        Some(receiver_tx_data) => {
+                            let _ = receiver_tx_data.send(PortReceiveMsg::Finished);
+                            self.maybe_free_port(port);
+                        }
+                        _ => {
+                            return Err(protocol_err(format!(
+                                "received SendFinish message for local port {} more than once",
+                                &port
+                            )));
+                        }
                     }
                 } else {
                     return Err(protocol_err(format!(
