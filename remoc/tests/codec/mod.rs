@@ -83,6 +83,20 @@ where
     assert_eq!(deser, data);
 }
 
+#[cfg(feature = "codec-postbag")]
+#[cfg_attr(not(feature = "js"), test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
+fn postbag() {
+    roundtrip::<TestStruct, codec::Postbag>()
+}
+
+#[cfg(feature = "codec-postbag")]
+#[cfg_attr(not(feature = "js"), test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
+fn postbag_slim() {
+    roundtrip::<TestStruct, codec::PostbagSlim>()
+}
+
 #[cfg(feature = "codec-bincode")]
 #[cfg_attr(not(feature = "js"), test)]
 #[cfg_attr(feature = "js", wasm_bindgen_test)]

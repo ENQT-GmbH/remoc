@@ -300,6 +300,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b870d8c151b6f2fb93e84a13146138f05d02ed11c7e7c54f8826aaaf7c9f184"
 
 [[package]]
+name = "postbag"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "64a2296bf811f6398dd9fc10d4d8c2568eedb3642204fa986223ee1503ab6a89"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "ppv-lite86"
 version = "0.2.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -385,6 +394,7 @@ dependencies = [
  "byteorder",
  "bytes",
  "futures",
+ "postbag",
  "rand",
  "remoc_macro",
  "serde",

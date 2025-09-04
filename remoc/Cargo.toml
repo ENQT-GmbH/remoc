@@ -13,7 +13,7 @@ authors = { workspace = true }
 
 
 [features]
-default = ["full", "default-codec-json"]
+default = ["full", "default-codec-json", "codec-postbag"]
 full = ["serde", "rch", "rfn", "robj", "robs", "rtc"]
 rch = ["serde", "tokio-util/codec", "tokio/io-util"]
 rfn = ["rch"]
@@ -31,6 +31,9 @@ js = [
 
 # Codecs
 default-codec-set = []
+codec-postbag = ["postbag"]
+default-codec-postbag = ["codec-postbag", "default-codec-set"]
+default-codec-postbag-slim = ["codec-postbag", "default-codec-set"]
 codec-bincode = ["bincode"]
 default-codec-bincode = ["codec-bincode", "default-codec-set"]
 default-codec-bincode2 = ["codec-bincode", "default-codec-set"]
@@ -43,6 +46,7 @@ default-codec-message-pack = ["codec-message-pack", "default-codec-set"]
 codec-postcard = ["postcard"]
 default-codec-postcard = ["codec-postcard", "default-codec-set"]
 full-codecs = [
+    "codec-postbag",
     "codec-bincode",
     "codec-ciborium",
     "codec-json",
@@ -65,6 +69,7 @@ uuid = { version = "1.15", features = ["serde", "v4"] }
 serde = { version = "1.0", features = ["derive"], optional = true }
 
 # Codecs
+postbag = { version = "0.1", optional = true }
 serde_json = { version = "1.0", optional = true }
 bincode = { version = "2.0", default-features = false, features = ["std", "serde"], optional = true }
 ciborium = { version = "0.2", optional = true }

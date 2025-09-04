@@ -28,6 +28,8 @@
 //!   * `default-codec-ciborium` -- enables and selects CBOR as the default codec
 //!   * `default-codec-json` -- enables and selects JSON as the default codec
 //!   * `default-codec-message-pack` -- enables and selects MessagePack as the default codec
+//!   * `default-codec-postbag` -- enables and selects Postbag as the default codec
+//!   * `default-codec-postbag-slim` -- enables and selects PostbagSlim as the default codec
 //!   * `default-codec-postcard` -- enables and selects Postcard as the default codec
 //!
 //! By default the JSON codec is enabled and the default, i.e. the `default-codec-json`
@@ -182,6 +184,17 @@ pub mod map;
 // ============================================================================
 // Codecs
 // ============================================================================
+
+#[cfg(feature = "codec-postbag")]
+mod postbag;
+#[cfg(feature = "default-codec-postbag")]
+#[doc(no_inline)]
+pub use postbag::Postbag as Default;
+#[cfg(feature = "default-codec-postbag-slim")]
+#[doc(no_inline)]
+pub use postbag::PostbagSlim as Default;
+#[cfg(feature = "codec-postbag")]
+pub use postbag::{Postbag, PostbagSlim};
 
 #[cfg(feature = "codec-bincode")]
 mod bincode;

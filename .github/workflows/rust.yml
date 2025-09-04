@@ -152,6 +152,8 @@ jobs:
       fail-fast: false
       matrix:
         codec:
+          - postbag
+          - postbag-slim
           - bincode
           - bincode2
           - ciborium
