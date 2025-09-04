@@ -389,7 +389,7 @@ checksum = "caf4aa5b0f434c91fe5c7f1ecb6a5ece2130b02ad2a590589dda5146df959001"
 
 [[package]]
 name = "remoc"
-version = "0.17.2"
+version = "0.17.3"
 dependencies = [
  "byteorder",
  "bytes",
@@ -408,7 +408,7 @@ dependencies = [
 
 [[package]]
 name = "remoc_macro"
-version = "0.17.2"
+version = "0.17.3"
 dependencies = [
  "proc-macro2",
  "quote",
