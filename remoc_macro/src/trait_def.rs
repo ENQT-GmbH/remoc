@@ -219,7 +219,7 @@ impl TraitDef {
     /// Second return itm is server implementation generics, including where-clauses on Target and Codec.
     fn generics(
         &self, with_target: bool, with_codec: bool, with_codec_default: bool, with_lifetime: bool,
-        with_send_sync_static: bool,
+        with_send: bool, with_sync: bool, with_static: bool,
     ) -> (Generics, Generics) {
         let ident = &self.ident;
 
@@ -265,10 +265,18 @@ impl TraitDef {
             impl_generics.make_where_clause().predicates.extend(wc.predicates);
         }
 
-        if with_send_sync_static {
-            let wc: WhereClause =
-                syn::parse2(quote! { where Target: ::std::marker::Send + ::std::marker::Sync + 'static })
-                    .unwrap();
+        if with_send {
+            let wc: WhereClause = syn::parse2(quote! { where Target: ::std::marker::Send }).unwrap();
+            impl_generics.make_where_clause().predicates.extend(wc.predicates);
+        }
+
+        if with_sync {
+            let wc: WhereClause = syn::parse2(quote! { where Target: ::std::marker::Sync }).unwrap();
+            impl_generics.make_where_clause().predicates.extend(wc.predicates);
+        }
+
+        if with_static {
+            let wc: WhereClause = syn::parse2(quote! { where Target: 'static }).unwrap();
             impl_generics.make_where_clause().predicates.extend(wc.predicates);
         }
 
@@ -289,9 +297,9 @@ impl TraitDef {
     pub fn request_enums(&self) -> TokenStream {
         let Self { vis, ident, .. } = self;
 
-        let (trait_generics, _) = self.generics(false, false, false, false, false);
-        let (ty_generics, impl_generics) = self.generics(false, true, false, false, false);
-        let (ty_generics_default_codec, _) = self.generics(false, true, true, false, false);
+        let (trait_generics, _) = self.generics(false, false, false, false, false, false, false);
+        let (ty_generics, impl_generics) = self.generics(false, true, false, false, false, false, false);
+        let (ty_generics_default_codec, _) = self.generics(false, true, true, false, false, false, false);
         let ty_generics_where = &ty_generics.where_clause;
         let (impl_generics_impl, impl_generics_ty, impl_generics_where) = impl_generics.split_for_impl();
         let (req_all, req_value, req_ref, req_ref_mut) = self.request_enum_idents();
@@ -342,10 +350,16 @@ impl TraitDef {
             }
 
             impl #impl_generics_impl #req_value #impl_generics_ty #impl_generics_where {
-                async fn dispatch<Target>(self, __target: Target, __err_tx: ::remoc::rtc::ReplyErrorSender) where Target: #ident #trait_generics {
+                fn dispatch<Target>(self, __target: Target, __err_tx: ::remoc::rtc::ReplyErrorSender) ->
+                     ::std::pin::Pin<::std::boxed::Box<dyn ::std::future::Future<Output = ()> + ::std::marker::Send>>
+                where
+                    Target: #ident #trait_generics,
+                    Target: ::std::marker::Send + 'static,
+                {
+                    use ::remoc::rtc::FutureExt;
                     match self {
                         #value_clauses
-                        Self::__Phantom(_) => ()
+                        Self::__Phantom(_) => async move {}.boxed()
                     }
                 }
             }
@@ -361,10 +375,16 @@ impl TraitDef {
             }
 
             impl #impl_generics_impl #req_ref #impl_generics_ty #impl_generics_where {
-                async fn dispatch<Target>(self, __target: &Target, __err_tx: ::remoc::rtc::ReplyErrorSender) where Target: #ident #trait_generics {
+                fn dispatch<'target, Target>(self, __target: &'target Target, __err_tx: ::remoc::rtc::ReplyErrorSender) ->
+                    ::std::pin::Pin<::std::boxed::Box<dyn ::std::future::Future<Output = ()> + ::std::marker::Send + 'target>>
+                where
+                    Target: #ident #trait_generics,
+                    Target: ::std::marker::Sync,
+                {
+                    use ::remoc::rtc::FutureExt;
                     match self {
                         #ref_clauses
-                        Self::__Phantom(_) => ()
+                        Self::__Phantom(_) => async move {}.boxed()
                     }
                 }
             }
@@ -380,10 +400,16 @@ impl TraitDef {
             }
 
             impl #impl_generics_impl #req_ref_mut #impl_generics_ty #impl_generics_where {
-                async fn dispatch<Target>(self, __target: &mut Target, __err_tx: ::remoc::rtc::ReplyErrorSender) where Target: #ident #trait_generics {
+                fn dispatch<'target, Target>(self, __target: &'target mut Target, __err_tx: ::remoc::rtc::ReplyErrorSender) ->
+                    ::std::pin::Pin<::std::boxed::Box<dyn ::std::future::Future<Output = ()> + ::std::marker::Send + 'target>>
+                where
+                    Target: #ident #trait_generics,
+                    Target: ::std::marker::Send,
+                {
+                    use ::remoc::rtc::FutureExt;
                     match self {
                         #ref_mut_clauses
-                        Self::__Phantom(_) => ()
+                        Self::__Phantom(_) => async move {}.boxed()
                     }
                 }
             }
@@ -464,8 +490,13 @@ impl TraitDef {
     fn server_value(&self) -> TokenStream {
         let Self { vis, ident, .. } = self;
 
-        let (req_generics, _) = self.generics(false, true, false, false, false);
-        let (ty_generics, impl_generics) = self.generics(true, true, true, false, false);
+        let need_send = self.is_taking_value() || self.is_taking_ref_mut();
+        let need_sync = self.is_taking_ref();
+        let need_static = self.is_taking_value();
+
+        let (req_generics, _) = self.generics(false, true, false, false, false, false, false);
+        let (ty_generics, impl_generics) =
+            self.generics(true, true, true, false, need_send, need_sync, need_static);
         let ty_generics_where = &ty_generics.where_clause;
         let (impl_generics_impl, impl_generics_ty, impl_generics_where) = impl_generics.split_for_impl();
         let (_req_all, req_value, req_ref, req_ref_mut) = self.request_enum_idents();
@@ -575,8 +606,10 @@ impl TraitDef {
     fn server_ref(&self) -> TokenStream {
         let Self { vis, ident, .. } = self;
 
-        let (req_generics, _) = self.generics(false, true, false, false, false);
-        let (ty_generics, impl_generics) = self.generics(true, true, true, true, false);
+        let need_sync = self.is_taking_ref();
+
+        let (req_generics, _) = self.generics(false, true, false, false, false, false, false);
+        let (ty_generics, impl_generics) = self.generics(true, true, true, true, false, need_sync, false);
         let ty_generics_where = &ty_generics.where_clause;
         let (impl_generics_impl, impl_generics_ty, impl_generics_where) = impl_generics.split_for_impl();
         let (_req_all, req_value, req_ref, req_ref_mut) = self.request_enum_idents();
@@ -662,8 +695,11 @@ impl TraitDef {
     fn server_ref_mut(&self) -> TokenStream {
         let Self { vis, ident, .. } = self;
 
-        let (req_generics, _) = self.generics(false, true, false, false, false);
-        let (ty_generics, impl_generics) = self.generics(true, true, true, true, false);
+        let need_send = self.is_taking_value() || self.is_taking_ref_mut();
+        let need_sync = self.is_taking_ref();
+
+        let (req_generics, _) = self.generics(false, true, false, false, false, false, false);
+        let (ty_generics, impl_generics) = self.generics(true, true, true, true, need_send, need_sync, false);
         let ty_generics_where = &ty_generics.where_clause;
         let (impl_generics_impl, impl_generics_ty, impl_generics_where) = impl_generics.split_for_impl();
         let (_req_all, req_value, req_ref, req_ref_mut) = self.request_enum_idents();
@@ -758,8 +794,8 @@ impl TraitDef {
     fn server_shared(&self) -> TokenStream {
         let Self { vis, ident, .. } = self;
 
-        let (req_generics, _) = self.generics(false, true, false, false, false);
-        let (ty_generics, impl_generics) = self.generics(true, true, true, false, true);
+        let (req_generics, _) = self.generics(false, true, false, false, false, false, false);
+        let (ty_generics, impl_generics) = self.generics(true, true, true, false, true, true, true);
         let ty_generics_where = &ty_generics.where_clause;
         let (impl_generics_impl, impl_generics_ty, impl_generics_where) = impl_generics.split_for_impl();
         let (_req_all, req_value, req_ref, req_ref_mut) = self.request_enum_idents();
@@ -854,8 +890,8 @@ impl TraitDef {
     fn server_shared_mut(&self) -> TokenStream {
         let Self { vis, ident, .. } = self;
 
-        let (req_generics, _) = self.generics(false, true, false, false, false);
-        let (ty_generics, impl_generics) = self.generics(true, true, true, false, true);
+        let (req_generics, _) = self.generics(false, true, false, false, false, false, false);
+        let (ty_generics, impl_generics) = self.generics(true, true, true, false, true, true, true);
         let ty_generics_where = &ty_generics.where_clause;
         let (impl_generics_impl, impl_generics_ty, impl_generics_where) = impl_generics.split_for_impl();
         let (_req_all, req_value, req_ref, req_ref_mut) = self.request_enum_idents();
@@ -961,8 +997,8 @@ impl TraitDef {
     fn req_receiver(&self) -> TokenStream {
         let Self { vis, ident, .. } = self;
 
-        let (req_generics, _) = self.generics(false, true, false, false, false);
-        let (ty_generics, impl_generics) = self.generics(false, true, true, false, false);
+        let (req_generics, _) = self.generics(false, true, false, false, false, false, false);
+        let (ty_generics, impl_generics) = self.generics(false, true, true, false, false, false, false);
         let ty_generics_where = &ty_generics.where_clause;
         let (impl_generics_impl, impl_generics_ty, impl_generics_where) = impl_generics.split_for_impl();
         let (req_all, req_value, req_ref, req_ref_mut) = self.request_enum_idents();
@@ -1098,12 +1134,12 @@ impl TraitDef {
         let client_ident = self.client_ident();
         let client_ident_str = client_ident.to_string();
 
-        let (ty_generics, impl_generics) = self.generics(false, true, true, false, false);
+        let (ty_generics, impl_generics) = self.generics(false, true, true, false, false, false, false);
         let ty_generics_where_ty = &ty_generics.where_clause;
         let (ty_generics_impl, ty_generics_ty, ty_generics_where) = ty_generics.split_for_impl();
         let (impl_generics_impl, impl_generics_ty, impl_generics_where) = impl_generics.split_for_impl();
 
-        let (req_generics, _) = self.generics(false, true, false, false, false);
+        let (req_generics, _) = self.generics(false, true, false, false, false, false, false);
         let (_req_all, req_value, req_ref, req_ref_mut) = self.request_enum_idents();
 
         let impl_generics_where_pred = &impl_generics_where.unwrap().predicates;

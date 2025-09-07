@@ -220,10 +220,10 @@
 //! ```
 //!
 
-use futures::{Future, FutureExt};
 use std::{
     error::Error,
     fmt,
+    future::Future,
     pin::Pin,
     sync::Arc,
     task::{Context, Poll},
@@ -640,6 +640,8 @@ pub use tokio::sync::broadcast as local_broadcast;
 pub use tokio::sync::mpsc as local_mpsc;
 #[doc(hidden)]
 pub type ReplyErrorSender = tokio::sync::mpsc::Sender<SendingErrorKind>;
+#[doc(hidden)]
+pub use futures::future::FutureExt;
 #[doc(hidden)]
 pub use futures::stream::Stream;
 #[doc(hidden)]

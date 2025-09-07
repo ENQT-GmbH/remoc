@@ -352,7 +352,7 @@ impl TraitMethod {
         // Generate match clause.
         quote! {
             Self :: #enum_ident { #args __reply_tx } => {
-                #call
+                async move { #call }.boxed()
             },
         }
     }
