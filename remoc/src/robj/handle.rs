@@ -146,9 +146,10 @@ impl Drop for Provider {
 }
 
 /// Handle state.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 enum State<Codec> {
     /// Empty (for dropping).
+    #[default]
     Empty,
     /// Value has been created locally.
     LocalCreated {
@@ -176,19 +177,13 @@ enum State<Codec> {
     },
 }
 
-impl<Codec> Default for State<Codec> {
-    fn default() -> Self {
-        Self::Empty
-    }
-}
-
 impl<Codec> fmt::Debug for State<Codec> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::Empty => write!(f, "EmptyHandle"),
-            Self::LocalCreated { .. } => write!(f, "LocalCreatedHandle"),
-            Self::LocalReceived { id, .. } => f.debug_struct("LocalReceivedHandle").field("id", id).finish(),
-            Self::Remote { id, .. } => f.debug_struct("RemoteHandle").field("id", id).finish(),
+            Self::Empty => write!(f, "Empty"),
+            Self::LocalCreated { .. } => write!(f, "LocalCreated"),
+            Self::LocalReceived { id, .. } => f.debug_struct("LocalReceived").field("id", id).finish(),
+            Self::Remote { id, .. } => f.debug_struct("Remote").field("id", id).finish(),
         }
     }
 }

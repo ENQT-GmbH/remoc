@@ -269,17 +269,16 @@ pub enum Received {
     Requests(Vec<Request>),
 }
 
+#[derive(Default)]
 enum Receiving {
+    #[default]
     Nothing,
     Data(DataBuf),
-    Chunks { chunks: VecDeque<Bytes>, completed: bool },
+    Chunks {
+        chunks: VecDeque<Bytes>,
+        completed: bool,
+    },
     Requests(Vec<Request>),
-}
-
-impl Default for Receiving {
-    fn default() -> Self {
-        Self::Nothing
-    }
 }
 
 /// Receives byte data over a channel.
