@@ -1,5 +1,7 @@
 use bytes::{Buf, Bytes, BytesMut};
-use std::io;
+use std::io::{self, BufWriter};
+
+use crate::chmux::DataBuf;
 
 /// Writes to an internal memory buffer with a limited maximum size.
 pub struct LimitedBytesWriter {
@@ -80,6 +82,27 @@ impl io::Write for ChannelBytesWriter {
     }
 }
 
+pub(crate) enum IoWriter<'a> {
+    Limited(&'a mut LimitedBytesWriter),
+    Channel(&'a mut BufWriter<ChannelBytesWriter>),
+}
+
+impl<'a> io::Write for IoWriter<'a> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        match self {
+            Self::Limited(w) => w.write(buf),
+            Self::Channel(w) => w.write(buf),
+        }
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        match self {
+            Self::Limited(w) => w.flush(),
+            Self::Channel(w) => w.flush(),
+        }
+    }
+}
+
 /// Reads data from an mpsc channel.
 ///
 /// This must not be used in an async thread.
@@ -114,5 +137,19 @@ impl io::Read for ChannelBytesReader {
         buf[..len].copy_from_slice(&self.buf[..len]);
         self.buf.advance(len);
         Ok(len)
+    }
+}
+
+pub(crate) enum IoReader<'a, 'b> {
+    DataBuf(&'a mut bytes::buf::Reader<&'b mut DataBuf>),
+    Channel(&'a mut ChannelBytesReader),
+}
+
+impl<'a, 'b> io::Read for IoReader<'a, 'b> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        match self {
+            Self::DataBuf(r) => r.read(buf),
+            Self::Channel(r) => r.read(buf),
+        }
     }
 }

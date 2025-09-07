@@ -24,8 +24,8 @@ use super::{
 use crate::{
     chmux::{self, AnyStorage, PortReq},
     codec::{self, SerializationError, StreamingUnavailable},
-    exec,
-    exec::task,
+    exec::{self, task},
+    rch::base::io::IoWriter,
 };
 
 pub use crate::chmux::Closed;
@@ -265,7 +265,7 @@ where
         let mut lw = LimitedBytesWriter::new(limit);
         let ps_ref = PortSerializer::start(allocator, storage);
 
-        match <Codec as codec::Codec>::serialize(&mut lw, &item) {
+        match <Codec as codec::Codec>::serialize(IoWriter::Limited(&mut lw), &item) {
             _ if lw.overflow() => return Ok(None),
             Ok(()) => (),
             Err(err) => return Err(err),
@@ -293,7 +293,7 @@ where
             let ps_ref = PortSerializer::start(allocator, storage);
 
             let item = item_arc_task.lock().unwrap();
-            <Codec as codec::Codec>::serialize(&mut cbw, &*item)?;
+            <Codec as codec::Codec>::serialize(IoWriter::Channel(&mut cbw), &*item)?;
 
             let cbw = cbw.into_inner().map_err(|_| {
                 SerializationError::new(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "flush failed"))

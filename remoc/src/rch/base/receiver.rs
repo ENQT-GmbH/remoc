@@ -19,8 +19,11 @@ use super::{super::DEFAULT_MAX_ITEM_SIZE, BIG_DATA_CHUNK_QUEUE, io::ChannelBytes
 use crate::{
     chmux::{self, AnyStorage, Received, RecvChunkError},
     codec::{self, DeserializationError, StreamingUnavailable},
-    exec,
-    exec::task::{self, JoinHandle},
+    exec::{
+        self,
+        task::{self, JoinHandle},
+    },
+    rch::base::io::IoReader,
 };
 
 /// An error that occurred during receiving from a remote endpoint.
@@ -248,10 +251,10 @@ where
                             let handle_storage = self.receiver.storage();
                             let (tx, rx) = tokio::sync::mpsc::channel(BIG_DATA_CHUNK_QUEUE);
                             let task = task::spawn_blocking(move || {
-                                let cbr = ChannelBytesReader::new(rx);
+                                let mut cbr = ChannelBytesReader::new(rx);
 
                                 let pds_ref = PortDeserializer::start(allocator, handle_storage);
-                                let item = <Codec as codec::Codec>::deserialize(cbr)?;
+                                let item = <Codec as codec::Codec>::deserialize(IoReader::Channel(&mut cbr))?;
                                 let pds = PortDeserializer::finish(pds_ref);
 
                                 Ok((item, pds))
@@ -281,7 +284,8 @@ where
 
                         let pdf_ref =
                             PortDeserializer::start(self.receiver.port_allocator(), self.receiver.storage());
-                        let item_res = <Codec as codec::Codec>::deserialize(data.reader());
+                        let item_res =
+                            <Codec as codec::Codec>::deserialize(IoReader::DataBuf(&mut data.reader()));
                         self.data = DataSource::None;
                         self.item = Some(item_res?);
                         self.port_deser = Some(PortDeserializer::finish(pdf_ref));
