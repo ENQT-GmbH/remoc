@@ -152,6 +152,7 @@ jobs:
       fail-fast: false
       matrix:
         codec:
+          - json
           - postbag
           - postbag-slim
           - bincode
@@ -195,7 +196,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Run cargo test
-        run: cargo test --no-default-features --features ${{ matrix.feature }} --features default-codec-json
+        run: cargo test --no-default-features --features ${{ matrix.feature }} --features default-codec-postbag
 
   check-features-without-codec:
     name: Check ${{ matrix.feature }} feature without codec

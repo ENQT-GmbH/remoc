@@ -73,7 +73,7 @@
 //!
 //! Distributed systems often require that endpoints running different software
 //! versions interact.
-//! By utilizing a self-describing data format like JSON for encoding of your data
+//! By utilizing a data format like [Postbag](postbag) for encoding of your data
 //! for transport, you can ensure a high level of backward and forward compatibility.
 //!
 //! It is always possible to add new fields to enums and struct and utilize the

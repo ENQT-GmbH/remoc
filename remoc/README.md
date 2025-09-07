@@ -62,7 +62,7 @@ calling (RPC) model.
 
 Distributed systems often require that endpoints running different software
 versions interact.
-By utilizing a self-describing data format like JSON for encoding of your data
+By utilizing a self-describing data format like Postbag for encoding of your data
 for transport, you can ensure a high level of backward and forward compatibility.
 
 It is always possible to add new fields to enums and struct and utilize the
@@ -96,7 +96,7 @@ The following features enable data formats for transmission:
   * `codec-ciborium` provides the CBOR format.
   * `codec-json` provides the JSON format.
   * `codec-message-pack` provides the MessagePack format.
-  * `codec-postbag` provides the experimental Postbag and PostbagSlim formats.
+  * `codec-postbag` provides the Postbag formats.
   * `codec-postcard` provides the Postcard format.
 
 The feature `default-codec-*` selects the respective codec as default.
@@ -105,7 +105,7 @@ applications, not libraries.
 
 The feature `full-codecs` enables all codecs.
 
-By default all features are enabled and the JSON codec is used as default.
+By default all features are enabled and the Postbag codec is used as default.
 
 ### JavaScript and web support
 

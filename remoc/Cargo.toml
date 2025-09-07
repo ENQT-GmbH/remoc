@@ -13,7 +13,7 @@ authors = { workspace = true }
 
 
 [features]
-default = ["full", "default-codec-json", "codec-postbag"]
+default = ["full", "default-codec-postbag"]
 full = ["serde", "rch", "rfn", "robj", "robs", "rtc"]
 rch = ["serde", "tokio-util/codec", "tokio/io-util"]
 rfn = ["rch"]
@@ -56,7 +56,7 @@ full-codecs = [
 
 
 [dependencies]
-remoc_macro = { version = "=0.17.3", path = "../remoc_macro", optional = true }
+remoc_macro = { version = "=0.18.0", path = "../remoc_macro", optional = true }
 
 futures = { version = "0.3.31", default-features = false, features = ["std"] }
 tokio = { version = "1.43", features = ["macros", "rt", "sync", "time"] }
@@ -69,7 +69,7 @@ uuid = { version = "1.15", features = ["serde", "v4"] }
 serde = { version = "1.0", features = ["derive"], optional = true }
 
 # Codecs
-postbag = { version = "0.1", optional = true }
+postbag = { version = "0.2", optional = true }
 serde_json = { version = "1.0", optional = true }
 bincode = { version = "2.0", default-features = false, features = ["std", "serde"], optional = true }
 ciborium = { version = "0.2", optional = true }
@@ -83,11 +83,11 @@ web-sys = { version = "0.3.72", features = ["Window", "WorkerGlobalScope"], opti
 wasm-bindgen = { version = "0.2.95", optional = true }
 wasm-bindgen-futures = { version = "0.4.45", optional = true }
 
-tracing-subscriber = { version = "0.3.7", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 
 [dev-dependencies]
 async-trait = "0.1"
-tracing-subscriber = { version = "0.3.7", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 tokio = { version = "1.43", features = ["io-util", "rt"] }
 wasm-bindgen-test = "0.3.45"
 
@@ -97,7 +97,7 @@ tokio-test = "0.4"
 
 
 [package.metadata.docs.rs]
-features = ["full", "full-codecs", "default-codec-json"]
+features = ["full", "full-codecs", "default-codec-postbag"]
 rustdoc-args = ["--cfg", "docsrs"]
 
 

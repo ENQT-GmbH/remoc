@@ -39,6 +39,7 @@ impl Default for TestStruct {
     }
 }
 
+#[cfg(feature = "codec-json")]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TestStructWithAttr {
     simple: String,
@@ -49,6 +50,7 @@ pub struct TestStructWithAttr {
     enu: Vec<TestEnum>,
 }
 
+#[cfg(feature = "codec-json")]
 impl Default for TestStructWithAttr {
     fn default() -> Self {
         let mut data = Self {

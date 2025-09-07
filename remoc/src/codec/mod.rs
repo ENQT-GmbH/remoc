@@ -5,6 +5,11 @@
 //! Thus you should refer to the corresponding crate documentation for information
 //! about limitations and backward as well as forward compatibility.
 //!
+//! By default the **[Postbag codec](postbag::Postbag)** is used, which is highly efficient as well as
+//! forward and backward compatible.
+//! Unless you have specific requirements, it is *not recommended* to change the default
+//! codec.
+//!
 //! # Crate features
 //!
 //! Each codec is gated by the corresponding crate feature `codec-*`, i.e.
@@ -28,11 +33,11 @@
 //!   * `default-codec-ciborium` -- enables and selects CBOR as the default codec
 //!   * `default-codec-json` -- enables and selects JSON as the default codec
 //!   * `default-codec-message-pack` -- enables and selects MessagePack as the default codec
-//!   * `default-codec-postbag` -- enables and selects Postbag as the default codec
-//!   * `default-codec-postbag-slim` -- enables and selects PostbagSlim as the default codec
+//!   * `default-codec-postbag` -- enables and selects Postbag with full configuration as the default codec
+//!   * `default-codec-postbag-slim` -- enables and selects Postbag with slim configuration as the default codec
 //!   * `default-codec-postcard` -- enables and selects Postcard as the default codec
 //!
-//! By default the JSON codec is enabled and the default, i.e. the `default-codec-json`
+//! By default the Postbag codec is enabled and the default, i.e. the `default-codec-postbag`
 //! crate feature is enabled.
 //! Thus to change the default codec, you must specify `default-features = false` when
 //! referencing Remoc in your `Cargo.toml`.
@@ -179,6 +184,7 @@ pub trait Codec: Send + Sync + Serialize + for<'de> Deserialize<'de> + Clone + U
         Item: DeserializeOwned;
 }
 
+#[cfg(feature = "codec-json")]
 pub mod map;
 
 // ============================================================================

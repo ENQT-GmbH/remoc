@@ -4,6 +4,19 @@ All notable changes to Remoc will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.18.0 - 2025-09-07
+### Changed
+- **BREAKING**: Default codec changed from JSON to Postbag for improved efficiency and 
+  full Rust type system fidelity while maintaining forward and backward compatibility
+  between data structures.
+  Users needing to interact with previous remoc versions should specify the 
+  `default-codec-json` feature in their `Cargo.toml` dependency:
+  ```toml
+  [dependencies]
+  remoc = { version = "0.18", no-default-features = true, features = ["full", "default-codec-json"] }
+  ```
+  This change does not affect users already using specific `default-codec-...` features.
+
 ## 0.17.3 - 2025-09-04
 ### Added
 - codec: added experimental Postbag codec
