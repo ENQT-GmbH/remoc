@@ -83,8 +83,6 @@ web-sys = { version = "0.3.72", features = ["Window", "WorkerGlobalScope"], opti
 wasm-bindgen = { version = "0.2.95", optional = true }
 wasm-bindgen-futures = { version = "0.4.45", optional = true }
 
-tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
-
 [dev-dependencies]
 async-trait = "0.1"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
