@@ -4,6 +4,11 @@ All notable changes to Remoc will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.18.1 - 2025-09-08
+### Changed
+- rtc: optimize generated code size of dispatch functions
+- codec: update Postbag to 0.3.0 (fully compatible)
+
 ## 0.18.0 - 2025-09-07
 ### Changed
 - **BREAKING**: Default codec changed from JSON to Postbag for improved efficiency and 
