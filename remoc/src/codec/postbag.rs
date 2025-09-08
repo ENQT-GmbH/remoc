@@ -5,7 +5,7 @@ use super::{Codec, DeserializationError, SerializationError};
 /// [Postbag codec](postbag) with full forward and backward compatibility.
 ///
 /// Postbag is a high-performance binary codec that provides efficient data encoding
-/// with configurable levels of forward and backward compatibility. This codec uses the [`Full`](postbag::Full)
+/// with configurable levels of forward and backward compatibility. This codec uses the [`Full`](postbag::cfg::Full)
 /// configuration which provides maximum compatibility and schema evolution capabilities.
 ///
 /// ## Key Features
@@ -57,7 +57,7 @@ impl Codec for Postbag {
         Writer: std::io::Write,
         Item: serde::Serialize,
     {
-        postbag::serialize::<postbag::Full, _, _>(item, writer).map_err(SerializationError::new)?;
+        postbag::serialize::<postbag::cfg::Full, _, _>(item, writer).map_err(SerializationError::new)?;
         Ok(())
     }
 
@@ -66,14 +66,15 @@ impl Codec for Postbag {
         Reader: std::io::Read,
         Item: serde::de::DeserializeOwned,
     {
-        let value = postbag::deserialize::<postbag::Full, _, _>(reader).map_err(DeserializationError::new)?;
+        let value =
+            postbag::deserialize::<postbag::cfg::Full, _, _>(reader).map_err(DeserializationError::new)?;
         Ok(value)
     }
 }
 
 /// [Postbag slim codec](postbag) for compact, high-performance encoding.
 ///
-/// The [`Slim`](postbag::Slim) configuration prioritizes performance and compact size over compatibility.
+/// The [`Slim`](postbag::cfg::Slim) configuration prioritizes performance and compact size over compatibility.
 /// This codec provides efficient binary encoding but with limited schema evolution
 /// capabilities compared to the full `Postbag` codec.
 ///
@@ -124,7 +125,7 @@ impl Codec for PostbagSlim {
         Writer: std::io::Write,
         Item: serde::Serialize,
     {
-        postbag::serialize::<postbag::Slim, _, _>(item, writer).map_err(SerializationError::new)?;
+        postbag::serialize::<postbag::cfg::Slim, _, _>(item, writer).map_err(SerializationError::new)?;
         Ok(())
     }
 
@@ -133,7 +134,8 @@ impl Codec for PostbagSlim {
         Reader: std::io::Read,
         Item: serde::de::DeserializeOwned,
     {
-        let value = postbag::deserialize::<postbag::Slim, _, _>(reader).map_err(DeserializationError::new)?;
+        let value =
+            postbag::deserialize::<postbag::cfg::Slim, _, _>(reader).map_err(DeserializationError::new)?;
         Ok(value)
     }
 }
