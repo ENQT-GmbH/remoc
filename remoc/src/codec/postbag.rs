@@ -57,7 +57,7 @@ impl Codec for Postbag {
         Writer: std::io::Write,
         Item: serde::Serialize,
     {
-        postbag::serialize::<postbag::cfg::Full, _, _>(item, writer).map_err(SerializationError::new)?;
+        postbag::serialize::<postbag::cfg::Full, _, _>(writer, item).map_err(SerializationError::new)?;
         Ok(())
     }
 
@@ -125,7 +125,7 @@ impl Codec for PostbagSlim {
         Writer: std::io::Write,
         Item: serde::Serialize,
     {
-        postbag::serialize::<postbag::cfg::Slim, _, _>(item, writer).map_err(SerializationError::new)?;
+        postbag::serialize::<postbag::cfg::Slim, _, _>(writer, item).map_err(SerializationError::new)?;
         Ok(())
     }
 
