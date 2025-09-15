@@ -10,6 +10,7 @@ pub mod hash_map;
 pub mod hash_set;
 pub mod list;
 pub mod vec;
+pub mod vec_deque;
 
 use serde::{Deserialize, Serialize};
 use std::{error::Error, fmt};
