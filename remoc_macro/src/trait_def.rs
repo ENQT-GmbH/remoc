@@ -132,6 +132,18 @@ impl Parse for TraitDef {
     }
 }
 
+/// Arguments for the generics function.
+#[derive(Debug, Clone, Copy)]
+pub struct GenericsArgs {
+    pub with_target: bool,
+    pub with_codec: bool,
+    pub with_codec_default: bool,
+    pub with_lifetime: bool,
+    pub with_send: bool,
+    pub with_sync: bool,
+    pub with_static: bool,
+}
+
 impl TraitDef {
     /// Parses and applies attributes specified by the procedural macro invocation.
     pub fn parse_meta(&mut self, meta: ParseNestedMeta) -> syn::Result<()> {
@@ -217,10 +229,7 @@ impl TraitDef {
     ///
     /// First return item is server type generics, including Target, Codec and possibly lifetime of target.
     /// Second return itm is server implementation generics, including where-clauses on Target and Codec.
-    fn generics(
-        &self, with_target: bool, with_codec: bool, with_codec_default: bool, with_lifetime: bool,
-        with_send: bool, with_sync: bool, with_static: bool,
-    ) -> (Generics, Generics) {
+    fn generics(&self, args: GenericsArgs) -> (Generics, Generics) {
         let ident = &self.ident;
 
         let trait_generics = self.generics.clone();
@@ -235,8 +244,8 @@ impl TraitDef {
                 _ => None,
             })
             .unwrap_or_else(|| ty_generics.params.len());
-        if with_codec {
-            let codec_param: TypeParam = syn::parse2(if with_codec_default {
+        if args.with_codec {
+            let codec_param: TypeParam = syn::parse2(if args.with_codec_default {
                 quote! { Codec = ::remoc::codec::Default }
             } else {
                 quote! { Codec }
@@ -244,38 +253,38 @@ impl TraitDef {
             .unwrap();
             ty_generics.params.insert(idx, GenericParam::Type(codec_param));
         }
-        if with_target {
+        if args.with_target {
             ty_generics.params.insert(idx, GenericParam::Type(format_ident!("Target").into()));
         }
 
-        if with_lifetime {
+        if args.with_lifetime {
             let target_lt: Lifetime = syn::parse2(quote! {'target}).unwrap();
             ty_generics.params.insert(0, LifetimeParam::new(target_lt).into());
         }
 
         let mut impl_generics = ty_generics.clone();
 
-        if with_codec {
+        if args.with_codec {
             let wc: WhereClause = syn::parse2(quote! { where Codec: ::remoc::codec::Codec }).unwrap();
             impl_generics.make_where_clause().predicates.extend(wc.predicates);
         }
 
-        if with_target {
+        if args.with_target {
             let wc: WhereClause = syn::parse2(quote! { where Target: #ident #trait_generics }).unwrap();
             impl_generics.make_where_clause().predicates.extend(wc.predicates);
         }
 
-        if with_send {
+        if args.with_send {
             let wc: WhereClause = syn::parse2(quote! { where Target: ::std::marker::Send }).unwrap();
             impl_generics.make_where_clause().predicates.extend(wc.predicates);
         }
 
-        if with_sync {
+        if args.with_sync {
             let wc: WhereClause = syn::parse2(quote! { where Target: ::std::marker::Sync }).unwrap();
             impl_generics.make_where_clause().predicates.extend(wc.predicates);
         }
 
-        if with_static {
+        if args.with_static {
             let wc: WhereClause = syn::parse2(quote! { where Target: 'static }).unwrap();
             impl_generics.make_where_clause().predicates.extend(wc.predicates);
         }
@@ -297,9 +306,33 @@ impl TraitDef {
     pub fn request_enums(&self) -> TokenStream {
         let Self { vis, ident, .. } = self;
 
-        let (trait_generics, _) = self.generics(false, false, false, false, false, false, false);
-        let (ty_generics, impl_generics) = self.generics(false, true, false, false, false, false, false);
-        let (ty_generics_default_codec, _) = self.generics(false, true, true, false, false, false, false);
+        let (trait_generics, _) = self.generics(GenericsArgs {
+            with_target: false,
+            with_codec: false,
+            with_codec_default: false,
+            with_lifetime: false,
+            with_send: false,
+            with_sync: false,
+            with_static: false,
+        });
+        let (ty_generics, impl_generics) = self.generics(GenericsArgs {
+            with_target: false,
+            with_codec: true,
+            with_codec_default: false,
+            with_lifetime: false,
+            with_send: false,
+            with_sync: false,
+            with_static: false,
+        });
+        let (ty_generics_default_codec, _) = self.generics(GenericsArgs {
+            with_target: false,
+            with_codec: true,
+            with_codec_default: true,
+            with_lifetime: false,
+            with_send: false,
+            with_sync: false,
+            with_static: false,
+        });
         let ty_generics_where = &ty_generics.where_clause;
         let (impl_generics_impl, impl_generics_ty, impl_generics_where) = impl_generics.split_for_impl();
         let (req_all, req_value, req_ref, req_ref_mut) = self.request_enum_idents();
@@ -494,9 +527,24 @@ impl TraitDef {
         let need_sync = self.is_taking_ref();
         let need_static = self.is_taking_value();
 
-        let (req_generics, _) = self.generics(false, true, false, false, false, false, false);
-        let (ty_generics, impl_generics) =
-            self.generics(true, true, true, false, need_send, need_sync, need_static);
+        let (req_generics, _) = self.generics(GenericsArgs {
+            with_target: false,
+            with_codec: true,
+            with_codec_default: false,
+            with_lifetime: false,
+            with_send: false,
+            with_sync: false,
+            with_static: false,
+        });
+        let (ty_generics, impl_generics) = self.generics(GenericsArgs {
+            with_target: true,
+            with_codec: true,
+            with_codec_default: true,
+            with_lifetime: false,
+            with_send: need_send,
+            with_sync: need_sync,
+            with_static: need_static,
+        });
         let ty_generics_where = &ty_generics.where_clause;
         let (impl_generics_impl, impl_generics_ty, impl_generics_where) = impl_generics.split_for_impl();
         let (_req_all, req_value, req_ref, req_ref_mut) = self.request_enum_idents();
@@ -608,8 +656,24 @@ impl TraitDef {
 
         let need_sync = self.is_taking_ref();
 
-        let (req_generics, _) = self.generics(false, true, false, false, false, false, false);
-        let (ty_generics, impl_generics) = self.generics(true, true, true, true, false, need_sync, false);
+        let (req_generics, _) = self.generics(GenericsArgs {
+            with_target: false,
+            with_codec: true,
+            with_codec_default: false,
+            with_lifetime: false,
+            with_send: false,
+            with_sync: false,
+            with_static: false,
+        });
+        let (ty_generics, impl_generics) = self.generics(GenericsArgs {
+            with_target: true,
+            with_codec: true,
+            with_codec_default: true,
+            with_lifetime: true,
+            with_send: false,
+            with_sync: need_sync,
+            with_static: false,
+        });
         let ty_generics_where = &ty_generics.where_clause;
         let (impl_generics_impl, impl_generics_ty, impl_generics_where) = impl_generics.split_for_impl();
         let (_req_all, req_value, req_ref, req_ref_mut) = self.request_enum_idents();
@@ -698,8 +762,24 @@ impl TraitDef {
         let need_send = self.is_taking_value() || self.is_taking_ref_mut();
         let need_sync = self.is_taking_ref();
 
-        let (req_generics, _) = self.generics(false, true, false, false, false, false, false);
-        let (ty_generics, impl_generics) = self.generics(true, true, true, true, need_send, need_sync, false);
+        let (req_generics, _) = self.generics(GenericsArgs {
+            with_target: false,
+            with_codec: true,
+            with_codec_default: false,
+            with_lifetime: false,
+            with_send: false,
+            with_sync: false,
+            with_static: false,
+        });
+        let (ty_generics, impl_generics) = self.generics(GenericsArgs {
+            with_target: true,
+            with_codec: true,
+            with_codec_default: true,
+            with_lifetime: true,
+            with_send: need_send,
+            with_sync: need_sync,
+            with_static: false,
+        });
         let ty_generics_where = &ty_generics.where_clause;
         let (impl_generics_impl, impl_generics_ty, impl_generics_where) = impl_generics.split_for_impl();
         let (_req_all, req_value, req_ref, req_ref_mut) = self.request_enum_idents();
@@ -794,8 +874,24 @@ impl TraitDef {
     fn server_shared(&self) -> TokenStream {
         let Self { vis, ident, .. } = self;
 
-        let (req_generics, _) = self.generics(false, true, false, false, false, false, false);
-        let (ty_generics, impl_generics) = self.generics(true, true, true, false, true, true, true);
+        let (req_generics, _) = self.generics(GenericsArgs {
+            with_target: false,
+            with_codec: true,
+            with_codec_default: false,
+            with_lifetime: false,
+            with_send: false,
+            with_sync: false,
+            with_static: false,
+        });
+        let (ty_generics, impl_generics) = self.generics(GenericsArgs {
+            with_target: true,
+            with_codec: true,
+            with_codec_default: true,
+            with_lifetime: false,
+            with_send: true,
+            with_sync: true,
+            with_static: true,
+        });
         let ty_generics_where = &ty_generics.where_clause;
         let (impl_generics_impl, impl_generics_ty, impl_generics_where) = impl_generics.split_for_impl();
         let (_req_all, req_value, req_ref, req_ref_mut) = self.request_enum_idents();
@@ -890,8 +986,24 @@ impl TraitDef {
     fn server_shared_mut(&self) -> TokenStream {
         let Self { vis, ident, .. } = self;
 
-        let (req_generics, _) = self.generics(false, true, false, false, false, false, false);
-        let (ty_generics, impl_generics) = self.generics(true, true, true, false, true, true, true);
+        let (req_generics, _) = self.generics(GenericsArgs {
+            with_target: false,
+            with_codec: true,
+            with_codec_default: false,
+            with_lifetime: false,
+            with_send: false,
+            with_sync: false,
+            with_static: false,
+        });
+        let (ty_generics, impl_generics) = self.generics(GenericsArgs {
+            with_target: true,
+            with_codec: true,
+            with_codec_default: true,
+            with_lifetime: false,
+            with_send: true,
+            with_sync: true,
+            with_static: true,
+        });
         let ty_generics_where = &ty_generics.where_clause;
         let (impl_generics_impl, impl_generics_ty, impl_generics_where) = impl_generics.split_for_impl();
         let (_req_all, req_value, req_ref, req_ref_mut) = self.request_enum_idents();
@@ -997,8 +1109,24 @@ impl TraitDef {
     fn req_receiver(&self) -> TokenStream {
         let Self { vis, ident, .. } = self;
 
-        let (req_generics, _) = self.generics(false, true, false, false, false, false, false);
-        let (ty_generics, impl_generics) = self.generics(false, true, true, false, false, false, false);
+        let (req_generics, _) = self.generics(GenericsArgs {
+            with_target: false,
+            with_codec: true,
+            with_codec_default: false,
+            with_lifetime: false,
+            with_send: false,
+            with_sync: false,
+            with_static: false,
+        });
+        let (ty_generics, impl_generics) = self.generics(GenericsArgs {
+            with_target: false,
+            with_codec: true,
+            with_codec_default: true,
+            with_lifetime: false,
+            with_send: false,
+            with_sync: false,
+            with_static: false,
+        });
         let ty_generics_where = &ty_generics.where_clause;
         let (impl_generics_impl, impl_generics_ty, impl_generics_where) = impl_generics.split_for_impl();
         let (req_all, req_value, req_ref, req_ref_mut) = self.request_enum_idents();
@@ -1134,12 +1262,28 @@ impl TraitDef {
         let client_ident = self.client_ident();
         let client_ident_str = client_ident.to_string();
 
-        let (ty_generics, impl_generics) = self.generics(false, true, true, false, false, false, false);
+        let (ty_generics, impl_generics) = self.generics(GenericsArgs {
+            with_target: false,
+            with_codec: true,
+            with_codec_default: true,
+            with_lifetime: false,
+            with_send: false,
+            with_sync: false,
+            with_static: false,
+        });
         let ty_generics_where_ty = &ty_generics.where_clause;
         let (ty_generics_impl, ty_generics_ty, ty_generics_where) = ty_generics.split_for_impl();
         let (impl_generics_impl, impl_generics_ty, impl_generics_where) = impl_generics.split_for_impl();
 
-        let (req_generics, _) = self.generics(false, true, false, false, false, false, false);
+        let (req_generics, _) = self.generics(GenericsArgs {
+            with_target: false,
+            with_codec: true,
+            with_codec_default: false,
+            with_lifetime: false,
+            with_send: false,
+            with_sync: false,
+            with_static: false,
+        });
         let (_req_all, req_value, req_ref, req_ref_mut) = self.request_enum_idents();
 
         let impl_generics_where_pred = &impl_generics_where.unwrap().predicates;
