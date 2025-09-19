@@ -11,11 +11,8 @@ echo "Checking crate versions"
 
 VERSION=$(grep "^version = " Cargo.toml | cut -d ' ' -f 3 | tr -d \")
 
-echo "Publishing remoc_macro $VERSION"
-cargo publish --manifest-path remoc_macro/Cargo.toml
-
-echo "Publishing remoc $VERSION"
-cargo publish --manifest-path remoc/Cargo.toml
+echo "Publishing $VERSION"
+cargo publish --workspace
 
 echo "Tagging version in git"
 git tag "v$VERSION"
