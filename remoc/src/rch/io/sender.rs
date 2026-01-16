@@ -12,26 +12,29 @@ use tokio::io::AsyncWrite;
 use tokio_util::sync::ReusableBoxFuture;
 
 use super::{bin, oneshot};
+use crate::codec;
 
 /// Size handling mode for the sender.
 #[derive(Debug, Serialize, Deserialize)]
-pub(super) enum SizeMode {
+#[serde(bound(serialize = "Codec: codec::Codec"))]
+#[serde(bound(deserialize = "Codec: codec::Codec"))]
+pub(super) enum SizeMode<Codec> {
     /// Size is known (either upfront or after shutdown).
     Known(u64),
     /// Size is unknown. Will send final byte count via oneshot on shutdown,
     /// then transition to Known.
-    Unknown(oneshot::Sender<u64, crate::codec::Default>),
+    Unknown(oneshot::Sender<u64, Codec>),
 }
 
 /// An I/O channel sender that implements [`AsyncWrite`].
 ///
 /// Writes binary data to the underlying channel.
 /// Tracks bytes written and enforces size limits if specified.
-pub struct Sender {
+pub struct Sender<Codec = codec::Default> {
     /// The underlying binary channel sender. Uses Mutex for serialization with &self.
     bin_sender: Mutex<Option<bin::Sender>>,
     /// Size handling mode.
-    size_mode: Mutex<SizeMode>,
+    size_mode: Mutex<SizeMode<Codec>>,
     /// Total bytes written so far.
     bytes_written: u64,
     /// Cached chunk size from chmux sender.
@@ -42,7 +45,7 @@ pub struct Sender {
     sending: Option<ReusableBoxFuture<'static, Result<(bin::Sender, u64), io::Error>>>,
 }
 
-impl fmt::Debug for Sender {
+impl<Codec> fmt::Debug for Sender<Codec> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Sender")
             .field("expected_size", &self.expected_size())
@@ -53,18 +56,20 @@ impl fmt::Debug for Sender {
 
 /// A sender in transport.
 #[derive(Debug, Serialize, Deserialize)]
-pub(crate) struct TransportedSender {
+#[serde(bound(serialize = "Codec: codec::Codec"))]
+#[serde(bound(deserialize = "Codec: codec::Codec"))]
+pub(crate) struct TransportedSender<Codec> {
     /// The underlying binary sender. None if already closed.
     bin_sender: Option<bin::Sender>,
     /// Size handling mode.
-    size_mode: SizeMode,
+    size_mode: SizeMode<Codec>,
     /// Total bytes written so far.
     bytes_written: u64,
 }
 
-impl Sender {
+impl<Codec> Sender<Codec> {
     /// Creates a new sender.
-    pub(super) fn new(bin_sender: bin::Sender, size_mode: SizeMode) -> Self {
+    pub(super) fn new(bin_sender: bin::Sender, size_mode: SizeMode<Codec>) -> Self {
         Self {
             bin_sender: Mutex::new(Some(bin_sender)),
             size_mode: Mutex::new(size_mode),
@@ -109,7 +114,7 @@ async fn connect_sender(mut bin_sender: bin::Sender) -> Result<(bin::Sender, usi
     Ok((bin_sender, chunk_size))
 }
 
-impl Sender {
+impl<Codec> Sender<Codec> {
     /// Polls to complete any pending connect or send operations.
     fn poll_complete(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         if let Some(future) = &mut self.connecting {
@@ -154,7 +159,10 @@ impl Sender {
     }
 }
 
-impl AsyncWrite for Sender {
+impl<Codec> AsyncWrite for Sender<Codec>
+where
+    Codec: codec::Codec,
+{
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
         let this = self.as_mut().get_mut();
 
@@ -234,7 +242,10 @@ impl AsyncWrite for Sender {
     }
 }
 
-impl Serialize for Sender {
+impl<Codec> Serialize for Sender<Codec>
+where
+    Codec: codec::Codec,
+{
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -245,16 +256,20 @@ impl Serialize for Sender {
             SizeMode::Known(0), // Placeholder, sender is consumed anyway
         );
 
-        TransportedSender { bin_sender, size_mode, bytes_written: self.bytes_written }.serialize(serializer)
+        TransportedSender::<Codec> { bin_sender, size_mode, bytes_written: self.bytes_written }
+            .serialize(serializer)
     }
 }
 
-impl<'de> Deserialize<'de> for Sender {
+impl<'de, Codec> Deserialize<'de> for Sender<Codec>
+where
+    Codec: codec::Codec,
+{
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        let transported = TransportedSender::deserialize(deserializer)?;
+        let transported = TransportedSender::<Codec>::deserialize(deserializer)?;
 
         Ok(Self {
             bin_sender: Mutex::new(transported.bin_sender),

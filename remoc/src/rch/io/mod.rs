@@ -125,6 +125,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::{bin, oneshot};
+use crate::codec;
 
 mod receiver;
 mod sender;
@@ -136,11 +137,13 @@ use sender::SizeMode;
 
 /// Internal enum to track size information on the receiver side.
 #[derive(Debug, Serialize, Deserialize)]
-pub(super) enum SizeInfo {
+#[serde(bound(serialize = "Codec: codec::Codec"))]
+#[serde(bound(deserialize = "Codec: codec::Codec"))]
+pub(super) enum SizeInfo<Codec> {
     /// Size was known at channel creation.
     Determined(u64),
     /// Size will be received when sender shuts down.
-    Undetermined(oneshot::Receiver<u64, crate::codec::Default>),
+    Undetermined(oneshot::Receiver<u64, Codec>),
 }
 
 /// Creates a new I/O channel with unknown size.
@@ -150,7 +153,10 @@ pub(super) enum SizeInfo {
 /// The receiver cannot know the size in advance (returns `None` from [`Receiver::size`]).
 ///
 /// Both ends can be sent to remote endpoints.
-pub fn channel() -> (Sender, Receiver) {
+pub fn channel<Codec>() -> (Sender<Codec>, Receiver<Codec>)
+where
+    Codec: codec::Codec,
+{
     let (bin_tx, bin_rx) = bin::channel();
     let (size_tx, size_rx) = oneshot::channel();
 
@@ -171,7 +177,10 @@ pub fn channel() -> (Sender, Receiver) {
 /// The receiver can query the size via [`Receiver::size`], which returns `Some(size)`.
 ///
 /// Both ends can be sent to remote endpoints.
-pub fn sized(size: u64) -> (Sender, Receiver) {
+pub fn sized<Codec>(size: u64) -> (Sender<Codec>, Receiver<Codec>)
+where
+    Codec: codec::Codec,
+{
     let (bin_tx, bin_rx) = bin::channel();
 
     let sender = Sender::new(bin_tx, SizeMode::Known(size));

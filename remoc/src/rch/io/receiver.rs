@@ -11,17 +11,17 @@ use tokio::io::AsyncRead;
 use tokio_util::sync::ReusableBoxFuture;
 
 use super::{SizeInfo, bin, oneshot};
-use crate::chmux::DataBuf;
+use crate::{chmux::DataBuf, codec};
 
 /// An I/O channel receiver that implements [`AsyncRead`].
 ///
 /// Reads binary data from the underlying channel.
 /// Tracks bytes read and verifies size on completion.
-pub struct Receiver {
+pub struct Receiver<Codec = codec::Default> {
     /// The underlying binary channel receiver. Uses Mutex for serialization with &self.
     bin_receiver: Mutex<Option<bin::Receiver>>,
     /// Size information (known or to be received). Uses Option to allow taking during EOF handling.
-    size_info: Mutex<Option<SizeInfo>>,
+    size_info: Mutex<Option<SizeInfo<Codec>>>,
     /// Total bytes read so far.
     bytes_read: u64,
     /// Current data buffer being consumed.
@@ -38,7 +38,7 @@ enum ReceiverState {
     VerifyingSize(ReusableBoxFuture<'static, Result<u64, io::Error>>),
 }
 
-impl fmt::Debug for Receiver {
+impl<Codec> fmt::Debug for Receiver<Codec> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("Receiver")
             .field("size", &self.size())
@@ -50,16 +50,18 @@ impl fmt::Debug for Receiver {
 
 /// A receiver in transport.
 #[derive(Debug, Serialize, Deserialize)]
-pub(crate) struct TransportedReceiver {
+#[serde(bound(serialize = "Codec: codec::Codec"))]
+#[serde(bound(deserialize = "Codec: codec::Codec"))]
+pub(crate) struct TransportedReceiver<Codec> {
     /// The underlying binary receiver.
     bin_receiver: bin::Receiver,
     /// Size info for transport.
-    size: SizeInfo,
+    size: SizeInfo<Codec>,
 }
 
-impl Receiver {
+impl<Codec> Receiver<Codec> {
     /// Creates a new receiver.
-    pub(super) fn new(bin_receiver: bin::Receiver, size_info: SizeInfo) -> Self {
+    pub(super) fn new(bin_receiver: bin::Receiver, size_info: SizeInfo<Codec>) -> Self {
         Self {
             bin_receiver: Mutex::new(Some(bin_receiver)),
             size_info: Mutex::new(Some(size_info)),
@@ -104,11 +106,14 @@ async fn receive_data(mut bin_receiver: bin::Receiver) -> Result<(Option<DataBuf
     Ok((data, bin_receiver))
 }
 
-async fn receive_size(size_rx: oneshot::Receiver<u64, crate::codec::Default>) -> Result<u64, io::Error> {
+async fn receive_size<Codec: codec::Codec>(size_rx: oneshot::Receiver<u64, Codec>) -> Result<u64, io::Error> {
     size_rx.await.map_err(|e| io::Error::new(ErrorKind::UnexpectedEof, e.to_string()))
 }
 
-impl Receiver {
+impl<Codec> Receiver<Codec>
+where
+    Codec: codec::Codec,
+{
     /// Polls to complete any pending receive or verify operation.
     fn poll_complete(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         if let ReceiverState::Receiving(ref mut fut) = self.state {
@@ -175,7 +180,10 @@ impl Receiver {
     }
 }
 
-impl AsyncRead for Receiver {
+impl<Codec> AsyncRead for Receiver<Codec>
+where
+    Codec: codec::Codec,
+{
     fn poll_read(
         mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut tokio::io::ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
@@ -232,7 +240,10 @@ impl AsyncRead for Receiver {
     }
 }
 
-impl Serialize for Receiver {
+impl<Codec> Serialize for Receiver<Codec>
+where
+    Codec: codec::Codec,
+{
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -249,16 +260,19 @@ impl Serialize for Receiver {
             .take()
             .ok_or_else(|| serde::ser::Error::custom("cannot serialize: size info already consumed"))?;
 
-        TransportedReceiver { bin_receiver, size }.serialize(serializer)
+        TransportedReceiver::<Codec> { bin_receiver, size }.serialize(serializer)
     }
 }
 
-impl<'de> Deserialize<'de> for Receiver {
+impl<'de, Codec> Deserialize<'de> for Receiver<Codec>
+where
+    Codec: codec::Codec,
+{
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        let transported = TransportedReceiver::deserialize(deserializer)?;
+        let transported = TransportedReceiver::<Codec>::deserialize(deserializer)?;
         Ok(Self::new(transported.bin_receiver, transported.size))
     }
 }
