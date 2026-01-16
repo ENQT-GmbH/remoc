@@ -39,6 +39,11 @@
 //! It does support forwarding.
 //! However, at least one half of it must be on a remote endpoint.
 //!
+//! An [I/O channel](io) provides [`AsyncWrite`](tokio::io::AsyncWrite) and
+//! [`AsyncRead`](tokio::io::AsyncRead) implementations for streaming binary data.
+//! It supports both known and unknown sizes, with integrity verification on completion.
+//! At least one half of it must be on a remote endpoint.
+//!
 //! # Acknowledgements and connection latency
 //!
 //! The channels do not wait for acknowledgement of transmitted values.
@@ -112,6 +117,7 @@ mod interlock;
 pub mod base;
 pub mod bin;
 pub mod broadcast;
+pub mod io;
 pub mod lr;
 pub mod mpsc;
 pub mod oneshot;
