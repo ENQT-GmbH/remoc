@@ -12,7 +12,7 @@ use remoc::{
     rch::{
         ClosedReason, SendResultExt, SendingError,
         base::{self, SendErrorKind},
-        mpsc::{self, SendError},
+        mpsc::{self, SendError, TrySendError},
     },
 };
 
@@ -605,4 +605,191 @@ async fn max_item_size_exceeded() {
     assert!(tx.is_closed());
     assert_eq!(tx.closed_reason(), Some(ClosedReason::Failed));
     println!("Close reason: {:?}", tx.closed_reason());
+}
+
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
+async fn try_reserve_send() {
+    crate::init();
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<mpsc::Receiver<i16>>().await;
+
+    println!("Sending remote mpsc channel receiver");
+    let (tx, rx) = mpsc::channel(16);
+    a_tx.send(rx).await.unwrap();
+    println!("Receiving remote mpsc channel receiver");
+    let mut rx = b_rx.recv().await.unwrap().unwrap();
+
+    for i in 1..100 {
+        println!("Reserving slot for {i}");
+        let permit = tx.try_reserve().expect("try_reserve should succeed");
+        println!("Sending {i} via permit");
+        permit.send(i);
+        let r = rx.recv().await.unwrap().unwrap();
+        println!("Received {r}");
+        assert_eq!(i, r, "send/receive mismatch");
+    }
+
+    println!("Verifying that channel is open");
+    assert!(!tx.is_closed());
+    assert_eq!(tx.closed_reason(), None);
+    rx.close();
+
+    println!("Closing channel");
+    tx.closed().await;
+    assert!(tx.is_closed());
+    assert_eq!(tx.closed_reason(), Some(ClosedReason::Closed));
+}
+
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
+async fn try_reserve_full() {
+    crate::init();
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<mpsc::Receiver<i16>>().await;
+
+    println!("Sending remote mpsc channel receiver");
+    let buffer_size = 4;
+    let (tx, rx) = mpsc::channel(buffer_size);
+    a_tx.send(rx).await.unwrap();
+    println!("Receiving remote mpsc channel receiver");
+    let mut rx = b_rx.recv().await.unwrap().unwrap();
+
+    println!("Filling the channel buffer");
+    let mut permits = Vec::new();
+    for i in 0..buffer_size {
+        println!("Reserving slot {i}");
+        let permit = tx.try_reserve().expect("try_reserve should succeed while buffer not full");
+        permits.push(permit);
+    }
+
+    println!("Trying to reserve when channel is full");
+    match tx.try_reserve() {
+        Err(TrySendError::Full(())) => println!("Correctly got Full error"),
+        Ok(_) => panic!("try_reserve should fail when channel is full"),
+        Err(other) => panic!("expected Full error, got: {other}"),
+    }
+
+    println!("Sending values via permits");
+    for (i, permit) in permits.into_iter().enumerate() {
+        permit.send(i as i16);
+    }
+
+    println!("Receiving all sent values");
+    for i in 0..buffer_size {
+        let r = rx.recv().await.unwrap().unwrap();
+        println!("Received {r}");
+        assert_eq!(i as i16, r, "send/receive mismatch");
+    }
+
+    println!("Verifying try_reserve works again after draining");
+    let permit = tx.try_reserve().expect("try_reserve should succeed after draining buffer");
+    permit.send(42);
+    let r = rx.recv().await.unwrap().unwrap();
+    assert_eq!(42, r);
+}
+
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
+async fn try_reserve_closed() {
+    crate::init();
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<mpsc::Receiver<i16>>().await;
+
+    println!("Sending remote mpsc channel receiver");
+    let (tx, rx) = mpsc::channel(16);
+    a_tx.send(rx).await.unwrap();
+    println!("Receiving remote mpsc channel receiver");
+    let mut rx = b_rx.recv().await.unwrap().unwrap();
+
+    println!("Verifying try_reserve works before close");
+    let permit = tx.try_reserve().expect("try_reserve should succeed on open channel");
+    permit.send(1);
+    let r = rx.recv().await.unwrap().unwrap();
+    assert_eq!(1, r);
+
+    println!("Closing receiver");
+    rx.close();
+
+    println!("Waiting for sender to notice closure");
+    tx.closed().await;
+    assert!(tx.is_closed());
+    assert_eq!(tx.closed_reason(), Some(ClosedReason::Closed));
+
+    println!("Trying try_reserve after close");
+    match tx.try_reserve() {
+        Err(err) => {
+            println!("Got expected error: {err}");
+            assert!(err.is_closed() || err.is_disconnected(), "error should indicate closed/disconnected");
+            assert!(err.is_final(), "error after close should be final");
+        }
+        Ok(_) => panic!("try_reserve should fail after channel is closed"),
+    }
+}
+
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
+async fn reserve_send() {
+    crate::init();
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<mpsc::Receiver<i16>>().await;
+
+    println!("Sending remote mpsc channel receiver");
+    let (tx, rx) = mpsc::channel(16);
+    a_tx.send(rx).await.unwrap();
+    println!("Receiving remote mpsc channel receiver");
+    let mut rx = b_rx.recv().await.unwrap().unwrap();
+
+    for i in 1..100 {
+        println!("Reserving slot for {i}");
+        let permit = tx.reserve().await.expect("reserve should succeed");
+        println!("Sending {i} via permit");
+        permit.send(i);
+        let r = rx.recv().await.unwrap().unwrap();
+        println!("Received {r}");
+        assert_eq!(i, r, "send/receive mismatch");
+    }
+
+    println!("Verifying that channel is open");
+    assert!(!tx.is_closed());
+    assert_eq!(tx.closed_reason(), None);
+    rx.close();
+
+    println!("Closing channel");
+    tx.closed().await;
+    assert!(tx.is_closed());
+    assert_eq!(tx.closed_reason(), Some(ClosedReason::Closed));
+}
+
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
+async fn reserve_closed() {
+    crate::init();
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<mpsc::Receiver<i16>>().await;
+
+    println!("Sending remote mpsc channel receiver");
+    let (tx, rx) = mpsc::channel(16);
+    a_tx.send(rx).await.unwrap();
+    println!("Receiving remote mpsc channel receiver");
+    let mut rx = b_rx.recv().await.unwrap().unwrap();
+
+    println!("Verifying reserve works before close");
+    let permit = tx.reserve().await.expect("reserve should succeed on open channel");
+    permit.send(1);
+    let r = rx.recv().await.unwrap().unwrap();
+    assert_eq!(1, r);
+
+    println!("Closing receiver");
+    rx.close();
+
+    println!("Waiting for sender to notice closure");
+    tx.closed().await;
+    assert!(tx.is_closed());
+    assert_eq!(tx.closed_reason(), Some(ClosedReason::Closed));
+
+    println!("Trying reserve after close");
+    match tx.reserve().await {
+        Err(err) => {
+            println!("Got expected error: {err}");
+            assert!(err.is_closed() && err.is_disconnected(), "error should indicate closed/disconnected");
+            assert_eq!(err.closed_reason(), Some(ClosedReason::Closed));
+        }
+        Ok(_) => panic!("reserve should fail after channel is closed"),
+    }
 }

@@ -436,6 +436,32 @@ where
         }
     }
 
+    /// Tries to acquire a slot in the channel without waiting for the slot to become available.
+    /// If capacity to send one message is available, it is reserved for the caller.
+    /// Otherwise an error is returned.
+    ///
+    /// # Error reporting
+    /// Sending and error reporting are done asynchronously.
+    /// Thus, the reporting of an error may be delayed and this function may
+    /// return errors caused by previous invocations.
+    pub fn try_reserve(&self) -> Result<Permit<T>, TrySendError<()>> {
+        if let Some(err) = self.remote_send_err_rx.borrow().as_ref() {
+            return Err(TrySendError::from_remote_send_error(err.clone(), ()));
+        }
+
+        match self.tx.upgrade() {
+            Some(tx) => {
+                let tx = (*tx).clone();
+                match tx.try_reserve_owned() {
+                    Ok(permit) => Ok(Permit(permit)),
+                    Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => Err(TrySendError::Full(())),
+                    Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => Err(TrySendError::Closed(())),
+                }
+            }
+            _ => Err(TrySendError::Closed(())),
+        }
+    }
+
     /// Returns the current capacity of the channel.
     ///
     /// Zero is returned when the channel has been closed or an error has occurred.
