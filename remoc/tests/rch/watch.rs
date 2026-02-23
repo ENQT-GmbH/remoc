@@ -435,10 +435,11 @@ async fn has_changed() {
 
     // Send a new value — has_changed should eventually become true.
     tx.send(20).unwrap();
-    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let mut n = 1000;
     while !rx.has_changed().unwrap() {
-        assert!(std::time::Instant::now() < deadline, "timed out waiting for has_changed");
+        assert!(n > 0, "timed out waiting for has_changed");
         sleep(Duration::from_millis(10)).await;
+        n -= 1;
     }
 
     // After borrow_and_update, has_changed should be false again.
@@ -448,13 +449,14 @@ async fn has_changed() {
 
     // Drop sender — has_changed should eventually return Err(Closed).
     drop(tx);
-    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let mut n = 1000;
     loop {
         match rx.has_changed() {
             Err(_) => break,
             Ok(_) => {
-                assert!(std::time::Instant::now() < deadline, "timed out waiting for closed error");
+                assert!(n > 0, "timed out waiting for closed error");
                 sleep(Duration::from_millis(10)).await;
+                n -= 1;
             }
         }
     }
@@ -484,10 +486,11 @@ async fn mark_changed_and_unchanged() {
 
     // Send a new value so has_changed becomes true, then mark_unchanged.
     tx.send(30).unwrap();
-    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let mut n = 1000;
     while !rx.has_changed().unwrap() {
-        assert!(std::time::Instant::now() < deadline, "timed out waiting for has_changed");
+        assert!(n >= 0, "timed out waiting for has_changed");
         sleep(Duration::from_millis(10)).await;
+        n -= 1;
     }
 
     rx.mark_unchanged();
