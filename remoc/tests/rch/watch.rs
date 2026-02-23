@@ -417,3 +417,146 @@ async fn max_item_size_exceeded_check() {
     println!("Waiting for receive task");
     assert!(matches!(recv_task.await.unwrap(), Err(ChangedError::Closed)));
 }
+
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
+async fn has_changed() {
+    crate::init();
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<watch::Receiver<i16>>().await;
+
+    let (tx, rx) = watch::channel(10);
+    a_tx.send(rx).await.unwrap();
+    let mut rx = b_rx.recv().await.unwrap().unwrap();
+
+    // After initial borrow_and_update, value is seen — has_changed should be false.
+    let value = *rx.borrow_and_update().unwrap();
+    assert_eq!(value, 10);
+    assert!(!rx.has_changed().unwrap());
+
+    // Send a new value — has_changed should eventually become true.
+    tx.send(20).unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    while !rx.has_changed().unwrap() {
+        assert!(std::time::Instant::now() < deadline, "timed out waiting for has_changed");
+        sleep(Duration::from_millis(10)).await;
+    }
+
+    // After borrow_and_update, has_changed should be false again.
+    let value = *rx.borrow_and_update().unwrap();
+    assert_eq!(value, 20);
+    assert!(!rx.has_changed().unwrap());
+
+    // Drop sender — has_changed should eventually return Err(Closed).
+    drop(tx);
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        match rx.has_changed() {
+            Err(_) => break,
+            Ok(_) => {
+                assert!(std::time::Instant::now() < deadline, "timed out waiting for closed error");
+                sleep(Duration::from_millis(10)).await;
+            }
+        }
+    }
+}
+
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
+async fn mark_changed_and_unchanged() {
+    crate::init();
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<watch::Receiver<i16>>().await;
+
+    let (tx, rx) = watch::channel(10);
+    a_tx.send(rx).await.unwrap();
+    let mut rx = b_rx.recv().await.unwrap().unwrap();
+
+    // Consume the initial value.
+    let _ = rx.borrow_and_update().unwrap();
+    assert!(!rx.has_changed().unwrap());
+
+    // mark_changed should make has_changed return true.
+    rx.mark_changed();
+    assert!(rx.has_changed().unwrap());
+
+    // borrow_and_update should clear the changed flag.
+    let _ = rx.borrow_and_update().unwrap();
+    assert!(!rx.has_changed().unwrap());
+
+    // Send a new value so has_changed becomes true, then mark_unchanged.
+    tx.send(30).unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    while !rx.has_changed().unwrap() {
+        assert!(std::time::Instant::now() < deadline, "timed out waiting for has_changed");
+        sleep(Duration::from_millis(10)).await;
+    }
+
+    rx.mark_unchanged();
+    assert!(!rx.has_changed().unwrap());
+
+    // The value should still be readable even though we marked unchanged.
+    let value = *rx.borrow().unwrap();
+    assert_eq!(value, 30);
+}
+
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
+async fn wait_for_immediate() {
+    crate::init();
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<watch::Receiver<i16>>().await;
+
+    let (_tx, rx) = watch::channel(42);
+    a_tx.send(rx).await.unwrap();
+    let mut rx = b_rx.recv().await.unwrap().unwrap();
+
+    // wait_for should return immediately if the current value satisfies the predicate.
+    let value = rx.wait_for(|v| *v == 42).await.unwrap();
+    assert_eq!(*value, 42);
+}
+
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
+async fn wait_for_future_value() {
+    crate::init();
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<watch::Receiver<i16>>().await;
+
+    let (tx, rx) = watch::channel(0);
+    a_tx.send(rx).await.unwrap();
+    let mut rx = b_rx.recv().await.unwrap().unwrap();
+
+    // Spawn a task that sends the target value after a delay.
+    let send_task = exec::spawn(async move {
+        sleep(Duration::from_millis(50)).await;
+        tx.send(5).unwrap();
+        sleep(Duration::from_millis(50)).await;
+        tx.send(10).unwrap();
+        sleep(Duration::from_millis(50)).await;
+        tx.send(100).unwrap();
+        tx
+    });
+
+    // wait_for should block until the predicate is satisfied.
+    let value = rx.wait_for(|v| *v >= 100).await.unwrap();
+    assert!(*value >= 100);
+
+    let _tx = send_task.await.unwrap();
+}
+
+#[cfg_attr(not(feature = "js"), tokio::test)]
+#[cfg_attr(feature = "js", wasm_bindgen_test)]
+async fn wait_for_closed() {
+    crate::init();
+    let ((mut a_tx, _), (_, mut b_rx)) = loop_channel::<watch::Receiver<i16>>().await;
+
+    let (tx, rx) = watch::channel(0);
+    a_tx.send(rx).await.unwrap();
+    let mut rx = b_rx.recv().await.unwrap().unwrap();
+
+    // Drop sender after a short delay — wait_for should return an error.
+    let _drop_task = exec::spawn(async move {
+        sleep(Duration::from_millis(50)).await;
+        drop(tx);
+    });
+
+    let result = rx.wait_for(|v| *v == 999).await;
+    assert!(result.is_err(), "wait_for should fail when sender is dropped");
+}

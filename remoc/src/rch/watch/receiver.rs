@@ -60,7 +60,7 @@ pub enum ChangedError {
 }
 
 impl ChangedError {
-    /// True, if remote endpoint has closed channel.
+    /// True, if remote endpoint has closed the channel.
     #[deprecated = "a remoc::rch::watch::ChangedError is always due to closure"]
     pub fn is_closed(&self) -> bool {
         true
@@ -76,6 +76,47 @@ impl fmt::Display for ChangedError {
 }
 
 impl Error for ChangedError {}
+
+/// An error occurred during wait for a value that satisfies a condition on a channel
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum WaitForError {
+    /// Receiving failed.
+    Recv(RecvError),
+    /// The sender has been dropped or the connection has been lost.
+    Closed,
+}
+
+impl From<RecvError> for WaitForError {
+    fn from(err: RecvError) -> Self {
+        Self::Recv(err)
+    }
+}
+
+impl From<ChangedError> for WaitForError {
+    fn from(err: ChangedError) -> Self {
+        match err {
+            ChangedError::Closed => Self::Closed,
+        }
+    }
+}
+
+impl WaitForError {
+    /// True, if remote endpoint has closed the channel.
+    pub fn is_closed(&self) -> bool {
+        true
+    }
+}
+
+impl fmt::Display for WaitForError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Recv(err) => write!(f, "{err}"),
+            Self::Closed => write!(f, "closed"),
+        }
+    }
+}
+
+impl Error for WaitForError {}
 
 /// Receive values from the associated [Sender](super::Sender),
 /// which may be located on a remote endpoint.
@@ -139,9 +180,44 @@ impl<T, Codec, const MAX_ITEM_SIZE: usize> Receiver<T, Codec, MAX_ITEM_SIZE> {
         }
     }
 
+    /// Checks if this channel contains a message that this receiver has not yet seen.
+    /// The current value will not be marked as seen.
+    pub fn has_changed(&self) -> Result<bool, ChangedError> {
+        self.rx.has_changed().map_err(|_| ChangedError::Closed)
+    }
+
     /// Wait for a change notification, then mark the newest value as seen.
     pub async fn changed(&mut self) -> Result<(), ChangedError> {
         self.rx.changed().await.map_err(|_| ChangedError::Closed)
+    }
+
+    /// Marks the state as changed.
+    pub fn mark_changed(&mut self) {
+        self.rx.mark_changed();
+    }
+
+    /// Marks the state as unchanged.
+    pub fn mark_unchanged(&mut self) {
+        self.rx.mark_unchanged();
+    }
+
+    /// Waits for a value that satisfies the provided condition.
+    pub async fn wait_for(&mut self, mut f: impl FnMut(&T) -> bool) -> Result<Ref<'_, T>, WaitForError> {
+        let res = self
+            .rx
+            .wait_for(move |res| match res {
+                Ok(value) => f(value),
+                Err(_) => true,
+            })
+            .await;
+
+        match res {
+            Ok(ref_res) => match &*ref_res {
+                Ok(_) => Ok(Ref(ref_res)),
+                Err(err) => Err(err.clone().into()),
+            },
+            Err(_) => Err(WaitForError::Closed),
+        }
     }
 
     /// Maximum allowed item size in bytes when receiving items.
