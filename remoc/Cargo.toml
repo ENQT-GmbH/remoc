@@ -61,7 +61,7 @@ remoc_macro = { version = "=0.18.3", path = "../remoc_macro", optional = true }
 futures = { version = "0.3.31", default-features = false, features = ["std"] }
 tokio = { version = "1.43", features = ["macros", "rt", "sync", "time"] }
 tokio-util = { version = "0.7", features = ["codec"] }
-rand = "0.9"
+rand = "0.10"
 tracing = "0.1.29"
 bytes = "1"
 byteorder = "1.4"
@@ -77,7 +77,7 @@ rmp-serde = { version = "1.0", optional = true }
 postcard = { version = "1.0", features = ["use-std"], optional = true }
 
 # Web support
-getrandom = { version = "0.3", features = ["wasm_js"], optional = true }
+getrandom = { version = "0.4", features = ["wasm_js"], optional = true }
 js-sys = { version = "0.3.72", optional = true }
 web-sys = { version = "0.3.72", features = ["Window", "WorkerGlobalScope"], optional = true }
 wasm-bindgen = { version = "0.2.95", optional = true }

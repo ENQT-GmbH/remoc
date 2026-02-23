@@ -1,5 +1,5 @@
 use bytes::{Buf, Bytes};
-use rand::{Rng, RngCore};
+use rand::{Rng, RngExt};
 
 #[cfg(feature = "js")]
 use wasm_bindgen_test::wasm_bindgen_test;

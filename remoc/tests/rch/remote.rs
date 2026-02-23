@@ -1,4 +1,4 @@
-use rand::{Rng, RngCore};
+use rand::{Rng, RngExt};
 use std::time::Duration;
 
 #[cfg(feature = "js")]

@@ -7,4 +7,4 @@ edition = "2024"
 counter = { path = "../counter" }
 remoc = { path = "../../../remoc" }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "time"] }
-tracing-subscriber = "0.3.7"
+tracing-subscriber = "0.3.22"

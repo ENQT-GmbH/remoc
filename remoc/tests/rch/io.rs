@@ -3,7 +3,7 @@
 //! Like the bin channel, at least one end of the io channel must be remote.
 //! These tests send the receiver to remote and keep the sender local.
 
-use rand::{Rng, RngCore};
+use rand::{Rng, RngExt};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[cfg(feature = "js")]
@@ -851,7 +851,7 @@ async fn tokio_copy_read_error_no_shutdown() {
             mut self: Pin<&mut Self>, _cx: &mut Context<'_>, buf: &mut tokio::io::ReadBuf<'_>,
         ) -> Poll<std::io::Result<()>> {
             if self.pos >= self.fail_at {
-                return Poll::Ready(Err(std::io::Error::new(std::io::ErrorKind::Other, "simulated read error")));
+                return Poll::Ready(Err(std::io::Error::other("simulated read error")));
             }
             let remaining = self.data.len() - self.pos;
             let to_read = remaining.min(buf.remaining()).min(self.fail_at - self.pos);

@@ -460,7 +460,7 @@ async fn pop_operations_stress_test() {
     }
 
     // Pop the last element
-    if obs.len() > 0 {
+    if !obs.is_empty() {
         let val = obs.pop_front();
         assert!(val.is_some());
         expected_events.push(VecDequeEvent::PopFront);

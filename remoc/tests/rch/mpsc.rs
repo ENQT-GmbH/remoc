@@ -1,5 +1,5 @@
 use futures::{SinkExt, StreamExt, future};
-use rand::Rng;
+use rand::RngExt;
 use std::time::Duration;
 
 #[cfg(feature = "js")]
