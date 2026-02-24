@@ -159,16 +159,6 @@ enum GlobalEvt {
     Port(PortEvt),
     /// Send Goodbye message.
     SendGoodbye,
-    /// Flush transport send queue.
-    Flush,
-}
-
-/// Command to transport send task.
-enum SendCmd {
-    /// Send attached message.
-    Send(TransportMsg),
-    /// Flush sink.
-    Flush,
 }
 
 /// Message with optionally associated data.
@@ -536,7 +526,7 @@ where
     ///
     /// Automatically sends pings if no data is to be transmitted.
     async fn send_task(
-        mut sink: &mut TransportSink, ping_interval: Option<Duration>, mut rx: mpsc::Receiver<SendCmd>,
+        mut sink: &mut TransportSink, ping_interval: Option<Duration>, mut rx: mpsc::Receiver<TransportMsg>,
     ) -> Result<(), ChMuxError<TransportSinkError, TransportStreamError>> {
         async fn get_next_ping(ping_interval: Option<Duration>) {
             match ping_interval {
@@ -554,11 +544,11 @@ where
             tokio::select! {
                 biased;
 
-                cmd_opt = rx.recv() => {
-                    match cmd_opt {
-                        Some(SendCmd::Send (msg)) => {
+                msg_opt = rx.recv() => {
+                    match msg_opt {
+                        Some(msg) => {
                             let is_goodbye = matches!(&msg, TransportMsg {msg: MultiplexMsg::Goodbye, ..});
-                            need_flush |= matches!(&msg, TransportMsg {msg: MultiplexMsg::PortCredits {..}, ..});
+                            need_flush = true;
 
                             Self::feed_msg(msg, sink).await?;
 
@@ -568,7 +558,6 @@ where
 
                             next_ping = get_next_ping(ping_interval).fuse().boxed();
                         }
-                        Some(SendCmd::Flush) => need_flush = true,
                         None => break,
                     }
                 }
@@ -654,7 +643,6 @@ where
         let mut channel_rx = self.channel_rx.take().unwrap();
         let mut connect_rx = self.connect_rx.take().unwrap();
         let mut terminate_rx = self.terminate_rx.take().unwrap();
-        let mut flushed = false;
         let mut send_task_ended = false;
 
         while !(self.goodbye_sent && self.goodbye_received && send_task_ended) {
@@ -675,13 +663,11 @@ where
                         None => future::pending().await
                     }} => {
                         // listen_no_wait_tx is closed simultaneously.
-                        flushed = false;
                         GlobalEvt::ListenerDropped
                     },
 
                     // Connection request from client.
                     connect_req_opt = connect_rx.recv(), if !self.all_clients_dropped => {
-                        flushed = false;
                         match connect_req_opt {
                             Some(connect_req) => GlobalEvt::ConnectReq(connect_req),
                             None => GlobalEvt::AllClientsDropped,
@@ -690,7 +676,6 @@ where
 
                     // Request from port.
                     Some(msg) = channel_rx.recv() => {
-                        flushed = false;
                         GlobalEvt::Port(msg)
                     },
 
@@ -702,12 +687,6 @@ where
                     // Send Goodbye message and terminate.
                     () = future::ready(()), if self.should_terminate() && !self.goodbye_sent => {
                         GlobalEvt::SendGoodbye
-                    }
-
-                    // Flush transport sink if no requests are queued.
-                    () = sleep(self.local_cfg.flush_delay), if !flushed => {
-                        flushed = true;
-                        GlobalEvt::Flush
                     },
                 };
 
@@ -740,11 +719,11 @@ where
     /// Handle local event that results in sending a message to the remote endpoint.
     #[tracing::instrument(level = "trace", skip_all, fields(event=?event))]
     async fn handle_event(
-        &mut self, permit: Permit<'_, SendCmd>, event: GlobalEvt,
+        &mut self, permit: Permit<'_, TransportMsg>, event: GlobalEvt,
     ) -> Result<(), ChMuxError<TransportSinkError, TransportStreamError>> {
-        let send_msg = |permit: Permit<'_, SendCmd>, msg: MultiplexMsg| {
+        let send_msg = |permit: Permit<'_, TransportMsg>, msg: MultiplexMsg| {
             tracing::trace!(op="send", msg=?msg);
-            permit.send(SendCmd::Send(TransportMsg::new(msg)))
+            permit.send(TransportMsg::new(msg))
         };
 
         match event {
@@ -788,7 +767,7 @@ where
             GlobalEvt::Port(PortEvt::SendData { remote_port, data, first, last }) => {
                 let msg = MultiplexMsg::Data { port: remote_port, first, last };
                 tracing::trace!(op="send", msg=?msg, data=?&data);
-                permit.send(SendCmd::Send(TransportMsg::with_data(msg, data)));
+                permit.send(TransportMsg::with_data(msg, data));
             }
 
             // Send ports from port.
@@ -882,11 +861,6 @@ where
             GlobalEvt::SendGoodbye => {
                 self.goodbye_sent = true;
                 send_msg(permit, MultiplexMsg::Goodbye);
-            }
-
-            // Flush transport sink.
-            GlobalEvt::Flush => {
-                permit.send(SendCmd::Flush);
             }
         }
         Ok(())

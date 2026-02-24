@@ -102,22 +102,15 @@ async fn uds_test() {
 }
 
 /// Round-trip latency test over a real Unix domain socket.
-///
-/// Reproduces <https://github.com/ENQT-GmbH/remoc/issues/32>:
-/// With the default `flush_delay` of 20ms each side of a round-trip
-/// incurs the full delay before the data is flushed, resulting in
-/// ~40ms round-trip time even on a Unix domain socket transport.
-///
-/// Setting `flush_delay` to zero eliminates this overhead.
-async fn uds_round_trip_latency(flush_delay: Duration) -> Duration {
-    const ROUND_TRIPS: u32 = 100;
+async fn uds_round_trip_latency() -> Duration {
+    const ROUND_TRIPS: u32 = 1000;
 
-    let cfg = chmux::Cfg { flush_delay, ..Default::default() };
+    let cfg = chmux::Cfg::default();
 
     // Use a unique socket path to avoid conflicts with other tests.
-    let socket_path = format!("/tmp/chmux_latency_test_{}", flush_delay.as_micros());
-    let _ = fs::remove_file(&socket_path);
-    let listener = UnixListener::bind(&socket_path).unwrap();
+    let socket_path = "/tmp/chmux_latency_test";
+    let _ = fs::remove_file(socket_path);
+    let listener = UnixListener::bind(socket_path).unwrap();
 
     let accept = async {
         let (socket, _) = listener.accept().await.unwrap();
@@ -128,7 +121,7 @@ async fn uds_round_trip_latency(flush_delay: Duration) -> Duration {
     };
 
     let connect = async {
-        let socket = UnixStream::connect(&socket_path).await.unwrap();
+        let socket = UnixStream::connect(socket_path).await.unwrap();
         let (rx, tx) = split(socket);
         let framed_tx = FramedWrite::new(tx, LengthDelimitedCodec::new());
         let framed_rx = FramedRead::new(rx, LengthDelimitedCodec::new()).map(|data| data.map(|b| b.freeze()));
@@ -171,35 +164,18 @@ async fn uds_round_trip_latency(flush_delay: Duration) -> Duration {
     drop(rx);
     drop(client);
     drop(_server_client);
-    let _ = fs::remove_file(&socket_path);
+    let _ = fs::remove_file(socket_path);
 
     elapsed / ROUND_TRIPS
 }
 
 #[tokio::test]
-async fn uds_round_trip_latency_default_flush_delay() {
+async fn uds_round_trip_latency_test() {
     crate::init();
 
-    let avg = uds_round_trip_latency(Duration::from_millis(20)).await;
-    println!("Average UDS round-trip latency with default flush_delay (20ms): {avg:?}");
+    let avg = uds_round_trip_latency().await;
+    println!("Average UDS round-trip latency: {avg:?}");
 
-    // With 20ms flush_delay on each side the round-trip should be >= 35ms.
-    assert!(
-        avg >= Duration::from_millis(35),
-        "Expected round-trip latency >= 35ms with default flush_delay, got {avg:?}"
-    );
-}
-
-#[tokio::test]
-async fn uds_round_trip_latency_zero_flush_delay() {
-    crate::init();
-
-    let avg = uds_round_trip_latency(Duration::ZERO).await;
-    println!("Average UDS round-trip latency with zero flush_delay: {avg:?}");
-
-    // With zero flush_delay the round-trip should be well under 5ms on any machine.
-    assert!(
-        avg < Duration::from_millis(5),
-        "Expected round-trip latency < 5ms with zero flush_delay, got {avg:?}"
-    );
+    #[cfg(not(debug_assertions))]
+    assert!(avg < Duration::from_millis(1), "Expected round-trip latency < 1ms, got {avg:?}");
 }
