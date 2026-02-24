@@ -14,6 +14,14 @@
 //! and the remote endpoints, thus its performance is limited by the physical connection
 //! latency.
 //!
+//! # Security
+//!
+//! This module is **not** designed for use with untrusted remote peers.
+//! A malicious peer can hold a [ReadGuard](ReadGuard) or [WriteGuard](WriteGuard)
+//! indefinitely, which blocks the [Owner](Owner) from processing any further
+//! read or write requests, effectively causing a denial of service for all peers.
+//! Only use this module with trusted peers.
+//!
 //! # Usage
 //!
 //! [Create an RwLock owner](Owner::new) and use [Owner::rw_lock] to acquire
