@@ -390,7 +390,10 @@ impl ExchangedCfg {
                 prb if prb >= 4 => prb,
                 _ => return Err(invalid_data("port_receive_buffer")),
             },
-            connect_queue: reader.read_u16::<LE>()?,
+            connect_queue: match reader.read_u16::<LE>()? {
+                cq if cq >= 1 => cq,
+                _ => return Err(invalid_data("connect_queue must not be zero")),
+            },
         };
         Ok(this)
     }
