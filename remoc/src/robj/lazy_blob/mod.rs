@@ -16,9 +16,11 @@
 //!
 //! # Security
 //!
-//! When dealing with untrusted clients, check the size of the binary data using
-//! [LazyBlob::len] before requesting it to avoid denial of service attacks by
-//! memory exhaustion.
+//! When dealing with untrusted clients, always check the size of the binary data using
+//! [LazyBlob::len] before requesting it with [LazyBlob::get] to avoid denial of service
+//! attacks by memory exhaustion.
+//! The declared length originates from the remote peer and should be validated against
+//! an application-specific maximum before fetching the data.
 //!
 //! # Example
 //!
