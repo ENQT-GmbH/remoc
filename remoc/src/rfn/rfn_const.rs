@@ -1,6 +1,7 @@
 use futures::{Future, future, pin_mut};
 use serde::{Deserialize, Serialize};
 use std::{fmt, sync::Arc};
+use tokio::sync::Semaphore;
 use tracing::Instrument;
 
 use super::{CallError, msg::RFnRequest};
@@ -14,6 +15,7 @@ use crate::{
 /// Dropping the provider will stop making the function available for remote calls.
 pub struct RFnProvider {
     keep_tx: Option<tokio::sync::oneshot::Sender<()>>,
+    max_concurrency_tx: tokio::sync::watch::Sender<usize>,
 }
 
 impl fmt::Debug for RFnProvider {
@@ -23,6 +25,9 @@ impl fmt::Debug for RFnProvider {
 }
 
 impl RFnProvider {
+    /// Default maximum number of concurrent [RFn] invocations.
+    pub const DEFAULT_MAX_CONCURRENCY: usize = 32;
+
     /// Keeps the provider alive until it is not required anymore.
     pub fn keep(mut self) {
         let _ = self.keep_tx.take().unwrap().send(());
@@ -33,6 +38,32 @@ impl RFnProvider {
     /// This is the case when the [RFn] is dropped.
     pub async fn done(&mut self) {
         self.keep_tx.as_mut().unwrap().closed().await
+    }
+
+    /// Returns the current maximum number of concurrent invocations.
+    pub fn max_concurrency(&self) -> usize {
+        *self.max_concurrency_tx.borrow()
+    }
+
+    /// Sets the maximum number of concurrent invocations of the remote function.
+    ///
+    /// The default is [RFnProvider::DEFAULT_MAX_CONCURRENCY].
+    /// When the limit is reached, new invocations will wait until a running
+    /// invocation completes.
+    ///
+    /// The limit can be changed at any time, including after the [RFn] has been
+    /// sent to a remote endpoint.
+    /// The new limit takes effect for subsequent invocations.
+    /// Already running invocations are not affected.
+    pub fn set_max_concurrency(&self, limit: usize) {
+        self.max_concurrency_tx.send_if_modified(|current| {
+            if *current != limit {
+                *current = limit;
+                true
+            } else {
+                false
+            }
+        });
     }
 }
 
@@ -123,10 +154,14 @@ where
         let request_tx = request_tx.set_buffer();
         let mut request_rx = request_rx.set_buffer::<1>();
         let (keep_tx, keep_rx) = tokio::sync::oneshot::channel();
+        let (max_concurrency_tx, mut max_concurrency_rx) =
+            tokio::sync::watch::channel(RFnProvider::DEFAULT_MAX_CONCURRENCY);
         let fun = Arc::new(fun);
 
         exec::spawn(
             async move {
+                let mut semaphore = Arc::new(Semaphore::new(*max_concurrency_rx.borrow_and_update()));
+
                 let term = async move {
                     if let Ok(()) = keep_rx.await {
                         future::pending().await
@@ -140,11 +175,17 @@ where
 
                         () = &mut term => break,
 
+                        Ok(()) = max_concurrency_rx.changed() => {
+                            semaphore = Arc::new(Semaphore::new(*max_concurrency_rx.borrow_and_update()));
+                        }
+
                         req_res = request_rx.recv() => {
                             match req_res {
                                 Ok(Some(RFnRequest {argument, result_tx})) => {
                                     let fun_task = fun.clone();
+                                    let semaphore = semaphore.clone();
                                     exec::spawn(async move {
+                                        let _permit = semaphore.acquire().await.ok();
                                         let result = fun_task(argument).await;
                                         let _ = result_tx.send(result);
                                     }.in_current_span());
@@ -160,7 +201,7 @@ where
             .in_current_span(),
         );
 
-        (Self { request_tx }, RFnProvider { keep_tx: Some(keep_tx) })
+        (Self { request_tx }, RFnProvider { keep_tx: Some(keep_tx), max_concurrency_tx })
     }
 
     /// Try to call the remote function.

@@ -48,6 +48,16 @@
 //! that could try to obtain and keep a large number of remote function wrappers to
 //! perform a denial of service attack by exhausting your memory.
 //!
+//! # Concurrency limiting
+//!
+//! [RFn] spawns a new async task for each invocation, up to a configurable
+//! maximum of [RFnProvider::DEFAULT_MAX_CONCURRENCY] concurrent invocations (default: 32).
+//! When the limit is reached, new invocations wait until a running one completes.
+//!
+//! The limit can be adjusted dynamically via
+//! [RFnProvider::set_max_concurrency](RFnProvider::set_max_concurrency)
+//! and queried via [RFnProvider::max_concurrency](RFnProvider::max_concurrency).
+//!
 //! # Alternatives
 //!
 //! If you need to expose several functions remotely that operate on the same object
