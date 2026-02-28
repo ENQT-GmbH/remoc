@@ -265,7 +265,8 @@ where
         S: serde::Serializer,
     {
         // Prepare channel for takeover.
-        let rx = self.rx.clone();
+        let mut rx = self.rx.clone();
+        let data = rx.borrow_and_update().clone();
         let remote_send_err_tx = self.remote_send_err_tx.clone();
 
         let port = PortSerializer::connect(|connect| {
@@ -285,7 +286,6 @@ where
         })?;
 
         // Encode chmux port number in transport type and serialize it.
-        let data = self.rx.borrow().clone();
         let transported = TransportedReceiver::<T, Codec> {
             port,
             data,
