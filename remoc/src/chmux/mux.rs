@@ -548,7 +548,6 @@ where
                     match msg_opt {
                         Some(msg) => {
                             let is_goodbye = matches!(&msg, TransportMsg {msg: MultiplexMsg::Goodbye, ..});
-                            need_flush = true;
 
                             Self::feed_msg(msg, sink).await?;
 
@@ -557,6 +556,7 @@ where
                             }
 
                             next_ping = get_next_ping(ping_interval).fuse().boxed();
+                            need_flush = true;
                         }
                         None => break,
                     }
